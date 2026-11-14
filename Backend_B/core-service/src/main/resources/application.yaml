@@ -12,6 +12,30 @@ spring:
       hibernate.jdbc.time_zone: UTC
   flyway:
     locations: classpath:db/migration
+  kafka:
+    producer:
+      acks: all
+      properties:
+        enable.idempotence: true
+        linger.ms: 5
+    consumer:
+      group-id: core-service
+      auto-offset-reset: earliest
+      properties:
+        isolation.level: read_committed
+
+loofie:
+  outbox:
+    relay:
+      enabled: true
+      poll-interval: 500ms
+      batch-size: 100
+      send-timeout: 10s
+  kafka:
+    retry:
+      initial-interval: 1s
+      multiplier: 2.0
+      max-attempts: 5
 
 management:
   endpoints:
