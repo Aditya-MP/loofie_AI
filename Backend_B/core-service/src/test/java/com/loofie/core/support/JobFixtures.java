@@ -58,6 +58,12 @@ public class JobFixtures {
         return new Seeded(orderId, jobId, brandOrgId, creatorId);
     }
 
+    /** Sets one deadline column directly, e.g. to make a timer due. Column names come from tests only. */
+    public void setDeadline(UUID jobId, String column, Instant at) {
+        jdbc.sql("UPDATE jobs SET " + column + " = ? WHERE id = ?")
+                .params(OffsetDateTime.ofInstant(at, ZoneOffset.UTC), jobId).update();
+    }
+
     public long eventCount(UUID jobId) {
         return jdbc.sql("SELECT count(*) FROM job_events WHERE job_id = ?").param(jobId).query(Long.class).single();
     }

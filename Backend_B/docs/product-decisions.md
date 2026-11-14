@@ -66,7 +66,7 @@ The reliability score counts only CREATOR-fault codes. If `OTHER` goes above abo
 - The holiday table is seeded only with fixed-date national holidays (26 Jan, 15 Aug, 2 Oct, for 2026–27). **Ops must add Diwali, Holi and state holidays**, because their dates change every year.
 - The receipt photo is a reference string until F7 upload exists.
 - Default reason code when a creator withdraws: brand late → `BRAND_LATE_SHIP`; after `NOT_RECEIVED` → `COURIER_LOST`; after `DAMAGED` → `DAMAGED_IN_TRANSIT`; after `WRONG_ITEM` → `WRONG_ITEM_SENT`. Ops can pick another code with `OPS_RELEASE_CREATOR`.
-- No timer worker yet: deadlines are stored and shown in the ops console, but nothing acts on them automatically.
+- Timer worker (`core-service` `timer` package, every 30s): moves jobs on when a deadline passes (accept timeout, auto-start after courier "Delivered", production expired, auto-approve, replacement expired → refund) and sends reminders and alerts once each as `JobDeadlineNotice` events. **Nobody delivers those notices yet:** a notification service (email / WhatsApp) still has to be built and must read them.
 
 **Open**
 - **Founder sign-off:** Foundation v2 says production and review windows are both "120 calendar hours", and that the clock auto-starts 24 hours after the 3-day receipt reminder. The new rules change both (review in working days; auto-start only on courier "Delivered").

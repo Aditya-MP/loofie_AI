@@ -225,6 +225,11 @@ public class JobTransitionService {
                     throw new TransitionGuardException("The creator may withdraw 7 days after the first shipment; ask ops sooner");
                 }
             }
+            // Timer actions: only once their deadline has really passed (a late or duplicate worker run is harmless).
+            case ACCEPT_TIMEOUT -> requirePassed(job.getAcceptDueAt(), now, "accept window");
+            case PRODUCTION_EXPIRED -> requirePassed(job.getProductionDueAt(), now, "production deadline");
+            case AUTO_APPROVE -> requirePassed(job.getReviewDueAt(), now, "review window");
+            case REPLACEMENT_EXPIRED -> requirePassed(job.getReplacementDueAt(), now, "replacement window");
             case OPS_RELEASE_CREATOR -> {
                 if (details.reasonCode() == null) {
                     throw new TransitionGuardException("Releasing a creator needs a reason code");
@@ -313,6 +318,12 @@ public class JobTransitionService {
 
     private Optional<Assignment> activeAssignment(Job job) {
         return assignments.findByJobIdAndStatus(job.getId(), Assignment.Status.ACTIVE);
+    }
+
+    private static void requirePassed(Instant deadline, Instant now, String what) {
+        if (deadline == null || now.isBefore(deadline)) {
+            throw new TransitionGuardException("The " + what + " has not passed yet");
+        }
     }
 
     private static boolean isBlank(String s) {

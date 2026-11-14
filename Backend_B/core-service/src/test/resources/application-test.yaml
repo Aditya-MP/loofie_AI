@@ -20,6 +20,8 @@ loofie:
     relay:
       enabled: false                # tests call OutboxRelay.publishBatch() directly
       send-timeout: 5s
+  timers:
+    enabled: false                  # tests call DeadlineWorker.runOnce() directly
   kafka:
     retry:
       initial-interval: 50ms

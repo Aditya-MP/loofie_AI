@@ -169,6 +169,7 @@ class JobTransitionServiceTest {
         UUID first = UUID.randomUUID();
         UUID jobId = jobInProductionWith(first);
         engine.transition(jobId, JobAction.REQUEST_EXTENSION, Actor.creator(first), null);
+        clock.set(job(jobId).getProductionDueAt());
         engine.transition(jobId, JobAction.PRODUCTION_EXPIRED, Actor.system(), null);
 
         UUID second = UUID.randomUUID();
@@ -300,6 +301,7 @@ class JobTransitionServiceTest {
     @Test
     void brandClickAndAutoApproveRaceProducesExactlyOneApproval() throws Exception {
         Seeded seeded = fixtures.jobIn(JobStatus.IN_REVIEW);
+        fixtures.setDeadline(seeded.jobId(), "review_due_at", clock.instant().minusSeconds(1)); // auto-approve is due
         Actor owner = Actor.brandAdmin(UUID.randomUUID(), seeded.brandOrgId());
         CountDownLatch go = new CountDownLatch(1);
 
