@@ -107,11 +107,15 @@ Rules:
 
 | Situation | Decision |
 |---|---|
-| **Brand ships on time** | The brand must ship within **3 working days** of the creator accepting. Reminder after 2 days. Missed → the job is marked late, and the creator may drop out with no penalty (the slot is replaced or refunded). |
+| **Brand ships on time** | The brand must ship within **3 working days** of the creator accepting. Reminder after 2 days. Missed → the job is marked late, and the creator may drop out with no penalty. |
+| **Working days** | **Monday to Saturday** (Indian couriers pick up on Saturdays), skipping dates in a **holiday table ops can edit** (start with 26 Jan, 15 Aug, 2 Oct, Diwali, Holi). Sundays and listed holidays never count, for any clock. |
+| **Brand ships late, creator drops out** | The brand's fault, not Loofie's, so it follows the cancellation rule in section 6: **free replacement creator** (full value kept), or **refund minus the Loofie fee** if the brand wants money back. |
 | **"Shipped" needs proof** | The brand can't click "Shipped" without a **courier name and tracking number**. That's what settles every later "not received" dispute. |
 | **Product clock** | The 5-day (120-hour) shooting clock starts when the creator taps **"Received"** with a photo of the product. Digital-only briefs (no product) skip the clock. |
 | **Creator doesn't tap anything** | The clock starts by itself **only when the courier shows "Delivered"** and the creator hasn't reported a problem within 24 hours. Without courier proof it never starts by itself: the creator is reminded, then ops checks. A slow courier to a small town never makes the creator late. |
 | **Creator's three buttons** | **Received** (clock starts) · **Not received** (clock stays stopped, brand asked for tracking) · **Damaged / wrong item** (clock stays stopped, brand asked to reship). |
+| **Job state for problems** | One state, `DELIVERY_ISSUE`, with `issue_type`: `NOT_RECEIVED` / `DAMAGED` / `WRONG_ITEM`. The clock is stopped while a job is in it. |
+| **Reason codes** | Disputes and drop-outs carry a **reason code, never free text**, in `job_state_changed` (`reason`): `FALSE_CLAIM`, `COURIER_LOST`, `BRAND_LATE_SHIP`, `DAMAGED_IN_TRANSIT`, `WRONG_ITEM_SENT`, `CREATOR_UNRESPONSIVE`, `CREATOR_WITHDREW`. Ops notes stay in the backend log only (free text can hold personal details). New codes: add them here first. |
 | **Product not received** | The brand gets 48 hours to show tracking or reship at its own cost. Still missing after 7 days from "Shipped" → ops steps in, the creator may withdraw with no penalty, the slot is replaced or refunded. **[CONFIRM]** the 7 days against the first real shipments. |
 | **False "not received"** | Courier "Delivered" (plus the delivery OTP where the courier uses one) is the proof. Ops decides. A creator found making a false claim gets a `job_state_changed` event with the reason, which lowers their reliability score. |
 | **How tracking is checked** | **Pilot:** ops opens the tracking link by hand. **From about 50 jobs a month:** a multi-courier tracking service (for example Ship24, about $9/month for 200 shipments) follows the brand's own tracking numbers and tells us on "Delivered". Brands keep their own courier; nothing to switch. **[CONFIRM]** accuracy with 5 real Indian tracking numbers first. |
@@ -158,6 +162,8 @@ policy (needed for Meta App Review), one hour with a CA on refunds and TDS.
 
 ## Change log
 
+- 2026-11-14: Working days Mon–Sat minus a holiday table, DELIVERY_ISSUE state with issue_type,
+  reason codes, late-ship refund rule.
 - 2026-11-14: Shipping rules: brand ships in 3 working days, tracking number required, clock
   auto-starts only on courier "Delivered", damaged/wrong-item button, tracking service plan.
 - 2026-11-14: First version: ownership split, two event logs, Instagram Login, agency money
