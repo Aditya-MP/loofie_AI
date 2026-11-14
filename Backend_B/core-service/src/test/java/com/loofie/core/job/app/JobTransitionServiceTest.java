@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import java.time.Duration;
+import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
@@ -81,10 +82,10 @@ class JobTransitionServiceTest {
 
         engine.transition(jobId, JobAction.APPROVE, brand, null);
         engine.transition(jobId, JobAction.PAYOUT_QUEUED, Actor.system(), null);
-        engine.transition(jobId, JobAction.PAYOUT_COMPLETED, Actor.system(), null);
-        TransitionResult closed = engine.transition(jobId, JobAction.CLOSE, Actor.system(), null);
+        TransitionResult closed = engine.transition(jobId, JobAction.PAYOUT_COMPLETED, Actor.system(), null);
 
-        assertThat(closed.to()).isEqualTo(JobStatus.CLOSED);
+        assertThat(closed.to()).isEqualTo(JobStatus.CLOSED); // closes as soon as the creator is paid
+        assertThat(closed.eventIds()).hasSize(2);           // PENDING -> PAID_OUT, then PAID_OUT -> CLOSED
         assertThat(job(jobId).getReviewDueAt()).isNull();
         assertThat(eventPath(jobId)).containsExactly(
                 "DRAFT_BRIEF>AWAITING_PAYMENT", "AWAITING_PAYMENT>PAID", "PAID>CREATOR_INVITED",
@@ -127,6 +128,62 @@ class JobTransitionServiceTest {
         assertThat(accepted.eventIds()).hasSize(1);
         assertThatThrownBy(() -> engine.transition(jobId, JobAction.START_DIGITAL, Actor.system(), null))
                 .isInstanceOf(TransitionGuardException.class);
+    }
+
+    @Test
+    void brandMemberCanRequestARevisionButNotApprove() {
+        Seeded seeded = fixtures.jobIn(JobStatus.IN_REVIEW);
+        Actor member = Actor.brandMember(UUID.randomUUID(), seeded.brandOrgId());
+
+        assertThatThrownBy(() -> engine.transition(seeded.jobId(), JobAction.APPROVE, member, null))
+                .isInstanceOf(ActorNotAllowedException.class);
+
+        TransitionResult r = engine.transition(seeded.jobId(), JobAction.REQUEST_REVISION, member, null);
+        assertThat(r.to()).isEqualTo(JobStatus.REVISION_REQUESTED);
+        assertThat(job(seeded.jobId()).isFreeRevisionUsed()).isTrue();
+    }
+
+    @Test
+    void creatorGetsOneAutomaticExtensionBeforeTheDeadline() {
+        UUID creator = UUID.randomUUID();
+        UUID jobId = jobInProductionWith(creator);
+        Instant due = job(jobId).getProductionDueAt();
+
+        clock.advance(Duration.ofHours(100));
+        TransitionResult r = engine.transition(jobId, JobAction.REQUEST_EXTENSION, Actor.creator(creator), null);
+
+        assertThat(r.to()).isEqualTo(JobStatus.IN_PRODUCTION);
+        assertThat(job(jobId).getProductionDueAt()).isEqualTo(due.plus(JobDeadlines.EXTENSION));
+        assertThat(actionsOf(jobId)).endsWith("REQUEST_EXTENSION");
+
+        assertThatThrownBy(() -> engine.transition(jobId, JobAction.REQUEST_EXTENSION, Actor.creator(creator), null))
+                .isInstanceOf(TransitionGuardException.class)
+                .hasMessageContaining("already used");
+    }
+
+    @Test
+    void creatorCannotExtendAfterTheDeadline() {
+        UUID creator = UUID.randomUUID();
+        UUID jobId = jobInProductionWith(creator);
+
+        clock.advance(JobDeadlines.PRODUCTION_WINDOW.plus(Duration.ofMinutes(1)));
+        assertThatThrownBy(() -> engine.transition(jobId, JobAction.REQUEST_EXTENSION, Actor.creator(creator), null))
+                .isInstanceOf(TransitionGuardException.class)
+                .hasMessageContaining("before the production deadline");
+    }
+
+    @Test
+    void laterExtensionsAreOpsOnlyAndCountFromNowIfLate() {
+        UUID creator = UUID.randomUUID();
+        UUID jobId = jobInProductionWith(creator);
+        engine.transition(jobId, JobAction.REQUEST_EXTENSION, Actor.creator(creator), null);
+
+        clock.advance(JobDeadlines.PRODUCTION_WINDOW.plus(JobDeadlines.EXTENSION).plus(Duration.ofHours(5)));
+        assertThatThrownBy(() -> engine.transition(jobId, JobAction.OPS_EXTEND, Actor.creator(creator), null))
+                .isInstanceOf(ActorNotAllowedException.class);
+
+        engine.transition(jobId, JobAction.OPS_EXTEND, ops, "courier strike in creator's city");
+        assertThat(job(jobId).getProductionDueAt()).isEqualTo(clock.instant().plus(JobDeadlines.EXTENSION));
     }
 
     @Test
@@ -272,6 +329,15 @@ class JobTransitionServiceTest {
                 .param(jobId)
                 .query((rs, n) -> rs.getString(1) + ">" + rs.getString(2))
                 .list();
+    }
+
+    /** Digital-only job taken through the real engine up to IN_PRODUCTION with this creator assigned. */
+    private UUID jobInProductionWith(UUID creator) {
+        UUID jobId = submitOneJob(true);
+        engine.transition(jobId, JobAction.PAYMENT_CONFIRMED, Actor.system(), null);
+        engine.transition(TransitionCommand.of(jobId, JobAction.INVITE, ops, "invite").withCreator(creator));
+        engine.transition(jobId, JobAction.ACCEPT, Actor.creator(creator), null);
+        return jobId;
     }
 
     private List<String> actionsOf(UUID jobId) {

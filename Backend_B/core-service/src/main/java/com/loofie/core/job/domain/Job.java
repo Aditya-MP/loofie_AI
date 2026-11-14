@@ -42,6 +42,9 @@ public class Job {
     @Column(name = "free_revision_used", nullable = false)
     private boolean freeRevisionUsed;
 
+    @Column(name = "creator_extension_used", nullable = false)
+    private boolean creatorExtensionUsed;
+
     @Column(name = "accept_due_at")
     private Instant acceptDueAt;
 
@@ -101,6 +104,24 @@ public class Job {
 
     public void markFreeRevisionUsed() {
         this.freeRevisionUsed = true;
+    }
+
+    public void markCreatorExtensionUsed() {
+        this.creatorExtensionUsed = true;
+    }
+
+    /** Pushes the running production deadline back. Only {@link JobDeadlines} calls this. */
+    void extendProductionDue(java.time.Duration by, Instant now) {
+        if (productionDueAt == null) {
+            throw new IllegalStateException("Job " + id + " has no production deadline to extend");
+        }
+        // An ops extension after the deadline has passed counts from now, not from the old deadline.
+        Instant base = productionDueAt.isAfter(now) ? productionDueAt : now;
+        this.productionDueAt = base.plus(by);
+    }
+
+    public boolean isCreatorExtensionUsed() {
+        return creatorExtensionUsed;
     }
 
     void setDeadlines(Instant acceptDueAt, Instant receiptPromptAt, Instant receiptFallbackAt,

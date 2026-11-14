@@ -118,21 +118,40 @@ public class JobTransitionService {
         Instant now = clock.instant();
         JobStatus from = job.getStatus();
 
-        checkGuards(job, rule);
+        checkGuards(job, rule, now);
         UUID assignmentId = changeAssignment(job, rule, creatorId, now);
         if (rule.action() == JobAction.REQUEST_REVISION) {
             job.markFreeRevisionUsed();
         }
         job.moveTo(rule.to(), now);
-        JobDeadlines.apply(job, now);
+        if (isExtension(rule.action())) {
+            if (rule.action() == JobAction.REQUEST_EXTENSION) {
+                job.markCreatorExtensionUsed();
+            }
+            JobDeadlines.extendProduction(job, now); // same state: keep the clock running, just move it
+        } else {
+            JobDeadlines.apply(job, now);
+        }
         jobs.saveAndFlush(job); // optimistic lock check happens here; bumps version
 
         return recorder.recordStateChange(job, assignmentId, from, rule.action(), actor, reason, now,
                 correlationId, causationId);
     }
 
-    private static void checkGuards(Job job, TransitionRule rule) {
+    private static boolean isExtension(JobAction action) {
+        return action == JobAction.REQUEST_EXTENSION || action == JobAction.OPS_EXTEND;
+    }
+
+    private static void checkGuards(Job job, TransitionRule rule, Instant now) {
         switch (rule.action()) {
+            case REQUEST_EXTENSION -> {
+                if (job.isCreatorExtensionUsed()) {
+                    throw new TransitionGuardException("The creator's one extension is already used; ask ops");
+                }
+                if (!now.isBefore(job.getProductionDueAt())) {
+                    throw new TransitionGuardException("An extension must be requested before the production deadline");
+                }
+            }
             // TODO(open-q): paid revisions go through a ChangeRequest (F7), not a second free revision.
             case REQUEST_REVISION -> {
                 if (job.isFreeRevisionUsed()) {

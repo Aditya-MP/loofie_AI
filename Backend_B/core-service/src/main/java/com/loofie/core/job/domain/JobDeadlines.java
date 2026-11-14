@@ -15,6 +15,7 @@ public final class JobDeadlines {
     public static final Duration PRODUCTION_WINDOW = Duration.ofHours(120);
     public static final Duration REVIEW_WINDOW = Duration.ofHours(120);
     public static final Duration REPLACEMENT_WINDOW = Duration.ofDays(10);
+    public static final Duration EXTENSION = Duration.ofHours(48);
 
     private JobDeadlines() {
     }
@@ -33,7 +34,6 @@ public final class JobDeadlines {
                 receiptPrompt = enteredAt.plus(RECEIPT_PROMPT_AFTER);
                 receiptFallback = enteredAt.plus(RECEIPT_FALLBACK_AFTER);
             }
-            // TODO(open-q): one 48h production extension; who grants it is not decided yet.
             case IN_PRODUCTION -> production = enteredAt.plus(PRODUCTION_WINDOW);
             case IN_REVIEW -> review = enteredAt.plus(REVIEW_WINDOW);
             case REPLACEMENT_NEEDED -> replacement = enteredAt.plus(REPLACEMENT_WINDOW);
@@ -42,5 +42,13 @@ public final class JobDeadlines {
             }
         }
         job.setDeadlines(accept, receiptPrompt, receiptFallback, production, review, replacement);
+    }
+
+    /**
+     * F9 extension: adds {@link #EXTENSION} to the running production deadline. The creator gets one,
+     * granted automatically if asked before the deadline; any further extension is ops-only.
+     */
+    public static void extendProduction(Job job, Instant now) {
+        job.extendProductionDue(EXTENSION, now);
     }
 }

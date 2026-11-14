@@ -52,10 +52,15 @@ public final class TransitionTable {
         // Production and review (F7)
         add(IN_PRODUCTION, SUBMIT_DRAFT, DRAFT_SUBMITTED, CREATOR);
         add(IN_PRODUCTION, PRODUCTION_EXPIRED, REPLACEMENT_NEEDED, SYSTEM);
+        // F9 48h extension: state stays IN_PRODUCTION, only the deadline moves (see JobDeadlines.extendProduction).
+        add(IN_PRODUCTION, REQUEST_EXTENSION, IN_PRODUCTION, CREATOR); // once, before the deadline
+        add(IN_PRODUCTION, OPS_EXTEND, IN_PRODUCTION, OPS);            // any later extension
         add(DRAFT_SUBMITTED, PREVIEW_READY, IN_REVIEW, SYSTEM);
         add(IN_REVIEW, APPROVE, APPROVED, BRAND_ADMIN);
         add(IN_REVIEW, AUTO_APPROVE, APPROVED, SYSTEM);
-        add(IN_REVIEW, REQUEST_REVISION, REVISION_REQUESTED, BRAND_ADMIN);
+        // Members may request the free revision; only the admin approves, because approval releases payment.
+        // TODO(open-q): may a BRAND_MEMBER request a paid (25%) revision? Paid revisions are not built yet.
+        add(IN_REVIEW, REQUEST_REVISION, REVISION_REQUESTED, BRAND_ADMIN, BRAND_MEMBER);
         add(REVISION_REQUESTED, RESUBMIT, DRAFT_SUBMITTED, CREATOR);
         add(IN_REVIEW, REJECT, DISPUTED, BRAND_ADMIN);
 
@@ -66,9 +71,10 @@ public final class TransitionTable {
         add(REPLACEMENT_NEEDED, APPROVE_SWAP, CREATOR_INVITED, BRAND_ADMIN);
         add(REPLACEMENT_NEEDED, REPLACEMENT_EXPIRED, REFUNDED, SYSTEM);
 
-        // Payout (facts from finance) and close. TODO(open-q): what triggers CLOSE.
+        // Payout (facts from finance). The job closes as soon as the creator is paid; the brand's
+        // rating stays open for 7 days and never blocks closing.
         add(APPROVED, PAYOUT_QUEUED, PAYOUT_PENDING, SYSTEM);
-        add(PAYOUT_PENDING, PAYOUT_COMPLETED, PAID_OUT, SYSTEM);
+        addThen(PAYOUT_PENDING, PAYOUT_COMPLETED, PAID_OUT, CLOSE, SYSTEM);
         add(PAID_OUT, CLOSE, CLOSED, SYSTEM);
 
         // Cancellation. TODO(open-q): cancellation policy. Limited to states before any product
