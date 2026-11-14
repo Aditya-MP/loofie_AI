@@ -1,3 +1,4 @@
+import json
 from datetime import date, timedelta
 
 import pytest
@@ -262,3 +263,27 @@ def test_self_reported_creator_is_unsure_not_real(client):
     ).json()
     assert body["metric_sources"]["followers"]["source"] == "SELF_REPORTED"
     assert body["quality"]["label"] == "unsure" and "self-reported" in body["quality"]["summary"]
+
+
+# ------------------------------------------------------------------ operations
+
+
+def test_request_id_and_log_line(client, caplog):
+    caplog.set_level("INFO", logger="loofie.api")
+    r = client.get("/health", headers={"X-Request-ID": "trace-123"})
+    assert r.headers["X-Request-ID"] == "trace-123"
+    line = next(json.loads(m) for m in caplog.messages if "trace-123" in m)
+    assert (line["path"], line["status"]) == ("/health", 200) and line["ms"] >= 0
+    assert client.get("/health").headers["X-Request-ID"]  # generated when not sent
+
+
+def test_unhandled_error_returns_request_id_not_a_stack_trace(client, monkeypatch):
+    import app.api.main as api
+
+    def boom(*a, **k):
+        raise RuntimeError("database exploded")
+
+    monkeypatch.setattr(api, "parse", boom)
+    r = client.post("/ai/brief/parse", headers=H, json={"text": "x"})
+    assert r.status_code == 500 and r.json()["request_id"] == r.headers["X-Request-ID"]
+    assert "exploded" not in r.text

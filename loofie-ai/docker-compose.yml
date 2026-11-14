@@ -14,6 +14,31 @@ services:
       interval: 5s
       retries: 10
 
+  # The API, for a GPU server: docker compose --profile server up -d --build
+  # Locally you run it with `uv run loofie serve` instead, so this stays off by default.
+  api:
+    profiles: ["server"]
+    build: .
+    env_file: .env
+    environment:
+      DATABASE_URL: postgresql+psycopg://loofie:loofie_dev@db:5432/loofie_ai
+    ports:
+      - "8100:8100"
+    depends_on:
+      db:
+        condition: service_healthy
+    volumes:
+      - models:/models   # the downloaded e5 model survives restarts
+    restart: unless-stopped
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+
 volumes:
+  models:
   pgdata18:
   pgdata:     # old Postgres 16 data, kept so you can switch back

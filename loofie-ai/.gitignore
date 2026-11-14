@@ -6,3 +6,5 @@ __pycache__/
 models_cache/
 .ruff_cache/
 *.egg-info/
+backups/
+config/history/

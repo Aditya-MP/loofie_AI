@@ -1,6 +1,7 @@
 """Settings: secrets and machine settings from .env, model settings from config/*.toml."""
 
 import tomllib
+from contextlib import contextmanager
 from functools import lru_cache
 from pathlib import Path
 
@@ -25,8 +26,34 @@ def get_settings() -> Settings:
     return Settings()
 
 
-@lru_cache
+CONFIG_DIR = ROOT / "config"
+_overrides: dict[str, dict] = {}
+
+
 def load_toml(name: str) -> dict:
     """config/<name>.toml: weights, thresholds and word lists. Bump `version` inside on any change."""
-    with (ROOT / "config" / f"{name}.toml").open("rb") as f:
+    if name in _overrides:
+        return _overrides[name]
+    return _read_toml(name)
+
+
+@lru_cache
+def _read_toml(name: str) -> dict:
+    with (CONFIG_DIR / f"{name}.toml").open("rb") as f:
         return tomllib.load(f)
+
+
+def reload_config() -> None:
+    """Forget cached files, e.g. after a promote or rollback rewrote one."""
+    _read_toml.cache_clear()
+
+
+@contextmanager
+def config_override(name: str, cfg: dict):
+    """Score a candidate config without touching the live file. Process-wide: CLI use only,
+    never inside the running API."""
+    _overrides[name] = cfg
+    try:
+        yield
+    finally:
+        _overrides.pop(name, None)

@@ -9,6 +9,9 @@ loofie brief parse "need 3 girls blr, 15k total, by 5th dec"
 loofie brief evaluate
 loofie check ../data/Loofie_AI_Data_Collection.xlsx    # all of the above on the team's data, in order
 loofie serve                                            # the API for the backend
+loofie models promote matcher candidate.toml           # goes live only if it scores at least as well
+loofie report                                           # weekly health report
+loofie backup                                           # database -> backups/
 """
 
 import importlib
@@ -20,7 +23,13 @@ COMMANDS = {
     "quality": ("app.quality.__main__", "Model 3: label creators real / unsure / suspicious"),
     "matcher": ("app.matcher.__main__", "Model 2: match a brief, or run the brand-hire test"),
     "brief": ("app.brief.__main__", "Model 1: parse a brief, or score against the Briefs tab"),
+    "models": ("app.ops.__main__", "list / promote / rollback model versions"),
+    "report": ("app.ops.__main__", "weekly health report: corrections, shadow agreement, outcomes"),
+    "backup": ("app.ops.__main__", "save the database to backups/"),
+    "restore": ("app.ops.__main__", "put a backup back (asks for --yes)"),
 }
+# These share one module, so the command name is passed on as its first argument.
+PASS_NAME = {"models", "report", "backup", "restore"}
 
 
 def _run(module: str, args: list[str]) -> int:
@@ -69,7 +78,7 @@ def main() -> int:
     if cmd not in COMMANDS:
         print(f"unknown command {cmd!r}. Run `loofie help`.")
         return 2
-    return _run(COMMANDS[cmd][0], args)
+    return _run(COMMANDS[cmd][0], [cmd, *args] if cmd in PASS_NAME else args)
 
 
 if __name__ == "__main__":

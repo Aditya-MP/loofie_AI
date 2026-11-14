@@ -3,6 +3,7 @@
 /*
 !/.gitignore
 !/.gitattributes
+!/.github/
 !/loofie-ai/
 
 # Inside the code folder, see loofie-ai/.gitignore (.env, .venv, caches).

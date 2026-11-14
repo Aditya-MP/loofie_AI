@@ -4,11 +4,16 @@ The backend calls these endpoints with the X-API-Key header. Interactive docs at
 """
 
 import hmac
+import json
+import logging
+import time
+import uuid
 from contextlib import asynccontextmanager
 from datetime import date
 from typing import Annotated
 
 from fastapi import Depends, FastAPI, Header, HTTPException, Request
+from fastapi.responses import JSONResponse
 from sqlalchemy import select, text
 from sqlalchemy.orm import Session
 
@@ -56,6 +61,39 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(title="Loofie AI", version="1", lifespan=lifespan)
+
+log = logging.getLogger("loofie.api")
+if not logging.getLogger().handlers:
+    logging.basicConfig(level=logging.INFO, format="%(message)s")
+
+
+@app.middleware("http")
+async def request_log(request: Request, call_next):
+    """One JSON line per call: what monitoring tools read. Never logs bodies (briefs, creator data)."""
+    request_id = request.headers.get("x-request-id") or uuid.uuid4().hex[:16]
+    request.state.request_id = request_id
+    start = time.perf_counter()
+    status = 500
+    try:
+        response = await call_next(request)
+        status = response.status_code
+    except Exception:
+        log.exception(json.dumps({"request_id": request_id, "path": request.url.path, "error": "unhandled"}))
+        response = JSONResponse({"detail": "internal error", "request_id": request_id}, status_code=500)
+    response.headers["X-Request-ID"] = request_id
+    log.info(
+        json.dumps(
+            {
+                "ts": time.strftime("%Y-%m-%dT%H:%M:%S%z"),
+                "request_id": request_id,
+                "method": request.method,
+                "path": request.url.path,
+                "status": status,
+                "ms": round((time.perf_counter() - start) * 1000, 1),
+            }
+        )
+    )
+    return response
 
 
 def get_session():
