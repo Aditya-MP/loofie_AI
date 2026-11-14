@@ -1,0 +1,26 @@
+{
+  "id": 15,
+  "title": "Brand rejected a creator, with the reason",
+  "scene": 4,
+  "call": "POST /ai/feedback",
+  "status": 200,
+  "note": "Reasons teach the matcher: 'too expensive', 'wrong vibe', 'too small'...",
+  "request": {
+    "event_type": "shortlist_reject",
+    "actor_type": "brand",
+    "actor_id": "brand-dewdrop",
+    "occurred_at": "2026-11-13T11:00:00+05:30",
+    "subject_type": "shortlist",
+    "subject_id": "brief-1042",
+    "suggestion_id": "e58577ac-8249-4092-9d02-00b6a17f71f3",
+    "event_id": "1044043f-972b-5bcd-bca3-ec7083fbf55c",
+    "payload": {
+      "creator_ref": "cr-riya",
+      "reason": "too expensive"
+    }
+  },
+  "response": {
+    "event_id": "1044043f-972b-5bcd-bca3-ec7083fbf55c",
+    "duplicate": false
+  }
+}

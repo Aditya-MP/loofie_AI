@@ -1,0 +1,27 @@
+{
+  "id": 20,
+  "title": "Job closed: how it went",
+  "scene": 9,
+  "call": "POST /ai/feedback",
+  "status": 200,
+  "request": {
+    "event_type": "job_outcome",
+    "actor_type": "system",
+    "subject_type": "job",
+    "subject_id": "job-42",
+    "event_id": "c9aaf32a-757b-57c8-bfa2-2d8423ba1d72",
+    "occurred_at": "2026-11-13T18:00:00+05:30",
+    "payload": {
+      "creator_ref": "cr-ananya",
+      "job_id": "job-42",
+      "on_time": true,
+      "revisions": 1,
+      "disputed": false,
+      "replaced": false
+    }
+  },
+  "response": {
+    "event_id": "c9aaf32a-757b-57c8-bfa2-2d8423ba1d72",
+    "duplicate": false
+  }
+}

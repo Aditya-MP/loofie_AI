@@ -32,10 +32,28 @@ FEEDBACK_TYPES: dict[str, set[str]] = {
     "rating": {CREATOR, "stars"},
     "rebooked": {CREATOR},
 }
-# Fixed vocabularies inside payloads.
+# Dispute and drop-out codes with their fixed fault party (docs/DECISIONS.md section 5; the same
+# list as core-service ReasonCode.java). The reliability score counts only CREATOR codes, so a
+# code sent with the wrong fault party would blame the wrong person: refused.
+REASON_FAULT: dict[str, str] = {
+    "FALSE_CLAIM": "CREATOR",
+    "CREATOR_UNRESPONSIVE": "CREATOR",
+    "CREATOR_WITHDREW": "CREATOR",
+    "BRAND_LATE_SHIP": "BRAND",
+    "WRONG_ITEM_SENT": "BRAND",
+    "COURIER_LOST": "COURIER",
+    "DAMAGED_IN_TRANSIT": "COURIER",
+    "OTHER": "NONE",
+}
+# Fixed vocabularies inside payloads (checked only when the key is present).
 PAYLOAD_CHOICES: dict[str, dict[str, set]] = {
     "video_performance": {"result": {"winner", "average", "loser"}},
     "job_outcome": {"on_time": {True, False}},
+    "job_state_changed": {
+        "reasonCode": set(REASON_FAULT),
+        "faultParty": set(REASON_FAULT.values()),
+        "issue_type": {"NOT_RECEIVED", "DAMAGED", "WRONG_ITEM"},
+    },
 }
 # The models never need money or identity documents; refuse them so they can't leak in by accident.
 FORBIDDEN_KEYS = {"pan", "aadhaar", "bank_account", "ifsc", "upi_id", "phone", "email", "payout_amount"}
@@ -58,6 +76,11 @@ def bad_values(event_type: str, payload: dict) -> list[str]:
         for k, ok in PAYLOAD_CHOICES.get(event_type, {}).items()
         if k in payload and payload[k] not in ok
     ]
+    code, fault = payload.get("reasonCode"), payload.get("faultParty")
+    if code in REASON_FAULT and fault is not None and fault != REASON_FAULT[code]:
+        errors.append(f"reasonCode {code} has faultParty {REASON_FAULT[code]}, not {fault}")
+    if code in REASON_FAULT and fault is None:
+        errors.append("reasonCode needs its faultParty (reliability counts only CREATOR codes)")
     leaked = sorted(FORBIDDEN_KEYS & {k.lower() for k in payload})
     if leaked:
         errors.append(f"don't send personal or payment data: {leaked}")

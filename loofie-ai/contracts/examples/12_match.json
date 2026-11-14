@@ -1,0 +1,124 @@
+{
+  "id": 12,
+  "title": "Matcher: ranked shortlist for the confirmed brief",
+  "scene": 4,
+  "call": "POST /ai/match",
+  "status": 200,
+  "request": {
+    "text": "Lightweight gel sunscreen for oily skin, no white cast",
+    "category": "beauty_skincare",
+    "city": "Bengaluru",
+    "languages": [
+      "Kannada"
+    ],
+    "budget_per_creator_inr": 6000,
+    "top_k": 5,
+    "brief_ref": "brief-1042",
+    "brand_handle": "dewdrop.skin"
+  },
+  "response": {
+    "version": "matcher-v2",
+    "suggestion_id": "e58577ac-8249-4092-9d02-00b6a17f71f3",
+    "results": [
+      {
+        "rank": 1,
+        "handle": "ananya.glows",
+        "creator_ref": "cr-ananya",
+        "score": 0.88,
+        "why": "skincare creator · content close to the brief · speaks Kannada · based in Bengaluru · median 3.8k views · est. ₹3,000–₹7,000 fits budget · quality not yet verified",
+        "parts": {
+          "similarity": 1.0,
+          "niche": 0.6,
+          "quality": 0.6,
+          "language": 1.0,
+          "budget": 1.0,
+          "city": 1.0,
+          "completeness": 1.0
+        },
+        "estimated_rate_inr": {
+          "low": 3000,
+          "high": 7000
+        },
+        "quality_label": "unsure",
+        "activity": "active",
+        "rank_before_rerank": 1,
+        "rerank_note": null
+      },
+      {
+        "rank": 2,
+        "handle": "kavya.skincare",
+        "creator_ref": "cr-kavya",
+        "score": 0.88,
+        "why": "skincare creator · content close to the brief · speaks Kannada · based in Bengaluru · median 5.6k views · est. ₹3,000–₹7,000 fits budget · quality not yet verified",
+        "parts": {
+          "similarity": 1.0,
+          "niche": 0.6,
+          "quality": 0.6,
+          "language": 1.0,
+          "budget": 1.0,
+          "city": 1.0,
+          "completeness": 1.0
+        },
+        "estimated_rate_inr": {
+          "low": 3000,
+          "high": 7000
+        },
+        "quality_label": "unsure",
+        "activity": "active",
+        "rank_before_rerank": 2,
+        "rerank_note": null
+      },
+      {
+        "rank": 3,
+        "handle": "riya.routines",
+        "creator_ref": "cr-riya",
+        "score": 0.6907,
+        "why": "skincare creator · content close to the brief · speaks English · based in Bengaluru · median 2.9k views · est. ₹1,500–₹4,000 fits budget · quality not yet verified",
+        "parts": {
+          "similarity": 0.777,
+          "niche": 0.6,
+          "quality": 0.6,
+          "language": 0.0,
+          "budget": 1.0,
+          "city": 1.0,
+          "completeness": 1.0
+        },
+        "estimated_rate_inr": {
+          "low": 1500,
+          "high": 4000
+        },
+        "quality_label": "unsure",
+        "activity": "active",
+        "rank_before_rerank": 3,
+        "rerank_note": null
+      },
+      {
+        "rank": 4,
+        "handle": "meera.makeup",
+        "creator_ref": "cr-meera",
+        "score": 0.48,
+        "why": "makeup creator · speaks Kannada · based in Bengaluru · median 6.4k views · est. ₹3,000–₹7,000 fits budget · quality not yet verified",
+        "parts": {
+          "similarity": 0.0,
+          "niche": 0.6,
+          "quality": 0.6,
+          "language": 1.0,
+          "budget": 1.0,
+          "city": 1.0,
+          "completeness": 1.0
+        },
+        "estimated_rate_inr": {
+          "low": 3000,
+          "high": 7000
+        },
+        "quality_label": "unsure",
+        "activity": "active",
+        "rank_before_rerank": 4,
+        "rerank_note": null
+      }
+    ],
+    "left_out": {
+      "inactive": 1
+    }
+  }
+}

@@ -1,0 +1,29 @@
+{
+  "id": 13,
+  "title": "What the brand actually saw (after ops edits)",
+  "scene": 4,
+  "call": "POST /ai/feedback",
+  "status": 200,
+  "request": {
+    "event_type": "shortlist_shown",
+    "actor_type": "ops",
+    "actor_id": "ops-ravi",
+    "occurred_at": "2026-11-13T12:00:00+05:30",
+    "subject_type": "shortlist",
+    "subject_id": "brief-1042",
+    "suggestion_id": "e58577ac-8249-4092-9d02-00b6a17f71f3",
+    "event_id": "ee3f84f3-146c-5aa3-8ef8-2f9176b47e53",
+    "payload": {
+      "creator_handles": [
+        "ananya.glows",
+        "kavya.skincare",
+        "riya.routines",
+        "meera.makeup"
+      ]
+    }
+  },
+  "response": {
+    "event_id": "ee3f84f3-146c-5aa3-8ef8-2f9176b47e53",
+    "duplicate": false
+  }
+}

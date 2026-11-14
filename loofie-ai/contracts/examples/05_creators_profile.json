@@ -1,0 +1,174 @@
+{
+  "id": 5,
+  "title": "Creator profile: a creator who stopped posting 5 months ago",
+  "scene": 2,
+  "call": "POST /ai/creators/profile",
+  "status": 200,
+  "request": {
+    "handle": "old.glow",
+    "creator_ref": "cr-old",
+    "display_name": "Old",
+    "city": "Bengaluru",
+    "followers": 15000,
+    "following": 480,
+    "total_posts": 210,
+    "bio": "honest skincare reviews for Indian skin",
+    "primary_language": "Kannada",
+    "posts": [
+      {
+        "post_url": "https://www.instagram.com/reel/oldglow0/",
+        "post_date": "2026-06-17",
+        "post_type": "reel",
+        "views": 4500,
+        "likes": 450,
+        "comments": 40,
+        "caption": "Tried this gel sunscreen on my oily skin for 7 days: no white cast, no grease #sunscreen #oilyskin",
+        "brands_tagged": []
+      },
+      {
+        "post_url": "https://www.instagram.com/reel/oldglow1/",
+        "post_date": "2026-06-13",
+        "post_type": "reel",
+        "views": 4537,
+        "likes": 455,
+        "comments": 41,
+        "caption": "My acne-prone skin morning routine: cleanser, niacinamide, SPF 50 #skincare",
+        "brands_tagged": []
+      },
+      {
+        "post_url": "https://www.instagram.com/reel/oldglow2/",
+        "post_date": "2026-06-09",
+        "post_type": "reel",
+        "views": 4574,
+        "likes": 460,
+        "comments": 42,
+        "caption": "Sunscreen myths we need to stop believing #spf #skincaretips",
+        "brands_tagged": []
+      },
+      {
+        "post_url": "https://www.instagram.com/reel/oldglow3/",
+        "post_date": "2026-06-05",
+        "post_type": "reel",
+        "views": 4611,
+        "likes": 465,
+        "comments": 43,
+        "caption": "Tried this gel sunscreen on my oily skin for 7 days: no white cast, no grease #sunscreen #oilyskin",
+        "brands_tagged": []
+      },
+      {
+        "post_url": "https://www.instagram.com/reel/oldglow4/",
+        "post_date": "2026-06-01",
+        "post_type": "reel",
+        "views": 4648,
+        "likes": 470,
+        "comments": 44,
+        "caption": "My acne-prone skin morning routine: cleanser, niacinamide, SPF 50 #skincare",
+        "brands_tagged": []
+      },
+      {
+        "post_url": "https://www.instagram.com/reel/oldglow5/",
+        "post_date": "2026-05-28",
+        "post_type": "reel",
+        "views": 4685,
+        "likes": 475,
+        "comments": 45,
+        "caption": "Sunscreen myths we need to stop believing #spf #skincaretips",
+        "brands_tagged": []
+      },
+      {
+        "post_url": "https://www.instagram.com/reel/oldglow6/",
+        "post_date": "2026-05-24",
+        "post_type": "reel",
+        "views": 4722,
+        "likes": 480,
+        "comments": 46,
+        "caption": "Tried this gel sunscreen on my oily skin for 7 days: no white cast, no grease #sunscreen #oilyskin",
+        "brands_tagged": []
+      },
+      {
+        "post_url": "https://www.instagram.com/reel/oldglow7/",
+        "post_date": "2026-05-20",
+        "post_type": "reel",
+        "views": 4759,
+        "likes": 485,
+        "comments": 47,
+        "caption": "My acne-prone skin morning routine: cleanser, niacinamide, SPF 50 #skincare",
+        "brands_tagged": []
+      }
+    ]
+  },
+  "response": {
+    "handle": "old.glow",
+    "creator_ref": "cr-old",
+    "category": "beauty_skincare",
+    "sub_niche": "skincare",
+    "niche_confidence": 0.615,
+    "niche_unsure": false,
+    "caption_language": "English",
+    "brands_mentioned": [],
+    "stats": {
+      "paid_posts": 0,
+      "paid_share": 0.0,
+      "posts_seen": 8,
+      "reels_seen": 8,
+      "view_spike": 1.03,
+      "median_likes": 467.5,
+      "median_views": 4629.5,
+      "posts_last_30d": 0,
+      "engagement_rate": 0.0341,
+      "median_comments": 43.5,
+      "views_to_followers": 0.3086,
+      "days_since_last_post": 150
+    },
+    "completeness": 1.0,
+    "missing": [],
+    "version": "profile-v1|intfloat/multilingual-e5-small|niche-zeroshot-v2|lang-rules-v1",
+    "quality": {
+      "label": "unsure",
+      "activity": "inactive",
+      "score": 100,
+      "summary": "no red flags, but the numbers are self-reported; verify with an insights screenshot or Instagram connect",
+      "findings": [
+        {
+          "code": "inactive",
+          "kind": "activity",
+          "value": 150,
+          "reason": "last post was 150 days ago",
+          "severity": "red"
+        }
+      ],
+      "version": "quality-rules-v4"
+    },
+    "metric_sources": {
+      "bio": {
+        "source": "SELF_REPORTED",
+        "captured_on": "2026-11-14"
+      },
+      "city": {
+        "source": "SELF_REPORTED",
+        "captured_on": "2026-11-14"
+      },
+      "followers": {
+        "source": "SELF_REPORTED",
+        "captured_on": "2026-11-14"
+      },
+      "following": {
+        "source": "SELF_REPORTED",
+        "captured_on": "2026-11-14"
+      },
+      "total_posts": {
+        "source": "SELF_REPORTED",
+        "captured_on": "2026-11-14"
+      },
+      "display_name": {
+        "source": "SELF_REPORTED",
+        "captured_on": "2026-11-14"
+      },
+      "primary_language": {
+        "source": "SELF_REPORTED",
+        "captured_on": "2026-11-14"
+      }
+    },
+    "update_notes": []
+  }
+}

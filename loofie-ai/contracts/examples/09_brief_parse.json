@@ -1,0 +1,85 @@
+{
+  "id": 9,
+  "title": "Brief reader: brand's rough notes into form fields",
+  "scene": 3,
+  "call": "POST /ai/brief/parse",
+  "status": 200,
+  "request": {
+    "text": "need 3 girls blr, kannada ok, oily skin sunscreen, 15k total, reels, by 5th dec",
+    "as_of": "2026-11-14",
+    "brief_ref": "brief-1042"
+  },
+  "response": {
+    "version": "brief-rules-v2",
+    "event_id": "90599b0a-04b3-445d-ace0-95d1216f1816",
+    "fields": {
+      "category": {
+        "value": "beauty_skincare",
+        "confidence": "high",
+        "evidence": "sunscreen"
+      },
+      "sub_niche": {
+        "value": "skincare",
+        "confidence": "high",
+        "evidence": "sunscreen"
+      },
+      "creators_needed": {
+        "value": 3,
+        "confidence": "high",
+        "evidence": "3 girls"
+      },
+      "budget_total_inr": {
+        "value": 15000,
+        "confidence": "high",
+        "evidence": "15k"
+      },
+      "budget_per_creator_inr": {
+        "value": 5000,
+        "confidence": "low",
+        "evidence": "15k ÷ 3"
+      },
+      "city": {
+        "value": "Bengaluru",
+        "confidence": "high",
+        "evidence": "blr"
+      },
+      "languages": {
+        "value": [
+          "Kannada"
+        ],
+        "confidence": "high",
+        "evidence": "kannada"
+      },
+      "format": {
+        "value": "9:16 reel",
+        "confidence": "high",
+        "evidence": "reels"
+      },
+      "deadline": {
+        "value": "2026-12-05",
+        "confidence": "high",
+        "evidence": "5th dec"
+      },
+      "must_say": {
+        "value": null,
+        "confidence": null,
+        "evidence": null
+      },
+      "min_followers": {
+        "value": null,
+        "confidence": null,
+        "evidence": null
+      },
+      "max_followers": {
+        "value": null,
+        "confidence": null,
+        "evidence": null
+      },
+      "disclosure": {
+        "value": "Turn on Instagram's 'Paid partnership' label and put #ad (or #collab / #sponsored) at the start of the caption, visible without tapping 'more'.",
+        "confidence": "fixed",
+        "evidence": "always added: ASCI guidelines for influencer advertising in digital media"
+      }
+    }
+  }
+}

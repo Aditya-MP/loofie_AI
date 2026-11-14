@@ -1,0 +1,24 @@
+{
+  "id": 23,
+  "title": "Brand rebooked the creator",
+  "scene": 11,
+  "call": "POST /ai/feedback",
+  "status": 200,
+  "request": {
+    "event_type": "rebooked",
+    "actor_type": "brand",
+    "actor_id": "brand-dewdrop",
+    "occurred_at": "2026-11-13T11:00:00+05:30",
+    "subject_type": "creator",
+    "subject_id": "cr-ananya",
+    "event_id": "347472e3-6365-5133-a5b2-135293ee803a",
+    "payload": {
+      "creator_ref": "cr-ananya",
+      "job_id": "job-58"
+    }
+  },
+  "response": {
+    "event_id": "347472e3-6365-5133-a5b2-135293ee803a",
+    "duplicate": false
+  }
+}

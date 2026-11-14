@@ -1,0 +1,25 @@
+{
+  "id": 25,
+  "title": "Error: reason code with the wrong fault party",
+  "scene": 12,
+  "call": "POST /ai/feedback",
+  "status": 422,
+  "request": {
+    "event_type": "job_state_changed",
+    "actor_type": "system",
+    "subject_type": "job",
+    "subject_id": "job-42",
+    "event_id": "a0f067d2-ba05-5fcb-bea9-c737bbb75576",
+    "payload": {
+      "creator_ref": "cr-ananya",
+      "job_id": "job-42",
+      "from": "PRODUCT_SHIPPED",
+      "to": "REPLACEMENT_NEEDED",
+      "reasonCode": "BRAND_LATE_SHIP",
+      "faultParty": "CREATOR"
+    }
+  },
+  "response": {
+    "detail": "job_state_changed: reasonCode BRAND_LATE_SHIP has faultParty BRAND, not CREATOR"
+  }
+}

@@ -1,0 +1,27 @@
+{
+  "id": 16,
+  "title": "Job moved: brand shipped the product",
+  "scene": 6,
+  "call": "POST /ai/feedback",
+  "status": 200,
+  "request": {
+    "event_type": "job_state_changed",
+    "actor_type": "system",
+    "subject_type": "job",
+    "subject_id": "job-42",
+    "event_id": "1b7cf058-702c-5019-ba1d-ad02adfce497",
+    "occurred_at": "2026-11-13T15:30:00+05:30",
+    "payload": {
+      "creator_ref": "cr-ananya",
+      "job_id": "job-42",
+      "brief_ref": "brief-1042",
+      "from": "CREATOR_ACCEPTED",
+      "to": "PRODUCT_SHIPPED",
+      "deadline_at": "2026-11-17T18:00:00+05:30"
+    }
+  },
+  "response": {
+    "event_id": "1b7cf058-702c-5019-ba1d-ad02adfce497",
+    "duplicate": false
+  }
+}

@@ -1,0 +1,166 @@
+{
+  "id": 1,
+  "title": "Creator profile: save rate-card details and build the passport",
+  "scene": 2,
+  "call": "POST /ai/creators/profile",
+  "status": 200,
+  "request": {
+    "handle": "ananya.glows",
+    "creator_ref": "cr-ananya",
+    "display_name": "Ananya",
+    "city": "Bengaluru",
+    "followers": 12400,
+    "following": 480,
+    "total_posts": 210,
+    "bio": "honest skincare reviews for Indian skin",
+    "primary_language": "Kannada",
+    "posts": [
+      {
+        "post_url": "https://www.instagram.com/reel/ananyaglows0/",
+        "post_date": "2026-11-12",
+        "post_type": "reel",
+        "views": 3720,
+        "likes": 372,
+        "comments": 40,
+        "caption": "Tried this gel sunscreen on my oily skin for 7 days: no white cast, no grease #sunscreen #oilyskin",
+        "brands_tagged": []
+      },
+      {
+        "post_url": "https://www.instagram.com/reel/ananyaglows1/",
+        "post_date": "2026-11-08",
+        "post_type": "reel",
+        "views": 3757,
+        "likes": 377,
+        "comments": 41,
+        "caption": "My acne-prone skin morning routine: cleanser, niacinamide, SPF 50 #skincare",
+        "brands_tagged": []
+      },
+      {
+        "post_url": "https://www.instagram.com/reel/ananyaglows2/",
+        "post_date": "2026-11-04",
+        "post_type": "reel",
+        "views": 3794,
+        "likes": 382,
+        "comments": 42,
+        "caption": "Sunscreen myths we need to stop believing #spf #skincaretips",
+        "brands_tagged": []
+      },
+      {
+        "post_url": "https://www.instagram.com/reel/ananyaglows3/",
+        "post_date": "2026-10-31",
+        "post_type": "reel",
+        "views": 3831,
+        "likes": 387,
+        "comments": 43,
+        "caption": "Tried this gel sunscreen on my oily skin for 7 days: no white cast, no grease #sunscreen #oilyskin",
+        "brands_tagged": []
+      },
+      {
+        "post_url": "https://www.instagram.com/reel/ananyaglows4/",
+        "post_date": "2026-10-27",
+        "post_type": "reel",
+        "views": 3868,
+        "likes": 392,
+        "comments": 44,
+        "caption": "My acne-prone skin morning routine: cleanser, niacinamide, SPF 50 #skincare",
+        "brands_tagged": []
+      },
+      {
+        "post_url": "https://www.instagram.com/reel/ananyaglows5/",
+        "post_date": "2026-10-23",
+        "post_type": "reel",
+        "views": 3905,
+        "likes": 397,
+        "comments": 45,
+        "caption": "Sunscreen myths we need to stop believing #spf #skincaretips",
+        "brands_tagged": []
+      },
+      {
+        "post_url": "https://www.instagram.com/reel/ananyaglows6/",
+        "post_date": "2026-10-19",
+        "post_type": "reel",
+        "views": 3942,
+        "likes": 402,
+        "comments": 46,
+        "caption": "Tried this gel sunscreen on my oily skin for 7 days: no white cast, no grease #sunscreen #oilyskin",
+        "brands_tagged": []
+      },
+      {
+        "post_url": "https://www.instagram.com/reel/ananyaglows7/",
+        "post_date": "2026-10-15",
+        "post_type": "reel",
+        "views": 3979,
+        "likes": 407,
+        "comments": 47,
+        "caption": "My acne-prone skin morning routine: cleanser, niacinamide, SPF 50 #skincare",
+        "brands_tagged": []
+      }
+    ]
+  },
+  "response": {
+    "handle": "ananya.glows",
+    "creator_ref": "cr-ananya",
+    "category": "beauty_skincare",
+    "sub_niche": "skincare",
+    "niche_confidence": 0.615,
+    "niche_unsure": false,
+    "caption_language": "English",
+    "brands_mentioned": [],
+    "stats": {
+      "paid_posts": 0,
+      "paid_share": 0.0,
+      "posts_seen": 8,
+      "reels_seen": 8,
+      "view_spike": 1.03,
+      "median_likes": 389.5,
+      "median_views": 3849.5,
+      "posts_last_30d": 8,
+      "engagement_rate": 0.0349,
+      "median_comments": 43.5,
+      "views_to_followers": 0.3104,
+      "days_since_last_post": 2
+    },
+    "completeness": 1.0,
+    "missing": [],
+    "version": "profile-v1|intfloat/multilingual-e5-small|niche-zeroshot-v2|lang-rules-v1",
+    "quality": {
+      "label": "unsure",
+      "activity": "active",
+      "score": 100,
+      "summary": "no red flags, but the numbers are self-reported; verify with an insights screenshot or Instagram connect",
+      "findings": [],
+      "version": "quality-rules-v4"
+    },
+    "metric_sources": {
+      "bio": {
+        "source": "SELF_REPORTED",
+        "captured_on": "2026-11-14"
+      },
+      "city": {
+        "source": "SELF_REPORTED",
+        "captured_on": "2026-11-14"
+      },
+      "followers": {
+        "source": "SELF_REPORTED",
+        "captured_on": "2026-11-14"
+      },
+      "following": {
+        "source": "SELF_REPORTED",
+        "captured_on": "2026-11-14"
+      },
+      "total_posts": {
+        "source": "SELF_REPORTED",
+        "captured_on": "2026-11-14"
+      },
+      "display_name": {
+        "source": "SELF_REPORTED",
+        "captured_on": "2026-11-14"
+      },
+      "primary_language": {
+        "source": "SELF_REPORTED",
+        "captured_on": "2026-11-14"
+      }
+    },
+    "update_notes": []
+  }
+}

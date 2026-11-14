@@ -62,6 +62,7 @@ def test_key_required(client):
 
 def test_unconfigured_key_refuses_everything(client, monkeypatch):
     monkeypatch.setenv("AI_API_KEY", "")
+    monkeypatch.setenv("AI_API_KEYS", "")  # also ignore named keys from a local .env
     get_settings.cache_clear()
     assert client.post("/ai/brief/parse", json={"text": "x"}, headers=H).status_code == 503
 

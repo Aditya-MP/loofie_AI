@@ -9,6 +9,7 @@ loofie brief parse "need 3 girls blr, 15k total, by 5th dec"
 loofie brief evaluate
 loofie check ../data/Loofie_AI_Data_Collection.xlsx    # all of the above on the team's data, in order
 loofie serve                                            # the API for the backend
+loofie mock                                             # fake API for backend dev: no GPU, no database
 loofie models promote matcher candidate.toml           # goes live only if it scores at least as well
 loofie report                                           # weekly health report
 loofie backup                                           # database -> backups/
@@ -65,6 +66,7 @@ def main() -> int:
             print(f"  {name:9} {about}")
         print(f"  {'check':9} run every step on the team's sheet")
         print(f"  {'serve':9} start the API (port 8100)")
+        print(f"  {'mock':9} start the mock API for the backend (port 8100, no GPU or database)")
         return 0
     cmd, args = sys.argv[1], sys.argv[2:]
     if cmd == "check":
@@ -76,6 +78,13 @@ def main() -> int:
         import uvicorn
 
         uvicorn.run("app.api.main:app", host="127.0.0.1", port=8100)
+        return 0
+    if cmd == "mock":
+        import uvicorn
+
+        host = args[args.index("--host") + 1] if "--host" in args else "127.0.0.1"
+        print("MOCK AI service: real request checks, example answers, no GPU or database.")
+        uvicorn.run("app.mock:app", host=host, port=8100)
         return 0
     if cmd not in COMMANDS:
         print(f"unknown command {cmd!r}. Run `loofie help`.")

@@ -1,0 +1,18 @@
+{
+  "id": 8,
+  "replay": false,
+  "title": "Instagram Login: poll the connection until status is active",
+  "scene": 2,
+  "call": "GET /ai/instagram/accounts/cr-ananya",
+  "status": 200,
+  "note": "Shape from the schema (a real connection needs Meta). syncing → active, or error / expired.",
+  "response": {
+    "account_ref": "cr-ananya",
+    "handle": "ananya.glows",
+    "status": "active",
+    "insights_allowed": true,
+    "token_expires_at": "2027-01-13T10:00:00Z",
+    "last_synced_at": "2026-11-14T10:00:05Z",
+    "last_error": null
+  }
+}

@@ -1,0 +1,25 @@
+{
+  "id": 21,
+  "title": "Brand rated the creator",
+  "scene": 11,
+  "call": "POST /ai/feedback",
+  "status": 200,
+  "request": {
+    "event_type": "rating",
+    "actor_type": "brand",
+    "actor_id": "brand-dewdrop",
+    "occurred_at": "2026-11-13T11:00:00+05:30",
+    "subject_type": "job",
+    "subject_id": "job-42",
+    "event_id": "7e307cd8-c4ad-5aae-976f-0b9393f1fea4",
+    "payload": {
+      "creator_ref": "cr-ananya",
+      "job_id": "job-42",
+      "stars": 5
+    }
+  },
+  "response": {
+    "event_id": "7e307cd8-c4ad-5aae-976f-0b9393f1fea4",
+    "duplicate": false
+  }
+}

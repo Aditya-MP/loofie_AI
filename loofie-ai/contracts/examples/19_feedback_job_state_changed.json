@@ -1,0 +1,28 @@
+{
+  "id": 19,
+  "title": "Job moved: creator went silent and is being replaced (reason code + fault party)",
+  "scene": 8,
+  "call": "POST /ai/feedback",
+  "status": 200,
+  "note": "Only CREATOR-fault codes count against a creator's reliability.",
+  "request": {
+    "event_type": "job_state_changed",
+    "actor_type": "system",
+    "subject_type": "job",
+    "subject_id": "job-43",
+    "event_id": "d21f4994-59c7-558e-be51-3d1c76d924a3",
+    "occurred_at": "2026-11-13T17:00:00+05:30",
+    "payload": {
+      "creator_ref": "cr-kavya",
+      "job_id": "job-43",
+      "from": "IN_PRODUCTION",
+      "to": "REPLACEMENT_NEEDED",
+      "reasonCode": "CREATOR_UNRESPONSIVE",
+      "faultParty": "CREATOR"
+    }
+  },
+  "response": {
+    "event_id": "d21f4994-59c7-558e-be51-3d1c76d924a3",
+    "duplicate": false
+  }
+}

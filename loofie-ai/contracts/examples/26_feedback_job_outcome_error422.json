@@ -1,0 +1,23 @@
+{
+  "id": 26,
+  "title": "Error: personal or payment data in the payload",
+  "scene": 12,
+  "call": "POST /ai/feedback",
+  "status": 422,
+  "request": {
+    "event_type": "job_outcome",
+    "actor_type": "system",
+    "subject_type": "job",
+    "subject_id": "job-42",
+    "event_id": "0fcc6400-d7a5-5fa9-91ff-a4d852fe301f",
+    "payload": {
+      "creator_ref": "cr-ananya",
+      "job_id": "job-42",
+      "on_time": true,
+      "upi_id": "x@okaxis"
+    }
+  },
+  "response": {
+    "detail": "job_outcome: don't send personal or payment data: ['upi_id']"
+  }
+}

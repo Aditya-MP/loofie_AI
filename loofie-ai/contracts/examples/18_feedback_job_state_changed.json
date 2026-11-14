@@ -1,0 +1,27 @@
+{
+  "id": 18,
+  "title": "Job moved: creator reported a delivery problem",
+  "scene": 6,
+  "call": "POST /ai/feedback",
+  "status": 200,
+  "request": {
+    "event_type": "job_state_changed",
+    "actor_type": "creator",
+    "subject_type": "job",
+    "subject_id": "job-42",
+    "actor_id": "cr-ananya",
+    "event_id": "8a54ac91-751f-5751-b049-f168c16960d8",
+    "occurred_at": "2026-11-13T16:00:00+05:30",
+    "payload": {
+      "creator_ref": "cr-ananya",
+      "job_id": "job-42",
+      "from": "PRODUCT_SHIPPED",
+      "to": "DELIVERY_ISSUE",
+      "issue_type": "DAMAGED"
+    }
+  },
+  "response": {
+    "event_id": "8a54ac91-751f-5751-b049-f168c16960d8",
+    "duplicate": false
+  }
+}

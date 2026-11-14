@@ -1,0 +1,22 @@
+{
+  "id": 11,
+  "title": "Brand confirmed the brief",
+  "scene": 3,
+  "call": "POST /ai/feedback",
+  "status": 200,
+  "request": {
+    "event_type": "brief_confirmed",
+    "actor_type": "brand",
+    "actor_id": "brand-dewdrop",
+    "occurred_at": "2026-11-13T11:00:00+05:30",
+    "subject_type": "brief",
+    "subject_id": "brief-1042",
+    "suggestion_id": "90599b0a-04b3-445d-ace0-95d1216f1816",
+    "event_id": "cd897370-3f03-584b-bb4a-d07e644ba301",
+    "payload": {}
+  },
+  "response": {
+    "event_id": "cd897370-3f03-584b-bb4a-d07e644ba301",
+    "duplicate": false
+  }
+}

@@ -1,0 +1,24 @@
+{
+  "id": 14,
+  "title": "Brand picked a creator",
+  "scene": 4,
+  "call": "POST /ai/feedback",
+  "status": 200,
+  "request": {
+    "event_type": "shortlist_pick",
+    "actor_type": "brand",
+    "actor_id": "brand-dewdrop",
+    "occurred_at": "2026-11-13T11:00:00+05:30",
+    "subject_type": "shortlist",
+    "subject_id": "brief-1042",
+    "suggestion_id": "e58577ac-8249-4092-9d02-00b6a17f71f3",
+    "event_id": "5c6550ed-d0ce-51ba-868e-9ad9d895c944",
+    "payload": {
+      "creator_ref": "cr-ananya"
+    }
+  },
+  "response": {
+    "event_id": "5c6550ed-d0ce-51ba-868e-9ad9d895c944",
+    "duplicate": false
+  }
+}

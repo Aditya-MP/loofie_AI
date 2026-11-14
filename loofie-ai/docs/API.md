@@ -3,6 +3,12 @@
 For the backend team. The AI service runs separately with its own database. You call it over
 HTTP; neither side touches the other's tables. Live, clickable docs: `http://<host>:8100/docs`.
 
+- **Which call at which step:** [FLOW.md](FLOW.md), the whole story mapped to endpoints and events.
+- **Real requests and answers:** [`contracts/examples`](../contracts/examples), one JSON file per call,
+  produced by the real service and checked by tests on every change.
+- **No GPU? Build against the mock:** `uv run loofie mock` (same port, same request checks, same
+  `/ai/feedback` rules). Details in FLOW.md.
+
 ## Basics
 
 - **Auth:** every `/ai/` call needs the header `X-API-Key: <your key>`. Missing or wrong → `401`.

@@ -1,0 +1,166 @@
+{
+  "id": 4,
+  "title": "Creator profile: a makeup creator",
+  "scene": 2,
+  "call": "POST /ai/creators/profile",
+  "status": 200,
+  "request": {
+    "handle": "meera.makeup",
+    "creator_ref": "cr-meera",
+    "display_name": "Meera",
+    "city": "Bengaluru",
+    "followers": 21000,
+    "following": 480,
+    "total_posts": 210,
+    "bio": "honest skincare reviews for Indian skin",
+    "primary_language": "Kannada",
+    "posts": [
+      {
+        "post_url": "https://www.instagram.com/reel/meeramakeup0/",
+        "post_date": "2026-11-11",
+        "post_type": "reel",
+        "views": 6300,
+        "likes": 630,
+        "comments": 40,
+        "caption": "Everyday makeup look under 10 minutes #makeup",
+        "brands_tagged": []
+      },
+      {
+        "post_url": "https://www.instagram.com/reel/meeramakeup1/",
+        "post_date": "2026-11-07",
+        "post_type": "reel",
+        "views": 6337,
+        "likes": 635,
+        "comments": 41,
+        "caption": "Kajal that lasts all day? Testing 5 #makeuptest",
+        "brands_tagged": []
+      },
+      {
+        "post_url": "https://www.instagram.com/reel/meeramakeup2/",
+        "post_date": "2026-11-03",
+        "post_type": "reel",
+        "views": 6374,
+        "likes": 640,
+        "comments": 42,
+        "caption": "Everyday makeup look under 10 minutes #makeup",
+        "brands_tagged": []
+      },
+      {
+        "post_url": "https://www.instagram.com/reel/meeramakeup3/",
+        "post_date": "2026-10-30",
+        "post_type": "reel",
+        "views": 6411,
+        "likes": 645,
+        "comments": 43,
+        "caption": "Kajal that lasts all day? Testing 5 #makeuptest",
+        "brands_tagged": []
+      },
+      {
+        "post_url": "https://www.instagram.com/reel/meeramakeup4/",
+        "post_date": "2026-10-26",
+        "post_type": "reel",
+        "views": 6448,
+        "likes": 650,
+        "comments": 44,
+        "caption": "Everyday makeup look under 10 minutes #makeup",
+        "brands_tagged": []
+      },
+      {
+        "post_url": "https://www.instagram.com/reel/meeramakeup5/",
+        "post_date": "2026-10-22",
+        "post_type": "reel",
+        "views": 6485,
+        "likes": 655,
+        "comments": 45,
+        "caption": "Kajal that lasts all day? Testing 5 #makeuptest",
+        "brands_tagged": []
+      },
+      {
+        "post_url": "https://www.instagram.com/reel/meeramakeup6/",
+        "post_date": "2026-10-18",
+        "post_type": "reel",
+        "views": 6522,
+        "likes": 660,
+        "comments": 46,
+        "caption": "Everyday makeup look under 10 minutes #makeup",
+        "brands_tagged": []
+      },
+      {
+        "post_url": "https://www.instagram.com/reel/meeramakeup7/",
+        "post_date": "2026-10-14",
+        "post_type": "reel",
+        "views": 6559,
+        "likes": 665,
+        "comments": 47,
+        "caption": "Kajal that lasts all day? Testing 5 #makeuptest",
+        "brands_tagged": []
+      }
+    ]
+  },
+  "response": {
+    "handle": "meera.makeup",
+    "creator_ref": "cr-meera",
+    "category": "beauty_skincare",
+    "sub_niche": "makeup",
+    "niche_confidence": 0.359,
+    "niche_unsure": false,
+    "caption_language": "English",
+    "brands_mentioned": [],
+    "stats": {
+      "paid_posts": 0,
+      "paid_share": 0.0,
+      "posts_seen": 8,
+      "reels_seen": 8,
+      "view_spike": 1.02,
+      "median_likes": 647.5,
+      "median_views": 6429.5,
+      "posts_last_30d": 7,
+      "engagement_rate": 0.0329,
+      "median_comments": 43.5,
+      "views_to_followers": 0.3062,
+      "days_since_last_post": 3
+    },
+    "completeness": 1.0,
+    "missing": [],
+    "version": "profile-v1|intfloat/multilingual-e5-small|niche-zeroshot-v2|lang-rules-v1",
+    "quality": {
+      "label": "unsure",
+      "activity": "active",
+      "score": 100,
+      "summary": "no red flags, but the numbers are self-reported; verify with an insights screenshot or Instagram connect",
+      "findings": [],
+      "version": "quality-rules-v4"
+    },
+    "metric_sources": {
+      "bio": {
+        "source": "SELF_REPORTED",
+        "captured_on": "2026-11-14"
+      },
+      "city": {
+        "source": "SELF_REPORTED",
+        "captured_on": "2026-11-14"
+      },
+      "followers": {
+        "source": "SELF_REPORTED",
+        "captured_on": "2026-11-14"
+      },
+      "following": {
+        "source": "SELF_REPORTED",
+        "captured_on": "2026-11-14"
+      },
+      "total_posts": {
+        "source": "SELF_REPORTED",
+        "captured_on": "2026-11-14"
+      },
+      "display_name": {
+        "source": "SELF_REPORTED",
+        "captured_on": "2026-11-14"
+      },
+      "primary_language": {
+        "source": "SELF_REPORTED",
+        "captured_on": "2026-11-14"
+      }
+    },
+    "update_notes": []
+  }
+}

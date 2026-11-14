@@ -1,0 +1,166 @@
+{
+  "id": 3,
+  "title": "Creator profile: an English-speaking creator",
+  "scene": 2,
+  "call": "POST /ai/creators/profile",
+  "status": 200,
+  "request": {
+    "handle": "riya.routines",
+    "creator_ref": "cr-riya",
+    "display_name": "Riya",
+    "city": "Bengaluru",
+    "followers": 9100,
+    "following": 480,
+    "total_posts": 210,
+    "bio": "honest skincare reviews for Indian skin",
+    "primary_language": "English",
+    "posts": [
+      {
+        "post_url": "https://www.instagram.com/reel/riyaroutines0/",
+        "post_date": "2026-11-13",
+        "post_type": "reel",
+        "views": 2730,
+        "likes": 273,
+        "comments": 40,
+        "caption": "Tried this gel sunscreen on my oily skin for 7 days: no white cast, no grease #sunscreen #oilyskin",
+        "brands_tagged": []
+      },
+      {
+        "post_url": "https://www.instagram.com/reel/riyaroutines1/",
+        "post_date": "2026-11-09",
+        "post_type": "reel",
+        "views": 2767,
+        "likes": 278,
+        "comments": 41,
+        "caption": "My acne-prone skin morning routine: cleanser, niacinamide, SPF 50 #skincare",
+        "brands_tagged": []
+      },
+      {
+        "post_url": "https://www.instagram.com/reel/riyaroutines2/",
+        "post_date": "2026-11-05",
+        "post_type": "reel",
+        "views": 2804,
+        "likes": 283,
+        "comments": 42,
+        "caption": "Everyday makeup look under 10 minutes #makeup",
+        "brands_tagged": []
+      },
+      {
+        "post_url": "https://www.instagram.com/reel/riyaroutines3/",
+        "post_date": "2026-11-01",
+        "post_type": "reel",
+        "views": 2841,
+        "likes": 288,
+        "comments": 43,
+        "caption": "Kajal that lasts all day? Testing 5 #makeuptest",
+        "brands_tagged": []
+      },
+      {
+        "post_url": "https://www.instagram.com/reel/riyaroutines4/",
+        "post_date": "2026-10-28",
+        "post_type": "reel",
+        "views": 2878,
+        "likes": 293,
+        "comments": 44,
+        "caption": "Tried this gel sunscreen on my oily skin for 7 days: no white cast, no grease #sunscreen #oilyskin",
+        "brands_tagged": []
+      },
+      {
+        "post_url": "https://www.instagram.com/reel/riyaroutines5/",
+        "post_date": "2026-10-24",
+        "post_type": "reel",
+        "views": 2915,
+        "likes": 298,
+        "comments": 45,
+        "caption": "My acne-prone skin morning routine: cleanser, niacinamide, SPF 50 #skincare",
+        "brands_tagged": []
+      },
+      {
+        "post_url": "https://www.instagram.com/reel/riyaroutines6/",
+        "post_date": "2026-10-20",
+        "post_type": "reel",
+        "views": 2952,
+        "likes": 303,
+        "comments": 46,
+        "caption": "Everyday makeup look under 10 minutes #makeup",
+        "brands_tagged": []
+      },
+      {
+        "post_url": "https://www.instagram.com/reel/riyaroutines7/",
+        "post_date": "2026-10-16",
+        "post_type": "reel",
+        "views": 2989,
+        "likes": 308,
+        "comments": 47,
+        "caption": "Kajal that lasts all day? Testing 5 #makeuptest",
+        "brands_tagged": []
+      }
+    ]
+  },
+  "response": {
+    "handle": "riya.routines",
+    "creator_ref": "cr-riya",
+    "category": "beauty_skincare",
+    "sub_niche": "skincare",
+    "niche_confidence": 0.454,
+    "niche_unsure": false,
+    "caption_language": "English",
+    "brands_mentioned": [],
+    "stats": {
+      "paid_posts": 0,
+      "paid_share": 0.0,
+      "posts_seen": 8,
+      "reels_seen": 8,
+      "view_spike": 1.05,
+      "median_likes": 290.5,
+      "median_views": 2859.5,
+      "posts_last_30d": 8,
+      "engagement_rate": 0.0367,
+      "median_comments": 43.5,
+      "views_to_followers": 0.3142,
+      "days_since_last_post": 1
+    },
+    "completeness": 1.0,
+    "missing": [],
+    "version": "profile-v1|intfloat/multilingual-e5-small|niche-zeroshot-v2|lang-rules-v1",
+    "quality": {
+      "label": "unsure",
+      "activity": "active",
+      "score": 100,
+      "summary": "no red flags, but the numbers are self-reported; verify with an insights screenshot or Instagram connect",
+      "findings": [],
+      "version": "quality-rules-v4"
+    },
+    "metric_sources": {
+      "bio": {
+        "source": "SELF_REPORTED",
+        "captured_on": "2026-11-14"
+      },
+      "city": {
+        "source": "SELF_REPORTED",
+        "captured_on": "2026-11-14"
+      },
+      "followers": {
+        "source": "SELF_REPORTED",
+        "captured_on": "2026-11-14"
+      },
+      "following": {
+        "source": "SELF_REPORTED",
+        "captured_on": "2026-11-14"
+      },
+      "total_posts": {
+        "source": "SELF_REPORTED",
+        "captured_on": "2026-11-14"
+      },
+      "display_name": {
+        "source": "SELF_REPORTED",
+        "captured_on": "2026-11-14"
+      },
+      "primary_language": {
+        "source": "SELF_REPORTED",
+        "captured_on": "2026-11-14"
+      }
+    },
+    "update_notes": []
+  }
+}

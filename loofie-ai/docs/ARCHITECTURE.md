@@ -57,7 +57,8 @@ loofie-ai/
 ├── app/
 │   ├── cli.py              one command: `loofie <command>`
 │   ├── config.py           .env settings + load_toml() for config/*.toml
-│   ├── api/                HTTP for the backend (contract: docs/API.md)
+│   ├── api/                HTTP for the backend (contract: docs/API.md); rules.py = feedback checks
+│   ├── mock.py             `loofie mock`: same contract, no GPU/database, for backend development
 │   ├── brief/              Model 1 · understand
 │   ├── profile/            profile builder · niche, language, signals, embedding
 │   ├── quality/            Model 3 · trust
@@ -69,8 +70,10 @@ loofie-ai/
 │   └── db/                 tables (models.py) and connection
 ├── config/                 brief / profile / quality / matcher .toml
 ├── migrations/             database schema history (alembic)
+├── contracts/examples/     real request + answer per call (scripts/make_examples.py writes them)
+├── scripts/                make_examples.py
 ├── tests/                  helpers.py, data/ (brief test sets), one test file per module
-└── docs/                   API.md (for the backend), ARCHITECTURE.md (this file)
+└── docs/                   FLOW.md (story → calls), API.md (for the backend), ARCHITECTURE.md (this file)
 ```
 
 ## Where data lives

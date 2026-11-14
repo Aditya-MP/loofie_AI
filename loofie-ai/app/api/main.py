@@ -9,7 +9,7 @@ import logging
 import time
 import uuid
 from contextlib import asynccontextmanager
-from datetime import UTC, date, datetime, timedelta
+from datetime import UTC, date, datetime
 from typing import Annotated
 from urllib.parse import parse_qs, urlencode, urlsplit
 
@@ -20,6 +20,7 @@ from sqlalchemy import select, text
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
+from app.api.rules import check_feedback
 from app.api.schemas import (
     BriefParseIn,
     BriefParseOut,
@@ -39,7 +40,7 @@ from app.brief.extract import Field, brief_config, parse
 from app.config import get_settings
 from app.db.models import Creator, CreatorProfile, CreatorQuality, Event, InstagramAccount, Post
 from app.db.session import SessionLocal
-from app.feedback.events import FEEDBACK_TYPES, bad_values, log_event, missing_keys
+from app.feedback.events import log_event
 from app.importer import parse as p
 from app.importer import provenance
 from app.importer.upsert import upsert
@@ -52,9 +53,6 @@ from app.profile.builder import build_and_save
 from app.profile.niche import ZeroShotNiche
 from app.quality.rules import quality_config
 from app.quality.service import assess_and_save
-
-# Brief fields the brand may not change (ASCI disclosure, Foundation v2 F2).
-LOCKED_BRIEF_FIELDS = {"disclosure"}
 
 
 @asynccontextmanager
@@ -347,9 +345,6 @@ def match(body: MatchIn, request: Request, session: SessionDep):
 # ------------------------------------------------------------------ learning signal
 
 
-FUTURE_SLACK = timedelta(minutes=5)  # clocks drift; more than this ahead is a bug on the caller's side
-
-
 def resolve_creator(session: Session, payload: dict) -> dict:
     """Store both ids: creator_ref (the backend's, stable) and creator_handle (ours, can change)."""
     out = dict(payload)
@@ -367,18 +362,7 @@ def resolve_creator(session: Session, payload: dict) -> dict:
 
 @app.post("/ai/feedback", response_model=FeedbackOut, dependencies=[Depends(require_key)])
 def feedback(body: FeedbackIn, session: SessionDep):
-    if body.event_type not in FEEDBACK_TYPES:
-        raise HTTPException(422, f"unknown event_type {body.event_type!r}; allowed: {sorted(FEEDBACK_TYPES)}")
-    missing = missing_keys(body.event_type, body.payload)
-    if missing:
-        raise HTTPException(422, f"{body.event_type} needs payload keys: {missing}")
-    errors = bad_values(body.event_type, body.payload)
-    if errors:
-        raise HTTPException(422, f"{body.event_type}: {'; '.join(errors)}")
-    if body.occurred_at and body.occurred_at > datetime.now(UTC) + FUTURE_SLACK:
-        raise HTTPException(422, "occurred_at is in the future")
-    if body.event_type == "brief_field_edited" and body.payload.get("field") in LOCKED_BRIEF_FIELDS:
-        raise HTTPException(422, f"{body.payload['field']} is required on every brief and cannot be edited")
+    check_feedback(body)
     if body.suggestion_id and session.get(Event, body.suggestion_id) is None:
         raise HTTPException(404, f"suggestion_id {body.suggestion_id} not found")
     payload = resolve_creator(session, body.payload)
