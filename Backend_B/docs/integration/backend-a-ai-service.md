@@ -1,60 +1,60 @@
 # Backend A (loofie-ai) integration notes
 
-Source: `origin/backend-a`, commit `22a7a33` ("Add Loofie AI service (backend A)"), read on 2026-11-14.
-Files: `loofie-ai/docs/API.md`, `loofie-ai/app/feedback/events.py`, `loofie-ai/app/db/models.py`,
-`loofie-ai/app/api/main.py`, `loofie-ai/app/api/schemas.py`.
+Source: `origin/backend-a`, commit `22a7a33` ("Add Loofie AI service (backend A)"), read on 2026-11-14,
+plus Aditya's written reply on 2026-11-14.
 
-## What Backend A actually is
+## Ownership rule (agreed with Aditya, pending founder confirmation)
 
-A Python/FastAPI **AI service** on port 8100 with its own PostgreSQL (`loofie_ai`, port 5433):
-brief parsing (`/ai/brief/parse`), creator profiles and quality (`/ai/creators/...`), matching
-(`/ai/match`) and the learning log (`/ai/feedback`). It calls itself a service "for the backend team".
+> Anything that is a **record or a transaction** lives in the backend (Backend B).
+> Anything that is a **judgement or a prediction** lives in the AI service (Backend A).
 
-It does **not** contain accounts/login (F1), JWT issuing, brief storage, shortlist storage or
-rebook checkout. The architecture doc assumed Backend A owned those. See "Open questions" below.
-
-## How F12 works in Backend A
-
-- Table `events`: `id` (uuid4, server-generated), `occurred_at` (server `now()`), `actor_type`,
-  `actor_id` (string), `subject_type`, `subject_id` (string), `event_type`, `payload` (jsonb),
-  `model_name`, `model_version`. Append-only by convention (no DB trigger).
-- Written through `POST /ai/feedback` over **HTTP**, not Kafka. Auth: `X-API-Key` shared secret.
-- `actor_type` is one of `brand | creator | ops | system` (lowercase).
-- `subject_type` is one of `brief | creator | shortlist | job`.
-- `event_type` must be in a fixed list; unknown types are rejected with `422`.
-- Creators are identified by **Instagram handle**; Backend B's own creator id travels as `creator_ref`.
-
-Event types that come from Backend B's side of the product:
-
-| event_type | Required payload | When Backend B sends it |
+| Feature | Backend B (records, transactions, screens' APIs) | Backend A (AI) |
 |---|---|---|
-| `job_outcome` | `creator_handle`, `on_time` | Job reaches CLOSED, or the creator is replaced (production expired, dispute replacement) |
+| F1 Accounts / Passport | Brand + creator signup and login (phone OTP, work email, GSTIN), roles, sessions and tokens, passport data | Instagram Login (OAuth, followers/posts/views fetch, weekly refresh, encrypted Instagram tokens), profile, quality score, niche |
+| F2 Brief Builder | Storing the brief (it becomes the contract), the form, the "brand confirmed" step | `POST /ai/brief/parse`; later: pre-payment warnings |
+| F3 Shortlist | Storing the shortlist and each pick / maybe / reject | `POST /ai/match` ranked list |
+| F11 Rebook | Checkout flow, pre-filled order | Later: when to nudge and which creator |
+| F12 Events | `job_events` = source of truth for operations | `events` = what the models learn from |
 
-`rating` and `rebooked` belong to F11 (rebook), which is not Backend B's feature.
+Backend B stores Backend A's `suggestion_id` with each shortlist and the parse `event_id` with each
+parsed brief, so outcomes link back to what the AI suggested.
+
+## Events Backend B sends to `POST /ai/feedback`
+
+| event_type | When | Payload |
+|---|---|---|
+| `job_state_changed` | Every job status change | `job_id`, `creator_ref`, `brief_ref`, `from`, `to`, `deadline_at` (when a timer is running) |
+| `job_outcome` | Job closes | `on_time`, `revisions`, `disputed`, `replaced`, `rating` |
+| `video_performance` | Later: brand tags the video winner / average / loser ~30 days after approval | TBD |
+
+**Never send:** payout amounts, bank details, PAN, or free-text ops reasons (they can contain personal data).
+
+## `/ai/feedback` contract changes Aditya agreed to (not deployed yet)
+
+- **Idempotency:** Backend B sends its own `event_id` (UUID). Same id again → original returned, nothing saved.
+  Same id with a different payload → `409`. Backend B uses the `job_events.event_id`, so retries are safe.
+- **Time:** Backend B sends `occurred_at` (ISO 8601 with timezone). More than 5 minutes in the future → rejected.
+- **Creator id:** `creator_ref` (Backend B's creator id) on every event; `creator_handle` still accepted for old payloads.
+- **Auth:** named API keys; Backend B gets its own key, sent privately. Rotation has an overlap window.
+
+Aditya will update `docs/API.md` with exact shapes when deployed. Build the forwarder against those shapes.
+
+## Upcoming from Backend A
+
+- **Instagram Login:** Backend B passes its creator id as `account_ref`; the frontend adds a button, a return page
+  and a status poll. Not on `origin/backend-a` yet as of 2026-11-14.
+- **F7 draft checker:** after Backend B's upload, format and watermark checks, Backend A needs a signed URL to the
+  draft video. Details when Aditya starts it.
 
 ## What this changes in Backend B
 
-1. **Keep `job_events` in core_db.** It is the F5 lifecycle log (every transition, ops overrides,
-   timers) and is required by the state machine whatever Backend A stores. Backend A's `events`
-   is an AI-learning log, not a job lifecycle log, so there is no duplication.
-2. **Drop the planned `core.events.v1` Kafka forward** of every job event to Backend A. Backend A
-   does not consume Kafka and would reject our event types. Instead, Backend B sends only
-   `job_outcome` to `POST /ai/feedback`, from an outbox-driven HTTP forwarder (Sprint 3-4), so a
-   Backend A outage never blocks a transition and the call is retried.
-3. **Backend B must know the creator's Instagram handle** for `job_outcome`. Plan: snapshot it on
-   the assignment when the creator is invited (needs a column `creator_handle` on `assignments`).
-
-## Gaps to raise with Aditya
-
-| # | Gap | Why it matters | Ask |
-|---|---|---|---|
-| 1 | `/ai/feedback` has no idempotency key; `id` is generated server-side | Our forwarder retries on timeouts, so one outcome can be logged twice and skew training | Accept a client `event_id` and ignore duplicates |
-| 2 | `occurred_at` is set to ingest time | A retried or delayed call records the wrong time | Accept `occurred_at` from the caller |
-| 3 | Creator identity is the Instagram handle | Handles change; Backend B keys on creator id | Also accept/index `creator_ref`, or confirm handle is stable enough |
-| 4 | Who owns F1 accounts + JWT, brief storage, shortlist storage, F11 checkout? | Backend B's auth and order intake assume an upstream that does not exist on `backend-a` | Confirm owner; this may move work to Backend B or a third service |
-| 5 | Auth is one shared `X-API-Key` | Fine for v1 service-to-service | Confirm Backend B gets its own key (rotatable) |
+1. `job_events` stays in core_db as the operational source of truth.
+2. The `core.events.v1` Kafka forward is dropped. An outbox-driven HTTP forwarder sends `job_state_changed` and
+   `job_outcome` to `/ai/feedback`, so a Backend A outage never blocks a transition and calls are retried.
+3. Backend B now also owns accounts/auth (F1, non-AI part), briefs (F2), shortlists (F3) and rebook checkout (F11).
+   Jobs need a `brief_ref`, and `job_outcome` needs revision count, dispute/replacement flags and the brand's rating.
 
 ## Local development
 
-Backend A runs on 5433 (the PostgreSQL 14 instance on this machine) and 8100. Backend B uses
-PostgreSQL 18 on 5432. Leave PostgreSQL 14 running if Aditya's service is run locally.
+Backend A runs on 5433 (the PostgreSQL 14 instance on this machine) and 8100. Backend B uses PostgreSQL 18 on 5432.
+Leave PostgreSQL 14 running if Aditya's service is run locally.
