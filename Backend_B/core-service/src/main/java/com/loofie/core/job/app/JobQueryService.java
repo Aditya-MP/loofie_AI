@@ -10,20 +10,23 @@ import java.util.UUID;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import com.loofie.core.job.app.JobViews.Deadline;
-import com.loofie.core.job.app.JobViews.JobDetail;
-import com.loofie.core.job.app.JobViews.JobFilter;
-import com.loofie.core.job.app.JobViews.JobSummary;
-import com.loofie.core.job.app.JobViews.Page;
+import com.loofie.core.job.read.JobViews.Deadline;
+import com.loofie.core.job.read.JobViews.JobDetail;
+import com.loofie.core.job.read.JobViews.JobFilter;
+import com.loofie.core.job.read.JobViews.JobSummary;
+import com.loofie.core.job.read.JobViews.Page;
+import com.loofie.core.job.domain.Actor;
+import com.loofie.core.job.domain.ActorRole;
 import com.loofie.core.job.domain.JobExceptions.JobNotFoundException;
 import com.loofie.core.job.infra.JobReadRepository;
 import com.loofie.core.job.infra.JobReadRepository.JobRow;
 
-/** Read-only queries over jobs for the ops console (F10). Authorization is the caller's job. */
+/** Read-only queries over jobs for the ops console (F10). Every query is OPS only, checked here. */
 @Service
 public class JobQueryService {
 
     public static final int MAX_PAGE_SIZE = 100;
+    private static final String OPS_ONLY = "The ops console is for OPS only";
 
     private final JobReadRepository repo;
     private final Clock clock;
@@ -34,7 +37,8 @@ public class JobQueryService {
     }
 
     @Transactional(readOnly = true)
-    public Page<JobSummary> list(JobFilter filter, int page, int size) {
+    public Page<JobSummary> list(Actor actor, JobFilter filter, int page, int size) {
+        actor.requireRole(ActorRole.OPS, OPS_ONLY);
         int safeSize = Math.clamp(size, 1, MAX_PAGE_SIZE);
         int safePage = Math.max(page, 0);
         Instant now = clock.instant();
@@ -45,7 +49,8 @@ public class JobQueryService {
     }
 
     @Transactional(readOnly = true)
-    public JobDetail detail(UUID jobId) {
+    public JobDetail detail(Actor actor, UUID jobId) {
+        actor.requireRole(ActorRole.OPS, OPS_ONLY);
         JobRow row = repo.findById(jobId).orElseThrow(() -> new JobNotFoundException(jobId));
         Instant now = clock.instant();
         List<Deadline> deadlines = row.deadlines().entrySet().stream()

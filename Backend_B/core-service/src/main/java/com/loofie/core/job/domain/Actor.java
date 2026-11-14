@@ -25,6 +25,13 @@ public record Actor(ActorRole role, UUID userId, UUID orgId) {
         }
     }
 
+    /** Permission check for use cases open to a single role. */
+    public void requireRole(ActorRole required, String message) {
+        if (role != required) {
+            throw new JobExceptions.ActorNotAllowedException(message);
+        }
+    }
+
     public static Actor system() {
         return SYSTEM;
     }

@@ -1,4 +1,4 @@
-package com.loofie.core.job.app;
+package com.loofie.core.job.read;
 
 import java.time.Instant;
 import java.util.List;
@@ -9,7 +9,11 @@ import com.fasterxml.jackson.annotation.JsonRawValue;
 
 import com.loofie.core.job.domain.JobStatus;
 
-/** Read models returned by {@link JobQueryService}. Plain records, safe to serialise as API responses. */
+/**
+ * Read models of the job feature (the query side): filled by {@code JobReadRepository}, returned by
+ * {@code JobQueryService}. Plain records, safe to serialise as API responses. Kept in their own package
+ * so the database layer can build them without depending on the application layer.
+ */
 public final class JobViews {
 
     private JobViews() {

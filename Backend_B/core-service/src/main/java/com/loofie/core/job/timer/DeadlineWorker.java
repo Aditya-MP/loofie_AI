@@ -1,10 +1,8 @@
-package com.loofie.core.timer;
+package com.loofie.core.job.timer;
 
 import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
-import java.time.OffsetDateTime;
-import java.time.ZoneOffset;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -16,7 +14,6 @@ import java.util.concurrent.atomic.AtomicReference;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
-import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.orm.ObjectOptimisticLockingFailureException;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.support.TransactionTemplate;
@@ -26,11 +23,14 @@ import com.loofie.core.job.app.JobTransitionService;
 import com.loofie.core.job.domain.Actor;
 import com.loofie.core.job.domain.JobExceptions.IllegalTransitionException;
 import com.loofie.core.job.domain.JobExceptions.TransitionGuardException;
+import com.loofie.core.job.infra.JobDeadlineRepository;
+import com.loofie.core.job.infra.JobDeadlineRepository.DueJob;
+import com.loofie.core.job.infra.JobDeadlineRepository.DueNotice;
 import com.loofie.core.messaging.EventEnvelope;
 import com.loofie.core.messaging.Outbox;
 import com.loofie.core.messaging.Topics;
-import com.loofie.core.timer.TimerRules.Action;
-import com.loofie.core.timer.TimerRules.Notice;
+import com.loofie.core.job.timer.TimerRules.Action;
+import com.loofie.core.job.timer.TimerRules.Notice;
 
 import io.micrometer.core.instrument.Gauge;
 import io.micrometer.core.instrument.MeterRegistry;
@@ -66,7 +66,7 @@ public class DeadlineWorker {
         }
     }
 
-    private final JdbcClient jdbc;
+    private final JobDeadlineRepository deadlines;
     private final JobTransitionService engine;
     private final Outbox outbox;
     private final TransactionTemplate tx;
@@ -78,9 +78,9 @@ public class DeadlineWorker {
     private final AtomicLong oldestDueAgeSeconds = new AtomicLong();
     private final AtomicReference<Instant> lastRunAt = new AtomicReference<>();
 
-    DeadlineWorker(JdbcClient jdbc, JobTransitionService engine, Outbox outbox, TransactionTemplate tx, Clock clock,
+    DeadlineWorker(JobDeadlineRepository deadlines, JobTransitionService engine, Outbox outbox, TransactionTemplate tx, Clock clock,
                    TimerProperties props, MeterRegistry meters) {
-        this.jdbc = jdbc;
+        this.deadlines = deadlines;
         this.engine = engine;
         this.outbox = outbox;
         this.tx = tx;
@@ -107,11 +107,11 @@ public class DeadlineWorker {
         int skipped = 0;
         Instant oldestDue = null;
         for (Action rule : TimerRules.ACTIONS) {
-            List<Due> due = dueForAction(rule, now, excluded);
+            List<DueJob> due = dueForAction(rule, now, excluded);
             if (!due.isEmpty() && (oldestDue == null || due.getFirst().dueAt().isBefore(oldestDue))) {
                 oldestDue = due.getFirst().dueAt();
             }
-            for (Due d : due) {
+            for (DueJob d : due) {
                 if (act(d.jobId(), rule, now)) {
                     transitioned++;
                 } else {
@@ -136,22 +136,8 @@ public class DeadlineWorker {
         return backoff.containsKey(jobId);
     }
 
-    private record Due(UUID jobId, Instant dueAt) {
-    }
-
-    private List<Due> dueForAction(Action rule, Instant now, List<UUID> excluded) {
-        String col = "j." + rule.dueColumn(); // from the fixed TimerRules list, never from input
-        String skip = excluded.isEmpty() ? "" : " AND j.id NOT IN (:excluded)";
-        var spec = jdbc.sql("SELECT j.id, " + col + " AS due_at FROM jobs j WHERE j.status = :status AND " + col
-                        + " <= :now" + skip + " ORDER BY " + col + " LIMIT :limit")
-                .param("status", rule.status().name())
-                .param("now", utc(now))
-                .param("limit", props.batchSize());
-        if (!excluded.isEmpty()) {
-            spec = spec.param("excluded", excluded);
-        }
-        return spec.query((rs, n) -> new Due(rs.getObject("id", UUID.class),
-                rs.getObject("due_at", OffsetDateTime.class).toInstant())).list();
+    private List<DueJob> dueForAction(Action rule, Instant now, List<UUID> excluded) {
+        return deadlines.due(rule.status(), rule.deadline(), now, excluded, props.batchSize());
     }
 
     private boolean act(UUID jobId, Action rule, Instant now) {
@@ -183,26 +169,8 @@ public class DeadlineWorker {
         meters.counter("loofie.timer.actions", "action", rule.action().name(), "outcome", outcome).increment();
     }
 
-    private record DueNotice(UUID jobId, UUID orderId, long version, Instant dueAt) {
-    }
-
     private List<DueNotice> dueForNotice(Notice rule, Instant now) {
-        String col = "j." + rule.column(); // from the fixed TimerRules list, never from input
-        String due = "(" + col + " - make_interval(secs => :beforeSecs))";
-        // "col <= now + before" (not "col - before <= now") so the column's index is used.
-        return jdbc.sql("SELECT j.id, j.order_id, j.version, " + due + " AS due_at FROM jobs j"
-                        + " WHERE j.status = :status AND " + col + " <= :horizon"
-                        + " AND NOT EXISTS (SELECT 1 FROM deadline_notices n"
-                        + "   WHERE n.job_id = j.id AND n.kind = :kind AND n.due_at = " + due + ")"
-                        + " ORDER BY " + col + " LIMIT :limit")
-                .param("status", rule.status().name())
-                .param("kind", rule.kind())
-                .param("beforeSecs", (double) rule.before().toSeconds())
-                .param("horizon", utc(now.plus(rule.before())))
-                .param("limit", props.batchSize())
-                .query((rs, n) -> new DueNotice(rs.getObject("id", UUID.class), rs.getObject("order_id", UUID.class),
-                        rs.getLong("version"), rs.getObject("due_at", OffsetDateTime.class).toInstant()))
-                .list();
+        return deadlines.dueNotices(rule.kind(), rule.status(), rule.deadline(), rule.before(), now, props.batchSize());
     }
 
     /** Records the notice and enqueues its event in one transaction; false if it was already sent. */
@@ -210,15 +178,7 @@ public class DeadlineWorker {
         try {
             Boolean inserted = tx.execute(status -> {
                 UUID eventId = Ids.newId();
-                int rows = jdbc.sql("""
-                        INSERT INTO deadline_notices (job_id, kind, due_at, event_id, sent_at)
-                        VALUES (:jobId, :kind, :dueAt, :eventId, :now)
-                        ON CONFLICT DO NOTHING
-                        """)
-                        .param("jobId", due.jobId()).param("kind", rule.kind()).param("dueAt", utc(due.dueAt()))
-                        .param("eventId", eventId).param("now", utc(now))
-                        .update();
-                if (rows == 0) {
+                if (!deadlines.recordNotice(due.jobId(), rule.kind(), due.dueAt(), eventId, now)) {
                     return false;
                 }
                 Map<String, Object> payload = new LinkedHashMap<>();
@@ -248,9 +208,5 @@ public class DeadlineWorker {
     private double secondsSinceLastRun() {
         Instant last = lastRunAt.get();
         return last == null ? 0 : Math.max(0, Duration.between(last, clock.instant()).toSeconds());
-    }
-
-    private static OffsetDateTime utc(Instant instant) {
-        return OffsetDateTime.ofInstant(instant, ZoneOffset.UTC);
     }
 }

@@ -1,4 +1,4 @@
-package com.loofie.core.timer;
+package com.loofie.core.job.timer;
 
 import java.time.Duration;
 

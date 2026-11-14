@@ -8,6 +8,9 @@ import java.time.LocalDate;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 
+import com.loofie.core.calendar.app.HolidayAdminService;
+import com.loofie.core.calendar.app.HolidayCalendar;
+import com.loofie.core.job.domain.Actor;
 import com.loofie.core.support.IntegrationTest;
 
 /** Working days: Monday to Saturday, minus national holidays and the brand's state holidays. */
@@ -15,6 +18,9 @@ import com.loofie.core.support.IntegrationTest;
 class HolidayCalendarTest {
 
     @Autowired HolidayCalendar calendar;
+    @Autowired HolidayAdminService admin;
+
+    final Actor ops = Actor.ops(java.util.UUID.randomUUID());
 
     @Test
     void saturdayCountsAndSundayDoesNot() {
@@ -40,7 +46,7 @@ class HolidayCalendarTest {
 
     @Test
     void stateHolidayAppliesOnlyToBrandsInThatState() {
-        calendar.upsert(LocalDate.of(2026, 10, 19), "wb", "Durga Puja (test)", null);
+        admin.upsert(ops, LocalDate.of(2026, 10, 19), "wb", "Durga Puja (test)");
         Instant friday = Instant.parse("2026-10-16T05:00:00Z");
 
         // National: Sat 17 (1), Mon 19 (2), Tue 20 (3).
@@ -49,10 +55,10 @@ class HolidayCalendarTest {
         // Bengal: Mon 19 is a holiday -> Sat 17 (1), Tue 20 (2), Wed 21 (3).
         assertThat(calendar.endOfWorkingDays(friday, 3, "WB")).isEqualTo(Instant.parse("2026-10-21T18:30:00Z"));
 
-        assertThat(calendar.list(2026)).anySatisfy(h -> {
+        assertThat(admin.list(ops, 2026)).anySatisfy(h -> {
             assertThat(h.stateCode()).isEqualTo("WB");
             assertThat(h.name()).isEqualTo("Durga Puja (test)");
         });
-        assertThat(calendar.delete(LocalDate.of(2026, 10, 19), "WB")).isTrue();
+        assertThat(admin.delete(ops, LocalDate.of(2026, 10, 19), "WB")).isTrue();
     }
 }

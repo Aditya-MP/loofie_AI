@@ -20,16 +20,14 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
-import com.loofie.core.calendar.HolidayCalendar;
-import com.loofie.core.calendar.HolidayCalendar.Holiday;
+import com.loofie.core.calendar.app.HolidayAdminService;
+import com.loofie.core.calendar.domain.Holiday;
 import com.loofie.core.job.domain.Actor;
-import com.loofie.core.job.domain.ActorRole;
-import com.loofie.core.job.domain.JobExceptions.ActorNotAllowedException;
 
 /**
  * F10: ops edits the holiday table that brand-side working-day clocks skip.
  * {@code stateCode} empty or missing = national holiday; otherwise e.g. "WB" for a Bengal-only holiday.
- * Changes apply to clocks started afterwards; running deadlines are not recalculated.
+ * HTTP mapping only: permissions and rules are in {@link HolidayAdminService}.
  */
 @RestController
 @RequestMapping("/api/core/ops/holidays")
@@ -40,35 +38,27 @@ class OpsHolidayController {
                           @NotBlank @Size(max = 100) String name) {
     }
 
-    private final HolidayCalendar calendar;
+    private final HolidayAdminService holidays;
 
-    OpsHolidayController(HolidayCalendar calendar) {
-        this.calendar = calendar;
+    OpsHolidayController(HolidayAdminService holidays) {
+        this.holidays = holidays;
     }
 
     @GetMapping
     List<Holiday> list(Actor actor, @RequestParam int year) {
-        requireOps(actor);
-        return calendar.list(year);
+        return holidays.list(actor, year);
     }
 
     @PutMapping
     ResponseEntity<Void> upsert(Actor actor, @Valid @RequestBody HolidayRequest body) {
-        requireOps(actor);
-        boolean created = calendar.upsert(body.date(), body.stateCode(), body.name(), actor.userId());
+        boolean created = holidays.upsert(actor, body.date(), body.stateCode(), body.name());
         return ResponseEntity.status(created ? HttpStatus.CREATED : HttpStatus.OK).build();
     }
 
     @DeleteMapping("/{date}")
     ResponseEntity<Void> delete(Actor actor, @PathVariable LocalDate date,
                                 @RequestParam(required = false) String stateCode) {
-        requireOps(actor);
-        return calendar.delete(date, stateCode) ? ResponseEntity.noContent().build() : ResponseEntity.notFound().build();
-    }
-
-    private static void requireOps(Actor actor) {
-        if (actor.role() != ActorRole.OPS) {
-            throw new ActorNotAllowedException("Holidays are edited by OPS only");
-        }
+        return holidays.delete(actor, date, stateCode) ? ResponseEntity.noContent().build()
+                : ResponseEntity.notFound().build();
     }
 }

@@ -6,48 +6,48 @@ import java.time.Instant;
 import java.time.OffsetDateTime;
 import java.time.ZoneOffset;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
+import java.util.stream.Collectors;
 
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.stereotype.Repository;
 
-import com.loofie.core.job.app.JobViews.AssignmentView;
-import com.loofie.core.job.app.JobViews.EventView;
-import com.loofie.core.job.app.JobViews.JobFilter;
-import com.loofie.core.job.app.JobViews.ShipmentView;
+import com.loofie.core.job.read.JobViews.AssignmentView;
+import com.loofie.core.job.read.JobViews.EventView;
+import com.loofie.core.job.read.JobViews.JobFilter;
+import com.loofie.core.job.read.JobViews.ShipmentView;
+import com.loofie.core.job.domain.JobDeadline;
 import com.loofie.core.job.domain.JobStatus;
 
 /** SQL read side for the ops console. Never writes. */
 @Repository
 public class JobReadRepository {
 
-    /** Deadline columns in display order. */
-    public static final List<String> DEADLINE_COLUMNS = List.of("accept_due_at", "ship_reminder_at", "ship_due_at",
-            "receipt_prompt_at", "receipt_ops_check_at", "auto_start_at", "issue_response_due_at", "missing_escalate_at",
-            "production_due_at", "review_due_at", "replacement_due_at");
+    /** Deadline columns in display order (from {@link DeadlineColumns}, the single mapping). */
+    public static final List<String> DEADLINE_COLUMNS = DeadlineColumns.ALL;
 
     private static final String SELECT = """
             SELECT j.id, j.order_id, j.brand_org_id, j.status, j.digital_only, j.creator_fee_paise,
                    j.free_revision_used, j.updated_at, j.version, a.creator_id AS active_creator_id,
-                   j.delivery_issue_type, j.accept_due_at, j.ship_reminder_at, j.ship_due_at, j.receipt_prompt_at,
-                   j.receipt_ops_check_at, j.auto_start_at, j.issue_response_due_at, j.missing_escalate_at,
-                   j.production_due_at, j.review_due_at, j.replacement_due_at
+                   j.delivery_issue_type, %s
             FROM jobs j
             LEFT JOIN assignments a ON a.job_id = j.id AND a.status = 'ACTIVE'
-            """;
+            """.formatted(DEADLINE_COLUMNS.stream().map(c -> "j." + c).collect(Collectors.joining(", ")));
 
     /** Reminder times: shown to ops, but passing one does not make a job overdue. */
-    public static final Set<String> REMINDER_COLUMNS = Set.of("ship_reminder_at", "receipt_prompt_at");
+    public static final Set<String> REMINDER_COLUMNS = Arrays.stream(JobDeadline.values())
+            .filter(JobDeadline::isReminder).map(DeadlineColumns::of).collect(Collectors.toUnmodifiableSet());
 
-    // Reminder times (ship_reminder_at, receipt_prompt_at) are not deadlines, so they never make a job overdue.
-    private static final String EARLIEST_DEADLINE = "LEAST(j.accept_due_at, j.ship_due_at, j.receipt_ops_check_at, "
-            + "j.auto_start_at, j.issue_response_due_at, j.missing_escalate_at, j.production_due_at, j.review_due_at, "
-            + "j.replacement_due_at)";
+    /** The earliest real deadline (reminders excluded), for the "overdue" filter. */
+    private static final String EARLIEST_DEADLINE = Arrays.stream(JobDeadline.values())
+            .filter(d -> !d.isReminder()).map(d -> "j." + DeadlineColumns.of(d))
+            .collect(Collectors.joining(", ", "LEAST(", ")"));
 
     /** One job row as stored, with its deadlines keyed by column name (only non-null ones). */
     public record JobRow(UUID id, UUID orderId, UUID brandOrgId, JobStatus status, boolean digitalOnly,

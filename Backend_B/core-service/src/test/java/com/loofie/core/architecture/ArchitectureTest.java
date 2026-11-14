@@ -40,7 +40,34 @@ class ArchitectureTest {
     /** Feature packages talk through app services, never each other's repositories. */
     @ArchTest
     static final ArchRule noCrossFeatureRepositoryAccess = noClasses()
-            .that().resideInAPackage("com.loofie.core.order..")
+            .that().resideOutsideOfPackage("com.loofie.core.job..")
             .should().dependOnClassesThat().resideInAPackage("com.loofie.core.job.infra..")
-            .because("other features use JobTransitionService / JobIntakeService, not job repositories");
+            .because("other features use the job app services (JobTransitionService, JobQueryService), "
+                    + "never job repositories or the jobs table");
+
+    @ArchTest
+    static final ArchRule noCrossFeatureCalendarRepositoryAccess = noClasses()
+            .that().resideOutsideOfPackage("com.loofie.core.calendar..")
+            .should().dependOnClassesThat().resideInAPackage("com.loofie.core.calendar.infra..")
+            .because("other features use HolidayCalendar / HolidayAdminService");
+
+    /** Layers point one way: api -> app -> domain, and infra serves app. Never backwards. */
+    @ArchTest
+    static final ArchRule infraDoesNotDependOnUpperLayers = noClasses()
+            .that().resideInAPackage("..infra..")
+            .should().dependOnClassesThat().resideInAnyPackage("..app..", "..api..", "..timer..")
+            .because("the database layer serves the application layer, not the other way round");
+
+    @ArchTest
+    static final ArchRule apiDoesNotReachTheDatabase = noClasses()
+            .that().resideInAPackage("..api..")
+            .should().dependOnClassesThat().resideInAnyPackage("..infra..", "org.springframework.jdbc..")
+            .because("controllers only map HTTP; use cases and permission checks live in app services");
+
+    /** Raw SQL lives in the data layers only, so a renamed column breaks in one known place. */
+    @ArchTest
+    static final ArchRule sqlOnlyInDataLayers = noClasses()
+            .that().resideInAnyPackage("..app..", "..api..", "..domain..", "..timer..", "..ops..")
+            .should().dependOnClassesThat().resideInAPackage("org.springframework.jdbc..")
+            .because("SQL belongs in infra repositories (or the messaging/events/common plumbing)");
 }
