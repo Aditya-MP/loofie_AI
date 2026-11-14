@@ -57,6 +57,17 @@ Aditya will update `docs/API.md` with exact shapes when deployed. Build the forw
 3. Backend B now also owns accounts/auth (F1, non-AI part; Shreya guides the design), briefs (F2), shortlists (F3) and rebook checkout (F11).
    Jobs need a `brief_ref`, and `job_outcome` needs revision count, dispute/replacement flags and the brand's rating.
 
+## Rules for any service reading Backend B's Kafka events
+
+- **At-least-once.** The same event can arrive twice (for example after a crash between the Kafka ack and the
+  database update). De-duplicate on `eventId`.
+- **Order per job.** A job's events (key = job id) go out in the order they were written, even across topics. Still,
+  ignore a `JobStateChanged` whose `aggregateVersion` is lower than one already handled for that job.
+- **`JobDeadlineNotice`** carries the job version from when it was raised, so its `aggregateVersion` is not unique.
+  Order notices by `payload.dueAt`.
+- **No free text.** Since 2026-11-14 the ops note (`reason`) is no longer in the payload; `hasReason` says whether one
+  exists. Reason codes (`reasonCode`, `faultParty`) are the fields to use.
+
 ## Local development
 
 Backend A runs on 5433 (the PostgreSQL 14 instance on this machine) and 8100. Backend B uses PostgreSQL 18 on 5432.

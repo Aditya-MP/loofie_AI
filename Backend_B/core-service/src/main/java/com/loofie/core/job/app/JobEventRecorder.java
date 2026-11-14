@@ -59,8 +59,10 @@ class JobEventRecorder {
         payload.put("toState", job.getStatus().name());
         payload.put("actorType", actor.role().name());
         payload.put("actorId", actor.userId() == null ? null : actor.userId().toString());
-        payload.put("reason", reason);
-        // Fixed codes, safe for the AI feedback log (the free-text reason above is not forwarded there).
+        // The free-text reason (ops notes) is deliberately NOT in the payload: it can hold personal data and
+        // "ops notes stay in the backend log only" (docs/product-decisions.md). It is kept in job_events.reason.
+        payload.put("hasReason", reason != null && !reason.isBlank());
+        // Fixed codes, safe for other services and the AI feedback log.
         payload.put("reasonCode", reasonCode == null ? null : reasonCode.name());
         payload.put("faultParty", reasonCode == null ? null : reasonCode.fault().name());
         payload.put("deliveryIssueType", issueType == null ? null : issueType.name());

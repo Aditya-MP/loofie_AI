@@ -22,6 +22,8 @@ loofie:
       send-timeout: 5s
   timers:
     enabled: false                  # tests call DeadlineWorker.runOnce() directly
+  retention:
+    enabled: false                  # tests call RetentionJob.runOnce() directly
   kafka:
     retry:
       initial-interval: 50ms

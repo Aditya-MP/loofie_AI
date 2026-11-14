@@ -1,9 +1,33 @@
 server:
   port: 8081
+  shutdown: graceful            # finish in-flight requests before stopping (deploys, scale-down)
+  tomcat:
+    max-swallow-size: 2MB
+    max-http-form-post-size: 1MB
 
 spring:
   application:
     name: core-service
+  threads:
+    virtual:
+      enabled: true             # Java 25 virtual threads; the DB pool below is the real concurrency limit
+  lifecycle:
+    timeout-per-shutdown-phase: 30s
+  task:
+    scheduling:
+      shutdown:
+        await-termination: true # let a running relay/timer batch finish on shutdown
+        await-termination-period: 25s
+  datasource:
+    hikari:
+      maximum-pool-size: 20
+      minimum-idle: 5
+      connection-timeout: 5000  # ms; a request waits at most 5s for a connection, then gets a 503
+      max-lifetime: 1800000     # 30 min, below typical server / proxy idle cut-offs
+      data-source-properties:
+        # Safety nets: no stuck query, lock wait or forgotten transaction can hold a connection forever.
+        options: "-c statement_timeout=10000 -c lock_timeout=5000 -c idle_in_transaction_session_timeout=60000"
+        reWriteBatchedInserts: true
   jpa:
     open-in-view: false
     hibernate:
@@ -12,12 +36,20 @@ spring:
       hibernate.jdbc.time_zone: UTC
   flyway:
     locations: classpath:db/migration
+    # Migrations run with the pool's 10s statement timeout. A migration that legitimately runs long
+    # (an index build on a big table) starts with:
+    #   SET LOCAL statement_timeout = 0; SET LOCAL lock_timeout = '10s';
+    # SET LOCAL ends with the migration's transaction, so the pooled connection keeps its safety nets.
+    # (Do not use spring.flyway.init-sqls for this: it would leave a pooled connection with no timeout.)
   kafka:
     producer:
       acks: all
       properties:
         enable.idempotence: true
         linger.ms: 5
+        max.block.ms: 5000          # fail fast when the broker is unreachable (default 60s)
+        request.timeout.ms: 5000
+        delivery.timeout.ms: 9000   # must stay below loofie.outbox.relay.send-timeout
     consumer:
       group-id: core-service
       auto-offset-reset: earliest
@@ -31,10 +63,17 @@ loofie:
       poll-interval: 500ms
       batch-size: 100
       send-timeout: 10s
+    monitor-interval: 15s
   timers:
     enabled: true
     poll-interval: 30s
     batch-size: 100
+  retention:
+    enabled: true
+    interval: 10m
+    outbox: 7d
+    inbox: 30d
+    idempotency-keys: 24h
   kafka:
     retry:
       initial-interval: 1s
@@ -45,4 +84,12 @@ management:
   endpoints:
     web:
       exposure:
-        include: health,info
+        include: health,info,prometheus
+  endpoint:
+    health:
+      probes:
+        enabled: true           # /actuator/health/liveness and /readiness for the platform
+      show-details: never
+  metrics:
+    tags:
+      application: core-service

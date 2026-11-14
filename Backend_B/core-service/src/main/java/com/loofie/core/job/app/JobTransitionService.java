@@ -9,6 +9,10 @@ import java.util.UUID;
 
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
+
+import io.micrometer.core.instrument.MeterRegistry;
 
 import com.loofie.core.common.Ids;
 import com.loofie.core.job.domain.Actor;
@@ -20,6 +24,7 @@ import com.loofie.core.job.domain.JobDeadlines;
 import com.loofie.core.job.domain.JobExceptions.ActorNotAllowedException;
 import com.loofie.core.job.domain.JobExceptions.IllegalTransitionException;
 import com.loofie.core.job.domain.JobExceptions.JobNotFoundException;
+import com.loofie.core.job.domain.JobExceptions.StaleJobVersionException;
 import com.loofie.core.job.domain.JobExceptions.TransitionGuardException;
 import com.loofie.core.job.domain.JobStatus;
 import com.loofie.core.job.domain.ReasonCode;
@@ -48,15 +53,17 @@ public class JobTransitionService {
     private final JobEventRecorder recorder;
     private final WorkingCalendar calendar;
     private final Clock clock;
+    private final MeterRegistry meters;
 
     public JobTransitionService(JobRepository jobs, AssignmentRepository assignments, ShipmentRepository shipments,
-                                JobEventRecorder recorder, WorkingCalendar calendar, Clock clock) {
+                                JobEventRecorder recorder, WorkingCalendar calendar, Clock clock, MeterRegistry meters) {
         this.jobs = jobs;
         this.assignments = assignments;
         this.shipments = shipments;
         this.recorder = recorder;
         this.calendar = calendar;
         this.clock = clock;
+        this.meters = meters;
     }
 
     @Transactional
@@ -67,6 +74,9 @@ public class JobTransitionService {
     @Transactional
     public TransitionResult transition(TransitionCommand cmd) {
         Job job = jobs.findById(cmd.jobId()).orElseThrow(() -> new JobNotFoundException(cmd.jobId()));
+        if (cmd.expectedVersion() != null && !cmd.expectedVersion().equals(job.getVersion())) {
+            throw new StaleJobVersionException(job.getId(), cmd.expectedVersion(), job.getVersion());
+        }
         JobStatus start = job.getStatus();
         UUID correlationId = cmd.correlationId() != null ? cmd.correlationId() : Ids.newId();
 
@@ -148,9 +158,24 @@ public class JobTransitionService {
             JobDeadlines.apply(job, now, calendar);
         }
         jobs.saveAndFlush(job); // optimistic lock check happens here; bumps version
+        countAfterCommit(rule.action(), actor);
 
         return recorder.recordStateChange(job, assignmentId, from, rule.action(), actor, reason, reasonCode,
                 job.getDeliveryIssueType(), now, correlationId, causationId);
+    }
+
+    /** Business metric per action; counted only once the transaction really commits. */
+    private void countAfterCommit(JobAction action, Actor actor) {
+        if (!TransactionSynchronizationManager.isSynchronizationActive()) {
+            return;
+        }
+        TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+            @Override
+            public void afterCommit() {
+                meters.counter("loofie.job.transitions", "action", action.name(), "actor", actor.role().name())
+                        .increment();
+            }
+        });
     }
 
     private static boolean isExtension(JobAction action) {

@@ -1,0 +1,23 @@
+# Production profile. Every environment-specific value comes from an environment variable: no
+# secrets or hostnames live in the repository. The app refuses to start if a required one is missing.
+spring:
+  datasource:
+    url: ${CORE_DB_URL}                 # e.g. jdbc:postgresql://db-host:5432/core_db?sslmode=require
+    username: ${CORE_DB_USER}
+    password: ${CORE_DB_PASSWORD}
+    hikari:
+      maximum-pool-size: ${CORE_DB_POOL_SIZE:20}
+  kafka:
+    bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS}
+
+# JSON logs (Elastic Common Schema) so a log platform can search them; every line carries requestId.
+logging:
+  structured:
+    format:
+      console: ecs
+  level:
+    root: INFO
+
+management:
+  server:
+    port: ${MANAGEMENT_PORT:8091}       # metrics and probes on a separate port, never exposed publicly

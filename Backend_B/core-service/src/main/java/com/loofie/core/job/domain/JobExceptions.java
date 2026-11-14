@@ -41,6 +41,21 @@ public final class JobExceptions {
         }
     }
 
+    /** The caller acted on an old view of the job: it has changed since (expectedVersion mismatch). */
+    public static class StaleJobVersionException extends RuntimeException {
+        private final long currentVersion;
+
+        public StaleJobVersionException(UUID jobId, long expected, long current) {
+            super("Job " + jobId + " has changed since you loaded it (version " + expected + ", now " + current
+                    + "); reload and try again");
+            this.currentVersion = current;
+        }
+
+        public long currentVersion() {
+            return currentVersion;
+        }
+    }
+
     /** The transition exists and the actor is allowed, but a business rule blocks it right now. */
     public static class TransitionGuardException extends RuntimeException {
         public TransitionGuardException(String message) {

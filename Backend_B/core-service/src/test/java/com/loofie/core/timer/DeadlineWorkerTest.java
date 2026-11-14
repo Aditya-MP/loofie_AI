@@ -44,6 +44,7 @@ class DeadlineWorkerTest {
     @Autowired AssignmentRepository assignments;
     @Autowired JdbcClient jdbc;
     @Autowired MutableClock clock;
+    @Autowired io.micrometer.core.instrument.MeterRegistry meters;
 
     final Actor ops = Actor.ops(UUID.randomUUID());
 
@@ -189,7 +190,44 @@ class DeadlineWorkerTest {
                 .isInstanceOf(TransitionGuardException.class).hasMessageContaining("review window");
     }
 
+    /** A job that can never move (bad data) must not be retried every run or starve the others. */
+    @Test
+    void aJobThatCannotMoveBacksOffInsteadOfBlockingOthers() {
+        UUID broken = shipped();
+        // auto_start_at says "due", but there is no courier proof, so the engine refuses: a data problem.
+        fixtures.setDeadline(broken, "auto_start_at", clock.instant().minus(Duration.ofMinutes(1)));
+        Seeded healthy = fixtures.jobIn(JobStatus.CREATOR_INVITED);
+        fixtures.setDeadline(healthy.jobId(), "accept_due_at", clock.instant().minus(Duration.ofMinutes(1)));
+
+        double refusedBefore = refused();
+        drain();
+        drain();
+
+        assertThat(status(broken)).isEqualTo(JobStatus.PRODUCT_SHIPPED);
+        assertThat(worker.isBackingOff(broken)).isTrue();
+        assertThat(refused() - refusedBefore).as("tried once, then left alone").isEqualTo(1.0);
+        assertThat(status(healthy.jobId())).isEqualTo(JobStatus.DECLINED);
+
+        clock.advance(DeadlineWorker.FAILURE_BACKOFF.plusSeconds(1));
+        drain();
+        assertThat(refused() - refusedBefore).as("retried after the backoff").isEqualTo(2.0);
+    }
+
+    @Test
+    void theWorkerReportsItsLagAndLastRun() {
+        worker.runOnce();
+        assertThat(meters.get("loofie.timer.last.run.age.seconds").gauge().value()).isZero();
+        clock.advance(Duration.ofMinutes(3));
+        assertThat(meters.get("loofie.timer.last.run.age.seconds").gauge().value()).isEqualTo(180.0);
+    }
+
     // ---- helpers ----
+
+    private double refused() {
+        var counter = meters.find("loofie.timer.actions").tags("action", "AUTO_START_PRODUCTION", "outcome", "refused")
+                .counter();
+        return counter == null ? 0 : counter.count();
+    }
 
     /** Runs the worker until nothing more is due, like the scheduler does. */
     private void drain() {
