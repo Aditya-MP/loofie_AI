@@ -28,6 +28,49 @@ start downloads the e5 model (~470 MB) into the `models` volume; later starts re
   Generate keys with `python -c "import secrets; print(secrets.token_urlsafe(32))"` and send
   them through a password manager, never chat or git.
 
+## Pilot server: this PC + Cloudflare Tunnel
+
+Until there's a cloud GPU server, the pilot runs on the development PC (GTX 1650). A Cloudflare
+Tunnel gives it a public https address without opening ports: `cloudflared` connects outwards.
+
+```powershell
+.\scripts\pilot.ps1          # database + AI service on the GPU + tunnel; prints the public URL
+.\scripts\pilot.ps1 -Stop    # stop the API and the tunnel
+```
+
+**Limits (say them to the backend):** down whenever the PC is off, asleep or restarting; one
+GPU; no rate limiting. Fine for integration testing and the first testers, not for paying brands.
+Set Windows power settings to "never sleep" while it's in use. Logs: `%TEMP%\loofie-pilot`.
+
+**Quick tunnel (default):** no account, but a new random `*.trycloudflare.com` URL on every start.
+Good enough for the backend to test against; it can't be used for Instagram Login, because Meta
+needs the redirect URL registered once and exactly.
+
+**Named tunnel (fixed address, needed for Instagram Login).** Needs a free Cloudflare account and
+a domain whose DNS is on Cloudflare (a `.in` domain costs a few hundred rupees a year). One time:
+
+```powershell
+cloudflared tunnel login                              # opens the browser, pick the domain
+cloudflared tunnel create loofie-ai                   # writes credentials to %USERPROFILE%\.cloudflared
+cloudflared tunnel route dns loofie-ai ai.<your-domain>
+```
+
+Create `%USERPROFILE%\.cloudflared\config.yml`:
+
+```yaml
+tunnel: loofie-ai
+credentials-file: C:\Users\<you>\.cloudflared\<tunnel-id>.json
+ingress:
+  - hostname: ai.<your-domain>
+    service: http://127.0.0.1:8100
+  - service: http_status:404
+```
+
+Then in `.env`: `PILOT_TUNNEL=loofie-ai` and
+`IG_REDIRECT_URI=https://ai.<your-domain>/auth/instagram/callback`, and run `pilot.ps1`. The
+tunnel credentials file is a secret: never commit it. Moving to a cloud server later keeps the
+same address: run `cloudflared` there with the same tunnel, or point the DNS at the server.
+
 ## Instagram Login
 
 1. In the Meta developer app: add the **Instagram** product → *API setup with Instagram login*.
