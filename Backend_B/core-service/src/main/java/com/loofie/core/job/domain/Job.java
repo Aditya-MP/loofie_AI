@@ -51,8 +51,41 @@ public class Job {
     @Column(name = "receipt_prompt_at")
     private Instant receiptPromptAt;
 
-    @Column(name = "receipt_fallback_at")
-    private Instant receiptFallbackAt;
+    @Column(name = "receipt_ops_check_at")
+    private Instant receiptOpsCheckAt;
+
+    // F6 delivery facts (reset when a new creator is put on the job)
+    @Enumerated(EnumType.STRING)
+    @Column(name = "delivery_issue_type", length = 16)
+    private DeliveryIssueType deliveryIssueType;
+
+    @Column(name = "delivery_issue_at")
+    private Instant deliveryIssueAt;
+
+    @Column(name = "first_shipped_at")
+    private Instant firstShippedAt;
+
+    @Column(name = "last_shipped_at")
+    private Instant lastShippedAt;
+
+    @Column(name = "courier_delivered_at")
+    private Instant courierDeliveredAt;
+
+    // F6 deadlines
+    @Column(name = "ship_reminder_at")
+    private Instant shipReminderAt;
+
+    @Column(name = "ship_due_at")
+    private Instant shipDueAt;
+
+    @Column(name = "auto_start_at")
+    private Instant autoStartAt;
+
+    @Column(name = "issue_response_due_at")
+    private Instant issueResponseDueAt;
+
+    @Column(name = "missing_escalate_at")
+    private Instant missingEscalateAt;
 
     @Column(name = "production_due_at")
     private Instant productionDueAt;
@@ -124,14 +157,60 @@ public class Job {
         return creatorExtensionUsed;
     }
 
-    void setDeadlines(Instant acceptDueAt, Instant receiptPromptAt, Instant receiptFallbackAt,
-                      Instant productionDueAt, Instant reviewDueAt, Instant replacementDueAt) {
-        this.acceptDueAt = acceptDueAt;
-        this.receiptPromptAt = receiptPromptAt;
-        this.receiptFallbackAt = receiptFallbackAt;
-        this.productionDueAt = productionDueAt;
-        this.reviewDueAt = reviewDueAt;
-        this.replacementDueAt = replacementDueAt;
+    // ---- F6 delivery facts. Only the transition engine calls these. ----
+
+    /** "Shipped" or a reship: the 7-day missing-parcel rule keeps counting from the first shipment. */
+    public void recordShipped(Instant at) {
+        if (firstShippedAt == null) {
+            firstShippedAt = at;
+        }
+        lastShippedAt = at;
+        courierDeliveredAt = null;
+        clearDeliveryIssue();
+    }
+
+    public void recordCourierDelivered(Instant at) {
+        courierDeliveredAt = at;
+    }
+
+    public void recordDeliveryIssue(DeliveryIssueType type, Instant at) {
+        deliveryIssueType = Objects.requireNonNull(type);
+        deliveryIssueAt = at;
+    }
+
+    public void clearDeliveryIssue() {
+        deliveryIssueType = null;
+        deliveryIssueAt = null;
+    }
+
+    /** A new creator is put on the job: fresh shipment, and their own one free extension. */
+    public void resetForNewCreator() {
+        creatorExtensionUsed = false;
+        firstShippedAt = null;
+        lastShippedAt = null;
+        courierDeliveredAt = null;
+        clearDeliveryIssue();
+    }
+
+    void setDeadlines(DeadlineValues d) {
+        this.acceptDueAt = d.acceptDueAt();
+        this.shipReminderAt = d.shipReminderAt();
+        this.shipDueAt = d.shipDueAt();
+        this.receiptPromptAt = d.receiptPromptAt();
+        this.receiptOpsCheckAt = d.receiptOpsCheckAt();
+        this.autoStartAt = d.autoStartAt();
+        this.issueResponseDueAt = d.issueResponseDueAt();
+        this.missingEscalateAt = d.missingEscalateAt();
+        this.productionDueAt = d.productionDueAt();
+        this.reviewDueAt = d.reviewDueAt();
+        this.replacementDueAt = d.replacementDueAt();
+    }
+
+    /** Every deadline column at once; null means "no such clock running". */
+    record DeadlineValues(Instant acceptDueAt, Instant shipReminderAt, Instant shipDueAt, Instant receiptPromptAt,
+                          Instant receiptOpsCheckAt, Instant autoStartAt, Instant issueResponseDueAt,
+                          Instant missingEscalateAt, Instant productionDueAt, Instant reviewDueAt,
+                          Instant replacementDueAt) {
     }
 
     public UUID getId() {
@@ -170,8 +249,48 @@ public class Job {
         return receiptPromptAt;
     }
 
-    public Instant getReceiptFallbackAt() {
-        return receiptFallbackAt;
+    public Instant getReceiptOpsCheckAt() {
+        return receiptOpsCheckAt;
+    }
+
+    public DeliveryIssueType getDeliveryIssueType() {
+        return deliveryIssueType;
+    }
+
+    public Instant getDeliveryIssueAt() {
+        return deliveryIssueAt;
+    }
+
+    public Instant getFirstShippedAt() {
+        return firstShippedAt;
+    }
+
+    public Instant getLastShippedAt() {
+        return lastShippedAt;
+    }
+
+    public Instant getCourierDeliveredAt() {
+        return courierDeliveredAt;
+    }
+
+    public Instant getShipReminderAt() {
+        return shipReminderAt;
+    }
+
+    public Instant getShipDueAt() {
+        return shipDueAt;
+    }
+
+    public Instant getAutoStartAt() {
+        return autoStartAt;
+    }
+
+    public Instant getIssueResponseDueAt() {
+        return issueResponseDueAt;
+    }
+
+    public Instant getMissingEscalateAt() {
+        return missingEscalateAt;
     }
 
     public Instant getProductionDueAt() {

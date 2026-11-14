@@ -13,9 +13,11 @@ import com.loofie.core.common.Ids;
 import com.loofie.core.events.JobEventLog;
 import com.loofie.core.events.JobEventLog.JobEventRecord;
 import com.loofie.core.job.domain.Actor;
+import com.loofie.core.job.domain.DeliveryIssueType;
 import com.loofie.core.job.domain.Job;
 import com.loofie.core.job.domain.JobAction;
 import com.loofie.core.job.domain.JobStatus;
+import com.loofie.core.job.domain.ReasonCode;
 import com.loofie.core.messaging.EventEnvelope;
 import com.loofie.core.messaging.Outbox;
 import com.loofie.core.messaging.Topics;
@@ -43,7 +45,8 @@ class JobEventRecorder {
 
     @Transactional(propagation = Propagation.MANDATORY)
     UUID recordStateChange(Job job, UUID assignmentId, JobStatus from, JobAction action, Actor actor, String reason,
-                           Instant occurredAt, UUID correlationId, UUID causationId) {
+                           ReasonCode reasonCode, DeliveryIssueType issueType, Instant occurredAt, UUID correlationId,
+                           UUID causationId) {
         UUID eventId = Ids.newId();
 
         // No PII here: this payload feeds the F12 log (LLM training). Ids and states only.
@@ -57,10 +60,15 @@ class JobEventRecorder {
         payload.put("actorType", actor.role().name());
         payload.put("actorId", actor.userId() == null ? null : actor.userId().toString());
         payload.put("reason", reason);
+        // Fixed codes, safe for the AI feedback log (the free-text reason above is not forwarded there).
+        payload.put("reasonCode", reasonCode == null ? null : reasonCode.name());
+        payload.put("faultParty", reasonCode == null ? null : reasonCode.fault().name());
+        payload.put("deliveryIssueType", issueType == null ? null : issueType.name());
 
         eventLog.append(new JobEventRecord(eventId, JOB_STATE_CHANGED, job.getOrderId(), job.getId(), job.getVersion(),
                 assignmentId,
                 actor.role().name(), actor.userId(), action.name(), from.name(), job.getStatus().name(), reason,
+                reasonCode == null ? null : reasonCode.name(),
                 json.writeValueAsString(payload), occurredAt));
 
         EventEnvelope envelope = new EventEnvelope(eventId, JOB_STATE_CHANGED, 1, occurredAt, EventEnvelope.PRODUCER,

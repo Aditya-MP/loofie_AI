@@ -66,15 +66,18 @@ class JobTransitionServiceTest {
         engine.transition(jobId, JobAction.ACCEPT, creatorActor, null);
         assertThat(job(jobId).getAcceptDueAt()).isNull();
 
-        engine.transition(jobId, JobAction.MARK_SHIPPED, brand, null);
-        assertThat(job(jobId).getReceiptFallbackAt()).isEqualTo(clock.instant().plus(JobDeadlines.RECEIPT_FALLBACK_AFTER));
+        engine.transition(TransitionCommand.of(jobId, JobAction.MARK_SHIPPED, brand, null)
+                .with(TransitionDetails.shipment("Delhivery", "DL123456789IN")));
+        assertThat(job(jobId).getReceiptOpsCheckAt()).isEqualTo(clock.instant().plus(JobDeadlines.RECEIPT_OPS_CHECK_AFTER));
+        assertThat(job(jobId).getShipDueAt()).isNull();
 
         clock.advance(Duration.ofHours(30));
-        TransitionResult received = engine.transition(jobId, JobAction.CONFIRM_RECEIVED, creatorActor, null);
+        TransitionResult received = engine.transition(TransitionCommand.of(jobId, JobAction.CONFIRM_RECEIVED, creatorActor,
+                null).with(TransitionDetails.photo("uploads/receipt-1.jpg")));
         assertThat(received.to()).isEqualTo(JobStatus.IN_PRODUCTION);
         assertThat(received.eventIds()).hasSize(2); // SHIPPED -> RECEIVED, then RECEIVED -> IN_PRODUCTION
         assertThat(job(jobId).getProductionDueAt()).isEqualTo(clock.instant().plus(JobDeadlines.PRODUCTION_WINDOW));
-        assertThat(job(jobId).getReceiptFallbackAt()).isNull();
+        assertThat(job(jobId).getReceiptOpsCheckAt()).isNull();
 
         engine.transition(jobId, JobAction.SUBMIT_DRAFT, creatorActor, null);
         engine.transition(jobId, JobAction.PREVIEW_READY, Actor.system(), null);
@@ -109,7 +112,7 @@ class JobTransitionServiceTest {
         assertThat(accepted.to()).isEqualTo(JobStatus.IN_PRODUCTION);
         assertThat(accepted.eventIds()).hasSize(2); // INVITED -> ACCEPTED, then ACCEPTED -> IN_PRODUCTION
         assertThat(job(jobId).getProductionDueAt()).isEqualTo(clock.instant().plus(JobDeadlines.PRODUCTION_WINDOW));
-        assertThat(job(jobId).getReceiptFallbackAt()).isNull();
+        assertThat(job(jobId).getShipDueAt()).isNull();
         assertThat(eventPath(jobId)).endsWith("CREATOR_INVITED>CREATOR_ACCEPTED", "CREATOR_ACCEPTED>IN_PRODUCTION");
         assertThat(actionsOf(jobId)).endsWith("ACCEPT", "START_DIGITAL");
         assertOutboxMirrorsEvents(jobId);
@@ -159,6 +162,22 @@ class JobTransitionServiceTest {
         assertThatThrownBy(() -> engine.transition(jobId, JobAction.REQUEST_EXTENSION, Actor.creator(creator), null))
                 .isInstanceOf(TransitionGuardException.class)
                 .hasMessageContaining("already used");
+    }
+
+    @Test
+    void replacementCreatorGetsTheirOwnExtension() {
+        UUID first = UUID.randomUUID();
+        UUID jobId = jobInProductionWith(first);
+        engine.transition(jobId, JobAction.REQUEST_EXTENSION, Actor.creator(first), null);
+        engine.transition(jobId, JobAction.PRODUCTION_EXPIRED, Actor.system(), null);
+
+        UUID second = UUID.randomUUID();
+        engine.transition(TransitionCommand.of(jobId, JobAction.APPROVE_SWAP, brand, null).withCreator(second));
+        assertThat(job(jobId).isCreatorExtensionUsed()).isFalse();
+
+        engine.transition(jobId, JobAction.ACCEPT, Actor.creator(second), null); // digital-only: straight to production
+        engine.transition(jobId, JobAction.REQUEST_EXTENSION, Actor.creator(second), null);
+        assertThat(job(jobId).isCreatorExtensionUsed()).isTrue();
     }
 
     @Test

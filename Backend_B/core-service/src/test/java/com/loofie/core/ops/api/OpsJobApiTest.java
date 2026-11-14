@@ -3,7 +3,9 @@ package com.loofie.core.ops.api;
 import static org.hamcrest.Matchers.hasSize;
 import static org.hamcrest.Matchers.is;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -35,6 +37,7 @@ class OpsJobApiTest {
     @Autowired JobFixtures fixtures;
     @Autowired JobTransitionService engine;
     @Autowired MutableClock clock;
+    @Autowired com.loofie.core.job.infra.JobRepository jobRepo;
 
     final UUID opsUser = UUID.randomUUID();
 
@@ -147,6 +150,86 @@ class OpsJobApiTest {
                         .header("X-Dev-Org-Id", UUID.randomUUID().toString())
                         .contentType(MediaType.APPLICATION_JSON).content("{\"action\":\"CANCEL\",\"reason\":\"x\"}"))
                 .andExpect(status().isForbidden());
+    }
+
+    @Test
+    void opsEditsTheHolidayTable() throws Exception {
+        String body = "{\"date\":\"2027-11-01\",\"stateCode\":\"KA\",\"name\":\"Karnataka Rajyotsava\"}";
+        mvc.perform(asOps(put("/api/core/ops/holidays")).contentType(MediaType.APPLICATION_JSON).content(body))
+                .andExpect(status().isCreated());
+        mvc.perform(asOps(put("/api/core/ops/holidays")).contentType(MediaType.APPLICATION_JSON).content(body))
+                .andExpect(status().isOk());
+
+        mvc.perform(asOps(get("/api/core/ops/holidays")).param("year", "2027"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$[?(@.stateCode == 'KA')].name", hasSize(1)));
+
+        mvc.perform(put("/api/core/ops/holidays")
+                        .header("X-Dev-Role", "BRAND_ADMIN")
+                        .header("X-Dev-User-Id", UUID.randomUUID().toString())
+                        .header("X-Dev-Org-Id", UUID.randomUUID().toString())
+                        .contentType(MediaType.APPLICATION_JSON).content(body))
+                .andExpect(status().isForbidden());
+
+        mvc.perform(asOps(delete("/api/core/ops/holidays/2027-11-01")).param("stateCode", "KA"))
+                .andExpect(status().isNoContent());
+        mvc.perform(asOps(delete("/api/core/ops/holidays/2027-11-01")).param("stateCode", "KA"))
+                .andExpect(status().isNotFound());
+    }
+
+    @Test
+    void shippingThroughTheApiNeedsTrackingAndShowsInTheDetail() throws Exception {
+        Seeded job = fixtures.jobIn(JobStatus.CREATOR_ACCEPTED);
+        UUID brandUser = UUID.randomUUID();
+
+        mvc.perform(post("/api/core/jobs/{id}/transitions", job.jobId())
+                        .header("X-Dev-Role", "BRAND_MEMBER")
+                        .header("X-Dev-User-Id", brandUser.toString())
+                        .header("X-Dev-Org-Id", job.brandOrgId().toString())
+                        .contentType(MediaType.APPLICATION_JSON).content("{\"action\":\"MARK_SHIPPED\",\"courier\":\"Delhivery\"}"))
+                .andExpect(status().isUnprocessableContent());
+
+        mvc.perform(post("/api/core/jobs/{id}/transitions", job.jobId())
+                        .header("X-Dev-Role", "BRAND_MEMBER")
+                        .header("X-Dev-User-Id", brandUser.toString())
+                        .header("X-Dev-Org-Id", job.brandOrgId().toString())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"action\":\"MARK_SHIPPED\",\"courier\":\"Delhivery\",\"trackingNumber\":\"DL42\"}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.to", is("PRODUCT_SHIPPED")));
+
+        mvc.perform(post("/api/core/jobs/{id}/transitions", job.jobId())
+                        .header("X-Dev-Role", "CREATOR")
+                        .header("X-Dev-User-Id", job.creatorId().toString())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"action\":\"REPORT_DELIVERY_ISSUE\",\"issueType\":\"DAMAGED\"}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.to", is("DELIVERY_ISSUE")));
+
+        mvc.perform(asOps(get("/api/core/ops/jobs/{id}", job.jobId())))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.deliveryIssueType", is("DAMAGED")))
+                .andExpect(jsonPath("$.shipments", hasSize(1)))
+                .andExpect(jsonPath("$.shipments[0].trackingNumber", is("DL42")))
+                .andExpect(jsonPath("$.deadlines[0].name", is("issue_response_due_at")));
+    }
+
+    @Test
+    void aPassedReminderIsNotOverdueButAMissedShippingDeadlineIs() throws Exception {
+        Seeded job = fixtures.jobIn(JobStatus.CREATOR_INVITED);
+        engine.transition(job.jobId(), JobAction.ACCEPT, Actor.creator(job.creatorId()), null);
+        var accepted = jobRepo.findById(job.jobId()).orElseThrow();
+
+        clock.set(accepted.getShipReminderAt().plusSeconds(60));
+        mvc.perform(asOps(get("/api/core/ops/jobs")).param("brandOrgId", job.brandOrgId().toString()).param("overdue", "true"))
+                .andExpect(jsonPath("$.total", is(0)));
+        mvc.perform(asOps(get("/api/core/ops/jobs/{id}", job.jobId())))
+                .andExpect(jsonPath("$.job.nextDeadline.name", is("ship_reminder_at")))
+                .andExpect(jsonPath("$.job.nextDeadline.overdue", is(false)));
+
+        clock.set(accepted.getShipDueAt().plusSeconds(60));
+        mvc.perform(asOps(get("/api/core/ops/jobs")).param("brandOrgId", job.brandOrgId().toString()).param("overdue", "true"))
+                .andExpect(jsonPath("$.total", is(1)));
     }
 
     private MockHttpServletRequestBuilder asOps(MockHttpServletRequestBuilder request) {

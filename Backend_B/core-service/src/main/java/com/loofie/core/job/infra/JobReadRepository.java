@@ -10,6 +10,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 import java.util.UUID;
 
 import org.springframework.jdbc.core.simple.JdbcClient;
@@ -18,6 +19,7 @@ import org.springframework.stereotype.Repository;
 import com.loofie.core.job.app.JobViews.AssignmentView;
 import com.loofie.core.job.app.JobViews.EventView;
 import com.loofie.core.job.app.JobViews.JobFilter;
+import com.loofie.core.job.app.JobViews.ShipmentView;
 import com.loofie.core.job.domain.JobStatus;
 
 /** SQL read side for the ops console. Never writes. */
@@ -25,25 +27,32 @@ import com.loofie.core.job.domain.JobStatus;
 public class JobReadRepository {
 
     /** Deadline columns in display order. */
-    public static final List<String> DEADLINE_COLUMNS = List.of("accept_due_at", "receipt_prompt_at",
-            "receipt_fallback_at", "production_due_at", "review_due_at", "replacement_due_at");
+    public static final List<String> DEADLINE_COLUMNS = List.of("accept_due_at", "ship_reminder_at", "ship_due_at",
+            "receipt_prompt_at", "receipt_ops_check_at", "auto_start_at", "issue_response_due_at", "missing_escalate_at",
+            "production_due_at", "review_due_at", "replacement_due_at");
 
     private static final String SELECT = """
             SELECT j.id, j.order_id, j.brand_org_id, j.status, j.digital_only, j.creator_fee_paise,
                    j.free_revision_used, j.updated_at, j.version, a.creator_id AS active_creator_id,
-                   j.accept_due_at, j.receipt_prompt_at, j.receipt_fallback_at, j.production_due_at,
-                   j.review_due_at, j.replacement_due_at
+                   j.delivery_issue_type, j.accept_due_at, j.ship_reminder_at, j.ship_due_at, j.receipt_prompt_at,
+                   j.receipt_ops_check_at, j.auto_start_at, j.issue_response_due_at, j.missing_escalate_at,
+                   j.production_due_at, j.review_due_at, j.replacement_due_at
             FROM jobs j
             LEFT JOIN assignments a ON a.job_id = j.id AND a.status = 'ACTIVE'
             """;
 
-    private static final String EARLIEST_DEADLINE = "LEAST(j.accept_due_at, j.receipt_prompt_at, j.receipt_fallback_at, "
-            + "j.production_due_at, j.review_due_at, j.replacement_due_at)";
+    /** Reminder times: shown to ops, but passing one does not make a job overdue. */
+    public static final Set<String> REMINDER_COLUMNS = Set.of("ship_reminder_at", "receipt_prompt_at");
+
+    // Reminder times (ship_reminder_at, receipt_prompt_at) are not deadlines, so they never make a job overdue.
+    private static final String EARLIEST_DEADLINE = "LEAST(j.accept_due_at, j.ship_due_at, j.receipt_ops_check_at, "
+            + "j.auto_start_at, j.issue_response_due_at, j.missing_escalate_at, j.production_due_at, j.review_due_at, "
+            + "j.replacement_due_at)";
 
     /** One job row as stored, with its deadlines keyed by column name (only non-null ones). */
     public record JobRow(UUID id, UUID orderId, UUID brandOrgId, JobStatus status, boolean digitalOnly,
                          long creatorFeePaise, boolean freeRevisionUsed, Instant updatedAt, long version,
-                         UUID activeCreatorId, Map<String, Instant> deadlines) {
+                         UUID activeCreatorId, String deliveryIssueType, Map<String, Instant> deadlines) {
     }
 
     private final JdbcClient jdbc;
@@ -83,6 +92,19 @@ public class JobReadRepository {
                 .query((rs, n) -> new AssignmentView(rs.getObject("id", UUID.class), rs.getObject("creator_id", UUID.class),
                         rs.getString("status"), rs.getString("close_reason"), instant(rs, "opened_at"),
                         instant(rs, "closed_at")))
+                .list();
+    }
+
+    public List<ShipmentView> shipments(UUID jobId) {
+        return jdbc.sql("""
+                SELECT attempt, courier, tracking_number, shipped_at, courier_delivered_at, received_at,
+                       receipt_photo_ref IS NOT NULL AS has_photo
+                FROM shipments WHERE job_id = :id ORDER BY attempt
+                """)
+                .param("id", jobId)
+                .query((rs, n) -> new ShipmentView(rs.getInt("attempt"), rs.getString("courier"),
+                        rs.getString("tracking_number"), instant(rs, "shipped_at"), instant(rs, "courier_delivered_at"),
+                        instant(rs, "received_at"), rs.getBoolean("has_photo")))
                 .list();
     }
 
@@ -138,7 +160,7 @@ public class JobReadRepository {
                 rs.getObject("brand_org_id", UUID.class), JobStatus.valueOf(rs.getString("status")),
                 rs.getBoolean("digital_only"), rs.getLong("creator_fee_paise"), rs.getBoolean("free_revision_used"),
                 instant(rs, "updated_at"), rs.getLong("version"), rs.getObject("active_creator_id", UUID.class),
-                deadlines);
+                rs.getString("delivery_issue_type"), deadlines);
     }
 
     private static Instant instant(ResultSet rs, String column) throws SQLException {

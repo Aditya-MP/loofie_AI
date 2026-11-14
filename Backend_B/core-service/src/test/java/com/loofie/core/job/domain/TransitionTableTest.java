@@ -49,7 +49,7 @@ class TransitionTableTest {
     @Test
     void timerAndFinanceDrivenActionsAreSystemOnly() {
         for (JobAction a : EnumSet.of(JobAction.PAYMENT_CONFIRMED, JobAction.ACCEPT_TIMEOUT, JobAction.AUTO_APPROVE,
-                JobAction.RECEIPT_FALLBACK, JobAction.PRODUCTION_EXPIRED, JobAction.REPLACEMENT_EXPIRED,
+                JobAction.AUTO_START_PRODUCTION, JobAction.PRODUCTION_EXPIRED, JobAction.REPLACEMENT_EXPIRED,
                 JobAction.PAYOUT_QUEUED, JobAction.PAYOUT_COMPLETED, JobAction.PREVIEW_READY)) {
             assertThat(TransitionTable.rolesFor(a)).as("roles for %s", a).containsExactly(ActorRole.SYSTEM);
         }

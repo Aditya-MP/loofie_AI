@@ -49,16 +49,20 @@ public class JobQueryService {
         JobRow row = repo.findById(jobId).orElseThrow(() -> new JobNotFoundException(jobId));
         Instant now = clock.instant();
         List<Deadline> deadlines = row.deadlines().entrySet().stream()
-                .map(e -> new Deadline(e.getKey(), e.getValue(), e.getValue().isBefore(now)))
+                .map(e -> deadline(e.getKey(), e.getValue(), now))
                 .toList();
-        return new JobDetail(summary(row, now), row.freeRevisionUsed(), deadlines, repo.assignments(jobId),
-                repo.events(jobId));
+        return new JobDetail(summary(row, now), row.freeRevisionUsed(), row.deliveryIssueType(), deadlines,
+                repo.assignments(jobId), repo.shipments(jobId), repo.events(jobId));
+    }
+
+    private static Deadline deadline(String name, Instant at, Instant now) {
+        return new Deadline(name, at, at.isBefore(now) && !JobReadRepository.REMINDER_COLUMNS.contains(name));
     }
 
     private static JobSummary summary(JobRow r, Instant now) {
         Deadline next = r.deadlines().entrySet().stream()
                 .min(Map.Entry.comparingByValue(Comparator.naturalOrder()))
-                .map(e -> new Deadline(e.getKey(), e.getValue(), e.getValue().isBefore(now)))
+                .map(e -> deadline(e.getKey(), e.getValue(), now))
                 .orElse(null);
         return new JobSummary(r.id(), r.orderId(), r.brandOrgId(), r.status(), r.digitalOnly(), r.creatorFeePaise(),
                 r.activeCreatorId(), next, r.updatedAt(), r.version());

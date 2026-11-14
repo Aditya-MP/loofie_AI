@@ -60,6 +60,14 @@ The reliability score counts only CREATOR-fault codes. If `OTHER` goes above abo
 
 **Brand ships late and the creator drops out:** a free replacement creator is offered first. If the brand wants a refund, the creator's amount comes back in cash and the Loofie fee as **credit** for its next booking. GST on the credit needs the CA.
 
+**Built (core-service, migration V3).** Until the open points below are answered, these defaults apply:
+- The review clock stays **120 calendar hours**. The 48h tracking window and the 7-day missing rule are **calendar** time.
+- Shipping deadlines skip **national** holidays only, because the brand pickup state is not known yet. The holiday table already has the state column.
+- The holiday table is seeded only with fixed-date national holidays (26 Jan, 15 Aug, 2 Oct, for 2026–27). **Ops must add Diwali, Holi and state holidays**, because their dates change every year.
+- The receipt photo is a reference string until F7 upload exists.
+- Default reason code when a creator withdraws: brand late → `BRAND_LATE_SHIP`; after `NOT_RECEIVED` → `COURIER_LOST`; after `DAMAGED` → `DAMAGED_IN_TRANSIT`; after `WRONG_ITEM` → `WRONG_ITEM_SENT`. Ops can pick another code with `OPS_RELEASE_CREATOR`.
+- No timer worker yet: deadlines are stored and shown in the ops console, but nothing acts on them automatically.
+
 **Open**
 - **Founder sign-off:** Foundation v2 says production and review windows are both "120 calendar hours", and that the clock auto-starts 24 hours after the 3-day receipt reminder. The new rules change both (review in working days; auto-start only on courier "Delivered").
 - **Review clock length:** "5 working days"? And which state's holidays apply: the brand's?

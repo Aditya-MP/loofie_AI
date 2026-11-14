@@ -73,7 +73,7 @@ public class JobFixtures {
 
     private static boolean hasActiveCreator(JobStatus s) {
         return switch (s) {
-            case CREATOR_INVITED, CREATOR_ACCEPTED, PRODUCT_SHIPPED, PRODUCT_RECEIVED, IN_PRODUCTION,
+            case CREATOR_INVITED, CREATOR_ACCEPTED, PRODUCT_SHIPPED, DELIVERY_ISSUE, PRODUCT_RECEIVED, IN_PRODUCTION,
                  DRAFT_SUBMITTED, IN_REVIEW, REVISION_REQUESTED, APPROVED, DISPUTED, PAYOUT_PENDING,
                  PAID_OUT, CLOSED -> true;
             default -> false;

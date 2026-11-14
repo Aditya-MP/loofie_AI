@@ -37,8 +37,13 @@ public final class JobViews {
                             @JsonRawValue String payload) {
     }
 
-    public record JobDetail(JobSummary job, boolean freeRevisionUsed, List<Deadline> deadlines,
-                            List<AssignmentView> assignments, List<EventView> timeline) {
+    /** One shipment attempt (F6). A reship adds another. */
+    public record ShipmentView(int attempt, String courier, String trackingNumber, Instant shippedAt,
+                               Instant courierDeliveredAt, Instant receivedAt, boolean hasReceiptPhoto) {
+    }
+
+    public record JobDetail(JobSummary job, boolean freeRevisionUsed, String deliveryIssueType, List<Deadline> deadlines,
+                            List<AssignmentView> assignments, List<ShipmentView> shipments, List<EventView> timeline) {
     }
 
     public record Page<T>(List<T> items, int page, int size, long total) {

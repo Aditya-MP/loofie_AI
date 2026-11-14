@@ -42,11 +42,24 @@ public final class TransitionTable {
         add(CREATOR_INVITED, ACCEPT_TIMEOUT, DECLINED, SYSTEM);
         add(DECLINED, APPROVE_SWAP, CREATOR_INVITED, BRAND_ADMIN);
 
-        // Product (F6) or digital-only start
-        add(CREATOR_ACCEPTED, MARK_SHIPPED, PRODUCT_SHIPPED, BRAND_ADMIN, BRAND_MEMBER);
+        // Product delivery (F6) or digital-only start. Rules: docs/product-decisions.md "Product delivery".
+        add(CREATOR_ACCEPTED, MARK_SHIPPED, PRODUCT_SHIPPED, BRAND_ADMIN, BRAND_MEMBER); // needs courier + tracking
         add(CREATOR_ACCEPTED, START_DIGITAL, IN_PRODUCTION, SYSTEM); // runs automatically after ACCEPT on digital-only jobs
-        addThen(PRODUCT_SHIPPED, CONFIRM_RECEIVED, PRODUCT_RECEIVED, START_PRODUCTION, CREATOR);
-        addThen(PRODUCT_SHIPPED, RECEIPT_FALLBACK, PRODUCT_RECEIVED, START_PRODUCTION, SYSTEM);
+        add(CREATOR_ACCEPTED, CREATOR_WITHDRAW, REPLACEMENT_NEEDED, CREATOR); // only once the brand is late shipping
+        // Creator's three buttons
+        addThen(PRODUCT_SHIPPED, CONFIRM_RECEIVED, PRODUCT_RECEIVED, START_PRODUCTION, CREATOR); // needs a photo
+        add(PRODUCT_SHIPPED, REPORT_DELIVERY_ISSUE, DELIVERY_ISSUE, CREATOR); // not received / damaged / wrong item
+        // Courier proof: ops by hand in the pilot, a tracking service later. The state does not change.
+        add(PRODUCT_SHIPPED, COURIER_DELIVERED, PRODUCT_SHIPPED, OPS, SYSTEM);
+        // Auto-start only 24h after courier "Delivered" with no problem reported. Never without courier proof.
+        addThen(PRODUCT_SHIPPED, AUTO_START_PRODUCTION, PRODUCT_RECEIVED, START_PRODUCTION, SYSTEM);
+        add(PRODUCT_SHIPPED, OPS_RELEASE_CREATOR, REPLACEMENT_NEEDED, OPS);
+        // Resolving a delivery issue (production clock stays stopped while here)
+        add(DELIVERY_ISSUE, RESHIP, PRODUCT_SHIPPED, BRAND_ADMIN, BRAND_MEMBER); // at the brand's cost, new tracking
+        addThen(DELIVERY_ISSUE, CONFIRM_RECEIVED, PRODUCT_RECEIVED, START_PRODUCTION, CREATOR); // it turned up after all
+        addThen(DELIVERY_ISSUE, RESOLVE_FALSE_CLAIM, PRODUCT_RECEIVED, START_PRODUCTION, OPS); // courier proof beats the claim
+        add(DELIVERY_ISSUE, CREATOR_WITHDRAW, REPLACEMENT_NEEDED, CREATOR); // only 7 days after the first "Shipped"
+        add(DELIVERY_ISSUE, OPS_RELEASE_CREATOR, REPLACEMENT_NEEDED, OPS);
         add(PRODUCT_RECEIVED, START_PRODUCTION, IN_PRODUCTION, SYSTEM);
 
         // Production and review (F7)
