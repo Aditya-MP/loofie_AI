@@ -1,0 +1,7 @@
+spring:
+  datasource:
+    url: jdbc:postgresql://localhost:5432/core_db
+    username: core_app
+    password: ${CORE_DB_PASSWORD:core_local}
+  kafka:
+    bootstrap-servers: localhost:9092
