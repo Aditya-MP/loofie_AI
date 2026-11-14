@@ -107,8 +107,14 @@ Rules:
 
 | Situation | Decision |
 |---|---|
-| **Product clock** | The brand clicks "Shipped" (courier tracking number optional). The 5-day (120-hour) shooting clock starts when the creator taps "Product received" with a photo. Fallback: no confirmation 3 days after "Shipped" → the creator is asked to confirm or report non-delivery; still no answer 24 hours later → the clock starts by itself and ops is alerted. Digital-only briefs (no product) skip the clock. Automatic courier tracking (Shiprocket, read-only on the brand's own tracking numbers) is Phase 2, built only when brands ask for it. |
-| **Product not received** | The brand gets 48 hours to share tracking or reship at its own cost. No tracking, or still missing after 7 days → ops steps in, the creator may withdraw with no penalty, the slot is replaced or refunded. **[CONFIRM]** the 7 days against real shipping times. |
+| **Brand ships on time** | The brand must ship within **3 working days** of the creator accepting. Reminder after 2 days. Missed → the job is marked late, and the creator may drop out with no penalty (the slot is replaced or refunded). |
+| **"Shipped" needs proof** | The brand can't click "Shipped" without a **courier name and tracking number**. That's what settles every later "not received" dispute. |
+| **Product clock** | The 5-day (120-hour) shooting clock starts when the creator taps **"Received"** with a photo of the product. Digital-only briefs (no product) skip the clock. |
+| **Creator doesn't tap anything** | The clock starts by itself **only when the courier shows "Delivered"** and the creator hasn't reported a problem within 24 hours. Without courier proof it never starts by itself: the creator is reminded, then ops checks. A slow courier to a small town never makes the creator late. |
+| **Creator's three buttons** | **Received** (clock starts) · **Not received** (clock stays stopped, brand asked for tracking) · **Damaged / wrong item** (clock stays stopped, brand asked to reship). |
+| **Product not received** | The brand gets 48 hours to show tracking or reship at its own cost. Still missing after 7 days from "Shipped" → ops steps in, the creator may withdraw with no penalty, the slot is replaced or refunded. **[CONFIRM]** the 7 days against the first real shipments. |
+| **False "not received"** | Courier "Delivered" (plus the delivery OTP where the courier uses one) is the proof. Ops decides. A creator found making a false claim gets a `job_state_changed` event with the reason, which lowers their reliability score. |
+| **How tracking is checked** | **Pilot:** ops opens the tracking link by hand. **From about 50 jobs a month:** a multi-courier tracking service (for example Ship24, about $9/month for 200 shipments) follows the brand's own tracking numbers and tells us on "Delivered". Brands keep their own courier; nothing to switch. **[CONFIRM]** accuracy with 5 real Indian tracking numbers first. |
 | **Deadline extension** | The system gives one 48-hour extension automatically if the creator asks before the deadline. Any further extension is ops only. |
 | **Creator ghosts** | After the deadline plus the extension, the job becomes `REPLACEMENT_NEEDED`. Ops offers the next creator from the shortlist. No one can deliver within 10 days → refund for that slot. |
 | **Brand silent on a draft** | Auto-approved after 5 days, so creators never wait forever. |
@@ -152,5 +158,7 @@ policy (needed for Meta App Review), one hour with a CA on refunds and TDS.
 
 ## Change log
 
+- 2026-11-14: Shipping rules: brand ships in 3 working days, tracking number required, clock
+  auto-starts only on courier "Delivered", damaged/wrong-item button, tracking service plan.
 - 2026-11-14: First version: ownership split, two event logs, Instagram Login, agency money
   model, job rules, cancellation refunds, approvals.
