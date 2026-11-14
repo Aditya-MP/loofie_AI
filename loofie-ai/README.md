@@ -7,6 +7,7 @@ Stack: Python 3.13 · uv · PyTorch 2.15 (CUDA 13.2) · sentence-transformers 6 
 SQLAlchemy 2.1 · psycopg 3 · PostgreSQL 18 + pgvector · Alembic · pytest · ruff.
 Architecture: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md). Backend contract: [docs/API.md](docs/API.md).
 Deploying, promoting model versions, backups, logs: [docs/OPERATIONS.md](docs/OPERATIONS.md).
+Product decisions (who builds what, money, job rules, refunds): [docs/DECISIONS.md](docs/DECISIONS.md).
 
 ## Setup
 
