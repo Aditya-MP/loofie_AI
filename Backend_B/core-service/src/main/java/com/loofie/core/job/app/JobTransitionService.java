@@ -69,12 +69,26 @@ public class JobTransitionService {
         eventIds.add(eventId);
 
         // Automatic follow-ups (e.g. PRODUCT_RECEIVED -> IN_PRODUCTION) run as SYSTEM in the same transaction.
-        while (rule.followUp() != null) {
-            rule = requireRule(job.getStatus(), rule.followUp());
+        for (JobAction next = followUpFor(job, rule); next != null; next = followUpFor(job, rule)) {
+            rule = requireRule(job.getStatus(), next);
             eventId = applyStep(job, rule, Actor.system(), null, null, correlationId, eventId);
             eventIds.add(eventId);
         }
         return new TransitionResult(job.getId(), start, job.getStatus(), job.getVersion(), eventIds);
+    }
+
+    /**
+     * The table's fixed follow-up, plus follow-ups that depend on the job itself.
+     * F6: a digital-only job has no product to ship, so accepting it starts production straight away.
+     */
+    private static JobAction followUpFor(Job job, TransitionRule rule) {
+        if (rule.followUp() != null) {
+            return rule.followUp();
+        }
+        if (rule.action() == JobAction.ACCEPT && job.isDigitalOnly()) {
+            return JobAction.START_DIGITAL;
+        }
+        return null;
     }
 
     private static TransitionRule requireRule(JobStatus from, JobAction action) {

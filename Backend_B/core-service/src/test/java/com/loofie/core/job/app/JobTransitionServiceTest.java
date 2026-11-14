@@ -97,15 +97,45 @@ class JobTransitionServiceTest {
     }
 
     @Test
-    void digitalOnlyJobSkipsShipping() {
+    void digitalOnlyJobStartsProductionWhenTheCreatorAccepts() {
+        UUID creator = UUID.randomUUID();
+        UUID jobId = submitOneJob(true);
+        engine.transition(jobId, JobAction.PAYMENT_CONFIRMED, Actor.system(), null);
+        engine.transition(TransitionCommand.of(jobId, JobAction.INVITE, ops, "invite").withCreator(creator));
+
+        TransitionResult accepted = engine.transition(jobId, JobAction.ACCEPT, Actor.creator(creator), null);
+
+        assertThat(accepted.to()).isEqualTo(JobStatus.IN_PRODUCTION);
+        assertThat(accepted.eventIds()).hasSize(2); // INVITED -> ACCEPTED, then ACCEPTED -> IN_PRODUCTION
+        assertThat(job(jobId).getProductionDueAt()).isEqualTo(clock.instant().plus(JobDeadlines.PRODUCTION_WINDOW));
+        assertThat(job(jobId).getReceiptFallbackAt()).isNull();
+        assertThat(eventPath(jobId)).endsWith("CREATOR_INVITED>CREATOR_ACCEPTED", "CREATOR_ACCEPTED>IN_PRODUCTION");
+        assertThat(actionsOf(jobId)).endsWith("ACCEPT", "START_DIGITAL");
+        assertOutboxMirrorsEvents(jobId);
+    }
+
+    @Test
+    void physicalJobWaitsForShippingAfterAccept() {
+        UUID creator = UUID.randomUUID();
+        UUID jobId = submitOneJob(false);
+        engine.transition(jobId, JobAction.PAYMENT_CONFIRMED, Actor.system(), null);
+        engine.transition(TransitionCommand.of(jobId, JobAction.INVITE, ops, "invite").withCreator(creator));
+
+        TransitionResult accepted = engine.transition(jobId, JobAction.ACCEPT, Actor.creator(creator), null);
+
+        assertThat(accepted.to()).isEqualTo(JobStatus.CREATOR_ACCEPTED);
+        assertThat(accepted.eventIds()).hasSize(1);
+        assertThatThrownBy(() -> engine.transition(jobId, JobAction.START_DIGITAL, Actor.system(), null))
+                .isInstanceOf(TransitionGuardException.class);
+    }
+
+    @Test
+    void digitalOnlyJobCannotBeMarkedShipped() {
         Seeded seeded = fixtures.jobIn(JobStatus.CREATOR_ACCEPTED, true, false);
 
         assertThatThrownBy(() -> engine.transition(seeded.jobId(), JobAction.MARK_SHIPPED,
                 Actor.brandAdmin(UUID.randomUUID(), seeded.brandOrgId()), null))
                 .isInstanceOf(TransitionGuardException.class);
-
-        TransitionResult r = engine.transition(seeded.jobId(), JobAction.START_DIGITAL, Actor.system(), null);
-        assertThat(r.to()).isEqualTo(JobStatus.IN_PRODUCTION);
     }
 
     @Test
@@ -241,6 +271,13 @@ class JobTransitionServiceTest {
         return jdbc.sql("SELECT from_state, to_state FROM job_events WHERE job_id = ? ORDER BY job_version")
                 .param(jobId)
                 .query((rs, n) -> rs.getString(1) + ">" + rs.getString(2))
+                .list();
+    }
+
+    private List<String> actionsOf(UUID jobId) {
+        return jdbc.sql("SELECT action FROM job_events WHERE job_id = ? ORDER BY job_version")
+                .param(jobId)
+                .query(String.class)
                 .list();
     }
 
