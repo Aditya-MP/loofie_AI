@@ -116,7 +116,7 @@ Rules:
 | **Creator doesn't tap anything** | The clock starts by itself **only when the courier shows "Delivered"** and the creator hasn't reported a problem within 24 hours. Without courier proof it never starts by itself: the creator is reminded, then ops checks. A slow courier to a small town never makes the creator late. |
 | **Creator's three buttons** | **Received** (clock starts) · **Not received** (clock stays stopped, brand asked for tracking) · **Damaged / wrong item** (clock stays stopped, brand asked to reship). |
 | **Job state for problems** | One state, `DELIVERY_ISSUE`, with `issue_type`: `NOT_RECEIVED` / `DAMAGED` / `WRONG_ITEM`. The clock is stopped while a job is in it. |
-| **Reason codes** | Disputes and drop-outs carry a **reason code, never free text**, in `job_state_changed` (`reason`), each with a fixed **fault party** (table below). Ops notes stay in the backend log only (free text can hold personal details). New codes: add them here first. If `OTHER` is above ~10% in a month, add a code. |
+| **Reason codes** | Disputes and drop-outs carry a **reason code, never free text**, in `job_state_changed` as `reasonCode`, with its fixed **fault party** as `faultParty` (table below; field names match core-service). Ops notes stay in the backend log only (free text can hold personal details). New codes: add them here first. If `OTHER` is above ~10% in a month, add a code. |
 | **Who sets `FALSE_CLAIM`** | **Ops only**, never the system: it accuses a creator of lying. |
 
 | Reason code | Fault | Counts against creator reliability? |

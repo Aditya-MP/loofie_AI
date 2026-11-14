@@ -193,7 +193,7 @@ Response:
 | `ops_removed_creator` | `creator`, `reason` |
 | `quality_override` | `creator`, `label` |
 | `niche_override` | `creator`, `sub_niche` |
-| `job_state_changed` | `creator`, `job_id`, `from`, `to` (+ `brief_ref`, `deadline_at` when known) |
+| `job_state_changed` | `creator`, `job_id`, `from`, `to` (+ `brief_ref`, `deadline_at` when known; `issue_type` for `DELIVERY_ISSUE`; `reasonCode` + `faultParty` on disputes and drop-outs, codes from `DECISIONS.md` section 5) |
 | `job_outcome` | `creator`, `job_id`, `on_time` (true/false) (+ `revisions`, `disputed`, `replaced`, `rating`) |
 | `video_performance` | `creator`, `job_id`, `result`: `winner` / `average` / `loser` |
 | `rating` | `creator`, `stars` |
