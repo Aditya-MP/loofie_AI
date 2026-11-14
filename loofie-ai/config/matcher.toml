@@ -1,0 +1,95 @@
+# Model 2 (Matcher) settings. Weights are hand-set starting values; the learning step replaces
+# them with weights learned from brand picks and rejects. Bump `version` on any change.
+
+version = "matcher-v2"
+top_k = 10
+
+# Stage 1: how many candidates the database hands to the ranker (nearest by text, after hard filters).
+[retrieval]
+limit = 300
+
+# Stage 3: business rules applied after ranking. Each move is explained on the result.
+[rerank]
+# Near-duplicate content: a creator this similar to one already on the list loses this much score.
+duplicate_similarity = 0.97
+duplicate_penalty = 0.10
+# New creators have no history, so a pure ranker never shows them and they never get any.
+# Reserve this many slots for the best NEW creator, if their score is close enough.
+explore_slots = 1
+explore_min_share = 0.8
+# A recent paid post for a same-niche brand moves the creator below everyone without one.
+demote_competitor_conflict = true
+
+# Each part scores 0..1; the final score is the weighted sum. Weights should add up to 1.
+[weights]
+similarity = 0.40     # brief text vs creator bio + captions
+niche = 0.15          # same sub-niche / category
+quality = 0.15        # Model 3 label and score
+language = 0.10
+budget = 0.10
+city = 0.05
+completeness = 0.05   # prefer creators we have more data on
+
+[filters]
+exclude_quality = ["suspicious"]
+exclude_activity = ["inactive"]
+# Budget far below a creator's estimated rate: drop them. Between this and the low end: partial score.
+exclude_budget_below_share = 0.5
+# Foundation v2: NEW creators take jobs up to ₹5,000. Turn on once the backend sends real levels;
+# until then every creator is NEW and this would block every bigger brief.
+enforce_level = false
+new_level_max_inr = 5000
+
+# Categories close enough to stay in the shortlist, with partial niche credit.
+[related_categories]
+beauty_skincare = ["personal_care"]
+personal_care = ["beauty_skincare"]
+
+[scores]
+niche_same_sub = 1.0
+niche_same_category = 0.6
+niche_related_category = 0.35
+niche_unknown = 0.3
+quality_real = 1.0
+quality_unsure = 0.6
+language_spoken_match = 1.0      # hand-entered spoken language matches
+language_caption_match = 0.8     # only captions match
+language_unknown = 0.5
+language_caption_mismatch = 0.3  # captions differ, but they may still speak it
+language_spoken_mismatch = 0.0
+city_match = 1.0
+city_unknown = 0.5
+city_mismatch = 0.1
+budget_unknown = 0.6
+budget_slightly_below = 0.4
+
+# City spellings that mean the same place.
+[city_aliases]
+bengaluru = ["bangalore", "blr", "bengaluru", "bengaluru urban", "namma bengaluru"]
+mumbai = ["bombay", "mumbai"]
+chennai = ["madras", "chennai"]
+delhi = ["new delhi", "delhi", "ncr", "delhi ncr"]
+hyderabad = ["hyderabad", "hyd"]
+
+# Estimated rate per reel from public numbers only. Labelled "estimated" everywhere it is shown.
+# Calibrate after 20-30 real deals. Ordered by max_followers.
+[[price_bands]]
+max_followers = 10000
+low = 1500
+high = 4000
+[[price_bands]]
+max_followers = 25000
+low = 3000
+high = 7000
+[[price_bands]]
+max_followers = 50000
+low = 6000
+high = 12000
+[[price_bands]]
+max_followers = 100000
+low = 10000
+high = 20000
+[[price_bands]]
+max_followers = 1000000000
+low = 20000
+high = 60000

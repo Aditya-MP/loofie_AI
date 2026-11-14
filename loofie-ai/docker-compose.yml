@@ -1,0 +1,19 @@
+services:
+  db:
+    image: pgvector/pgvector:pg18
+    environment:
+      POSTGRES_USER: loofie
+      POSTGRES_PASSWORD: loofie_dev
+      POSTGRES_DB: loofie_ai
+    ports:
+      - "5433:5432"
+    volumes:
+      - pgdata18:/var/lib/postgresql   # Postgres 18 keeps data in /var/lib/postgresql/18/docker
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U loofie -d loofie_ai"]
+      interval: 5s
+      retries: 10
+
+volumes:
+  pgdata18:
+  pgdata:     # old Postgres 16 data, kept so you can switch back

@@ -1,0 +1,8 @@
+# The repo is public. Allow-list: only the AI service code is tracked.
+# data/ (real creators), docs/ (business plans), _archive/ and every .env stay on this machine.
+/*
+!/.gitignore
+!/.gitattributes
+!/loofie-ai/
+
+# Inside the code folder, see loofie-ai/.gitignore (.env, .venv, caches).

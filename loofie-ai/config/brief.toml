@@ -1,0 +1,113 @@
+# Model 1 (Brief Reader) word lists. Add words here when the evaluation shows a miss.
+# Bump `version` on any change.
+
+version = "brief-rules-v2"
+default_format = "9:16 reel"
+
+[numbers]
+one = 1
+two = 2
+three = 3
+four = 4
+five = 5
+six = 6
+seven = 7
+eight = 8
+nine = 9
+ten = 10
+eleven = 11
+twelve = 12
+fifteen = 15
+twenty = 20
+"a couple of" = 2
+"couple of" = 2
+"a dozen" = 12
+dozen = 12
+
+# Words that mean people in "need 3 ___".
+[count]
+nouns = ["creator", "creators", "influencer", "influencers", "girl", "girls", "boy", "boys", "guy", "guys",
+  "women", "men", "ladies", "people", "model", "models", "mom", "moms", "mother", "mothers", "mum", "mums",
+  "student", "students", "reviewer", "reviewers", "face", "faces", "kannadigas", "person", "persons"]
+# Between the number and the noun, these words mean it counts something else ("3 reels from creators").
+blockers = ["reel", "reels", "video", "videos", "post", "posts", "day", "days", "week", "weeks", "month",
+  "months", "hour", "hours", "k", "followers", "story", "stories", "from", "of", "per", "each", "x"]
+
+# Spelling variants → name used in the brief form. "any" means anywhere.
+[cities]
+Bengaluru = ["bengaluru", "bangalore", "blr", "banglore", "bengalore", "bangaluru"]
+Mumbai = ["mumbai", "bombay"]
+Delhi = ["delhi", "new delhi", "delhi ncr", "ncr"]
+Gurugram = ["gurugram", "gurgaon"]
+Noida = ["noida"]
+Hyderabad = ["hyderabad", "hyd"]
+Chennai = ["chennai", "madras"]
+Pune = ["pune"]
+Kolkata = ["kolkata", "calcutta"]
+Kochi = ["kochi", "cochin"]
+Mysuru = ["mysuru", "mysore"]
+Ahmedabad = ["ahmedabad"]
+Jaipur = ["jaipur"]
+Chandigarh = ["chandigarh"]
+Lucknow = ["lucknow"]
+any = ["pan india", "pan-india", "anywhere", "all over india", "across india", "any city", "all india", "remote"]
+
+[languages]
+English = ["english"]
+Kannada = ["kannada", "kannadiga", "kannadigas"]
+Hindi = ["hindi"]
+Tamil = ["tamil"]
+Telugu = ["telugu"]
+Malayalam = ["malayalam", "malayali"]
+Other = ["marathi", "bengali", "gujarati", "punjabi", "odia"]
+
+# First one mentioned wins. Order inside a list doesn't matter.
+[formats]
+"9:16 reel" = ["reel", "reels", "video", "videos", "9:16", "ugc video", "short video"]
+photo = ["photo", "photos", "static", "picture", "pictures", "pic", "pics", "image"]
+carousel = ["carousel", "carousels"]
+story = ["story", "stories"]
+
+# Product words → sub-niche. Longer phrases are matched first, so "hair removal" is body care, not hair.
+[products]
+skincare = ["sunscreen", "sunblock", "spf", "serum", "moisturiser", "moisturizer", "face wash", "facewash",
+  "cleanser", "toner", "acne", "pimple", "niacinamide", "vitamin c", "retinol", "face cream", "night cream",
+  "under eye", "pigmentation", "face mask", "sheet mask", "lip balm", "skincare", "skin care", "spot gel", "face serum"]
+haircare = ["hair", "shampoo", "conditioner", "hair oil", "hairfall", "hair fall", "dandruff", "scalp", "curly",
+  "frizz", "hair mask", "haircare", "hair care"]
+makeup = ["makeup", "make-up", "make up", "lipstick", "kajal", "eyeliner", "foundation", "concealer", "mascara",
+  "blush", "compact powder", "nail polish", "lip tint", "lipsticks", "eyeshadow"]
+mens_grooming = ["beard", "beard oil", "trimmer", "shaving", "razor", "aftershave", "men's grooming",
+  "mens grooming", "for men", "moustache"]
+body_care = ["body lotion", "baby lotion", "lotion", "body wash", "deodorant", "deo", "soap", "body butter",
+  "waxing", "hair removal", "intimate", "period", "sanitary", "body scrub", "talc"]
+fragrance = ["perfume", "fragrance", "attar", "body mist", "eau de parfum", "eau de toilette", "cologne"]
+
+[sub_niche_category]
+skincare = "beauty_skincare"
+haircare = "beauty_skincare"
+makeup = "beauty_skincare"
+mens_grooming = "personal_care"
+body_care = "personal_care"
+fragrance = "personal_care"
+
+[must_say]
+# Words that start a point the creator must say or show. Hinglish included.
+triggers = ["must mention", "must say", "must show", "make sure to mention", "mention", "mentioning",
+  "highlight", "highlighting", "showcase", "showing", "show", "talk about", "say", "emphasise", "emphasize",
+  "focus on", "point out", "key points", "key message", "usp", "share your", "bolna hai", "batana hai", "bolo",
+  "dikhana hai", "dikhao"]
+# Before a trigger, these flip its meaning: "don't say chemical free".
+negations = ["don't", "dont", "do not", "never", "avoid", "no need to", "mat", "nahi"]
+# A part starting with one of these is a different instruction (deadline, budget...), so the list ends.
+stop_words = ["by", "before", "deadline", "due", "within", "till", "until", "budget", "total", "deliver",
+  "post", "go live", "dm", "reels by", "send", "need", "looking", "hiring"]
+# Phrases containing "and" that are one point.
+protected = ["before and after", "pros and cons", "hit and trial", "trial and error", "look and feel"]
+
+# Added to every brief, whatever the brand writes, and cannot be removed (Foundation v2, F2).
+# ASCI's influencer-advertising guidelines require the paid relationship to be disclosed upfront and
+# prominently. [LEGAL] confirm this exact wording before launch; changing it bumps `version`.
+[disclosure]
+text = "Turn on Instagram's 'Paid partnership' label and put #ad (or #collab / #sponsored) at the start of the caption, visible without tapping 'more'."
+source = "ASCI guidelines for influencer advertising in digital media"

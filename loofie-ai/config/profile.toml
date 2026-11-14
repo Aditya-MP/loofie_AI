@@ -1,0 +1,113 @@
+# Profile Builder settings. Change values here, not in code. Every change gets a new version string
+# so stored profiles show which settings produced them.
+
+version = "profile-v1"
+
+[text]
+# Below this many characters of bio + captions, no niche is predicted.
+min_chars = 20
+# A typed category ("Fitness") is short but clean, so it needs less.
+min_chars_category_raw = 3
+# Captions used per creator (newest first).
+max_captions = 10
+# The bio describes the creator on purpose, so it counts as this many captions.
+bio_weight = 2.0
+
+[niche]
+version = "niche-zeroshot-v2"
+# Softmax temperature over cosine similarities. Lower = more decisive.
+temperature = 0.02
+# Below this top probability the prediction is stored but marked unsure.
+unsure_below = 0.45
+
+# Each label is described by a few phrases. A creator's text is compared with them.
+# Sub-niches map to a Loofie category; every other label means category "other".
+[niche.labels.skincare]
+category = "beauty_skincare"
+phrases = [
+  "skincare routine and product reviews for acne, oily skin, sunscreen, serum, moisturiser",
+  "honest skincare reviews, glowing skin tips, face wash, pigmentation",
+  "dermatologist skincare tips, niacinamide, vitamin C serum, retinol",
+]
+[niche.labels.makeup]
+category = "beauty_skincare"
+phrases = [
+  "makeup tutorials, lipstick swatches, foundation, everyday makeup look",
+  "bridal makeup artist, eye makeup, kajal, contouring, beauty looks",
+]
+[niche.labels.haircare]
+category = "beauty_skincare"
+phrases = [
+  "haircare routine for hair fall, hair oil, shampoo, curly hair care",
+  "hair growth tips, dandruff, onion oil, hair mask, frizzy hair",
+]
+[niche.labels.mens_grooming]
+category = "personal_care"
+phrases = [
+  "men's grooming, beard care, beard oil, trimmer, men's skincare",
+  "grooming tips for men, hairstyles for men, men's fragrance",
+]
+[niche.labels.body_care]
+category = "personal_care"
+phrases = [
+  "body care, body lotion, body wash, deodorant, waxing, hygiene",
+  "self care, bath routine, body butter, intimate hygiene, period care",
+]
+[niche.labels.fragrance]
+category = "personal_care"
+phrases = [
+  "perfume reviews, fragrance collection, attar, best perfumes",
+  "smell good tips, long lasting perfume, body mist",
+]
+[niche.labels.fashion]
+category = "other"
+phrases = ["fashion outfits, styling, ootd, clothing haul, sarees, streetwear"]
+[niche.labels.food]
+category = "other"
+phrases = ["food blogger, restaurant reviews, recipes, street food, cooking"]
+[niche.labels.travel]
+category = "other"
+phrases = ["travel vlogs, trips, places to visit, hotels, backpacking"]
+[niche.labels.fitness]
+category = "other"
+phrases = ["gym workouts, fitness, weight loss, yoga, diet and nutrition"]
+[niche.labels.tech]
+category = "other"
+phrases = ["tech reviews, gadgets, smartphones, laptops, coding"]
+[niche.labels.entertainment]
+category = "other"
+phrases = ["comedy skits, memes, dance, acting, funny reels"]
+[niche.labels.parenting]
+category = "other"
+phrases = ["parenting, mom life, babies, kids, family"]
+[niche.labels.lifestyle]
+category = "other"
+phrases = ["daily vlogs, lifestyle, day in my life, home decor"]
+[niche.labels.education]
+category = "other"
+phrases = ["personal finance, education, careers, study tips, motivation"]
+[niche.labels.photography]
+category = "other"
+phrases = ["photographer, photography tips, portraits, camera, editing presets"]
+[niche.labels.dance]
+category = "other"
+phrases = ["dancer, dance covers, choreography, classical dance, bharatanatyam"]
+[niche.labels.music_art]
+category = "other"
+phrases = ["singer, music covers, musician, artist, painting, illustration"]
+
+[language]
+version = "lang-rules-v1"
+# Fewer signals than this and the caption language is left blank.
+min_signals = 3
+# Unicode ranges for Indian scripts. Devanagari is counted as Hindi.
+scripts = { Kannada = [0x0C80, 0x0CFF], Hindi = [0x0900, 0x097F], Tamil = [0x0B80, 0x0BFF], Telugu = [0x0C00, 0x0C7F], Malayalam = [0x0D00, 0x0D7F] }
+
+# Distinctive romanized words. Avoid words that are also common English.
+[language.words]
+Kannada = ["namma", "nimma", "nodi", "nodu", "beku", "beda", "illa", "chennagide", "chennagi", "hegide", "maadi", "swalpa", "yenu", "houdu", "howdu", "banni", "gottilla", "sakkath", "sakath", "bombat", "kannadathi", "kannadiga", "nange", "ninge", "yaake", "thumba", "sumne", "aytu", "aithu", "kelsa", "oota", "maga", "guru"]
+Hindi = ["hai", "hain", "kya", "nahi", "nahin", "bahut", "bohot", "mera", "meri", "mere", "accha", "acha", "yaar", "kaise", "aap", "apna", "apni", "kuch", "karo", "karna", "wala", "wali", "bilkul", "sabse", "lagta", "lagti", "chahiye", "matlab", "abhi", "jaldi", "dekho"]
+Tamil = ["romba", "vanakkam", "semma", "illai", "enna", "epdi", "sapadu", "ponga", "paaru"]
+Telugu = ["chala", "bagundi", "emiti", "nenu", "meeru", "ledu", "cheppandi", "chudandi"]
+Malayalam = ["njan", "ningal", "chetta", "chechi", "adipoli", "kidilan", "enthu"]
+English = ["the", "and", "this", "with", "my", "your", "for", "is", "it", "you", "of", "to", "in", "on", "that", "so", "what", "how", "best", "skin", "hair", "love", "using", "try"]

@@ -1,0 +1,73 @@
+# Model 3 (Quality Check) settings. Starting values are common industry rules of thumb, not
+# measured on Loofie data yet: the learning step re-tunes them against the team's quality_label.
+# Bump `version` whenever a value changes.
+
+version = "quality-rules-v4"
+
+# Score starts at 100 and loses the penalty of every finding.
+[penalty]
+red = 50
+amber = 20
+info = 0
+
+[label]
+real_at_least = 75       # 0 or 1 amber finding
+suspicious_below = 50    # any red finding, or 3+ amber findings
+# Fewer than this many usable numbers (followers + views/likes/comments) → "unsure: not enough data".
+min_signals = 2
+# "real" is a claim brands will rely on, so it needs more evidence than a flag does.
+min_signals_for_real = 3
+# "real" also needs followers from Instagram or the data team, not only typed in by the creator.
+real_needs_verified = true
+
+# Median reel views ÷ followers. Real audiences usually see 10%+ of reels.
+[rules.low_views]
+min_followers = 5000
+red_below = 0.03
+amber_below = 0.08
+
+# Very high views vs followers is usually reach beyond followers, not fraud. Shown as a note.
+[rules.views_far_above_followers]
+info_above = 5.0
+
+# Best reel ÷ median reel. Big spikes make averages lie; notes it so brands use the median.
+[rules.view_spike]
+info_above = 10.0
+
+# (median likes + median comments) ÷ followers.
+[rules.low_engagement]
+min_followers = 5000
+red_below = 0.003
+amber_below = 0.01
+
+[rules.high_engagement]
+# Unusually high on a large account can mean engagement pods or bought likes.
+min_followers = 20000
+amber_above = 0.25
+
+# following ÷ followers. Follow-for-follow accounts follow about as many as follow them.
+[rules.follow_back]
+max_followers = 50000
+amber_above = 0.8
+
+# median comments ÷ median likes. Bought likes rarely come with comments.
+[rules.likes_without_comments]
+min_median_likes = 300
+amber_below = 0.005
+
+[rules.inactive]
+amber_days = 45
+red_days = 120
+
+[rules.rarely_posts]
+amber_below = 2  # posts in the last 30 days
+
+# Comment checks run only with enough comments. Flag only, never decisive on their own.
+[rules.generic_comments]
+min_comments = 15
+amber_generic_share = 0.6
+amber_unique_below = 0.5
+generic_words = ["nice", "wow", "awesome", "great", "super", "superb", "beautiful", "amazing", "cool",
+  "love", "lovely", "gorgeous", "fab", "fabulous", "pretty", "osm", "op", "pic", "keep", "it", "up",
+  "so", "very", "good", "best", "stunning", "cute", "wonderful", "excellent", "perfect", "dear", "mam",
+  "maam", "bro", "bhai", "di", "sis", "the", "this", "is", "post", "content", "video", "reel"]
