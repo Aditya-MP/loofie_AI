@@ -108,20 +108,36 @@ Rules:
 | Situation | Decision |
 |---|---|
 | **Brand ships on time** | The brand must ship within **3 working days** of the creator accepting. Reminder after 2 days. Missed → the job is marked late, and the creator may drop out with no penalty. |
-| **Working days** | **Monday to Saturday** (Indian couriers pick up on Saturdays), skipping dates in a **holiday table ops can edit** (start with 26 Jan, 15 Aug, 2 Oct, Diwali, Holi). Sundays and listed holidays never count, for any clock. |
-| **Brand ships late, creator drops out** | The brand's fault, not Loofie's, so it follows the cancellation rule in section 6: **free replacement creator** (full value kept), or **refund minus the Loofie fee** if the brand wants money back. |
+| **Working days** | **Monday to Saturday** (couriers pick up Mon–Sat, not on public holidays), minus a **holiday table ops can edit** with a `state` column: blank = national (26 Jan, 15 Aug, 2 Oct, Diwali, Holi), a state code = that state only (e.g. Karnataka Rajyotsava 1 Nov, Durga Puja in West Bengal, Onam in Kerala, Pongal in Tamil Nadu). The shipping clock uses the **brand's pickup state**. |
+| **Which clocks use working days** | **Brand-side clocks** (3-day shipping, 5-day video review before auto-approval) count working days: brands are offices. **The creator's shooting clock** stays **120 calendar hours**: creators often shoot on Sundays. |
+| **Brand ships late, creator drops out** | First offer a **free replacement creator** (full value kept). If the brand wants money back: **the creator's amount in cash + the Loofie fee as credit** for its next booking. Loofie keeps the revenue, the brand doesn't feel penalised, and it has a reason to book again. The creator's reliability is not affected (`BRAND_LATE_SHIP`). **[CONFIRM]** GST treatment of the credit with the CA. |
 | **"Shipped" needs proof** | The brand can't click "Shipped" without a **courier name and tracking number**. That's what settles every later "not received" dispute. |
 | **Product clock** | The 5-day (120-hour) shooting clock starts when the creator taps **"Received"** with a photo of the product. Digital-only briefs (no product) skip the clock. |
 | **Creator doesn't tap anything** | The clock starts by itself **only when the courier shows "Delivered"** and the creator hasn't reported a problem within 24 hours. Without courier proof it never starts by itself: the creator is reminded, then ops checks. A slow courier to a small town never makes the creator late. |
 | **Creator's three buttons** | **Received** (clock starts) · **Not received** (clock stays stopped, brand asked for tracking) · **Damaged / wrong item** (clock stays stopped, brand asked to reship). |
 | **Job state for problems** | One state, `DELIVERY_ISSUE`, with `issue_type`: `NOT_RECEIVED` / `DAMAGED` / `WRONG_ITEM`. The clock is stopped while a job is in it. |
-| **Reason codes** | Disputes and drop-outs carry a **reason code, never free text**, in `job_state_changed` (`reason`): `FALSE_CLAIM`, `COURIER_LOST`, `BRAND_LATE_SHIP`, `DAMAGED_IN_TRANSIT`, `WRONG_ITEM_SENT`, `CREATOR_UNRESPONSIVE`, `CREATOR_WITHDREW`. Ops notes stay in the backend log only (free text can hold personal details). New codes: add them here first. |
+| **Reason codes** | Disputes and drop-outs carry a **reason code, never free text**, in `job_state_changed` (`reason`), each with a fixed **fault party** (table below). Ops notes stay in the backend log only (free text can hold personal details). New codes: add them here first. If `OTHER` is above ~10% in a month, add a code. |
+| **Who sets `FALSE_CLAIM`** | **Ops only**, never the system: it accuses a creator of lying. |
+
+| Reason code | Fault | Counts against creator reliability? |
+|---|---|---|
+| `FALSE_CLAIM` | CREATOR | yes |
+| `CREATOR_UNRESPONSIVE` | CREATOR | yes |
+| `CREATOR_WITHDREW` | CREATOR | yes |
+| `BRAND_LATE_SHIP` | BRAND | no |
+| `WRONG_ITEM_SENT` | BRAND | no |
+| `COURIER_LOST` | COURIER | no |
+| `DAMAGED_IN_TRANSIT` | COURIER | no |
+| `OTHER` | NONE | no |
+
+| Situation | Decision |
+|---|---|
 | **Product not received** | The brand gets 48 hours to show tracking or reship at its own cost. Still missing after 7 days from "Shipped" → ops steps in, the creator may withdraw with no penalty, the slot is replaced or refunded. **[CONFIRM]** the 7 days against the first real shipments. |
 | **False "not received"** | Courier "Delivered" (plus the delivery OTP where the courier uses one) is the proof. Ops decides. A creator found making a false claim gets a `job_state_changed` event with the reason, which lowers their reliability score. |
 | **How tracking is checked** | **Pilot:** ops opens the tracking link by hand. **From about 50 jobs a month:** a multi-courier tracking service (for example Ship24, about $9/month for 200 shipments) follows the brand's own tracking numbers and tells us on "Delivered". Brands keep their own courier; nothing to switch. **[CONFIRM]** accuracy with 5 real Indian tracking numbers first. |
 | **Deadline extension** | The system gives one 48-hour extension automatically if the creator asks before the deadline. Any further extension is ops only. |
 | **Creator ghosts** | After the deadline plus the extension, the job becomes `REPLACEMENT_NEEDED`. Ops offers the next creator from the shortlist. No one can deliver within 10 days → refund for that slot. |
-| **Brand silent on a draft** | Auto-approved after 5 days, so creators never wait forever. |
+| **Brand silent on a draft** | Auto-approved after 5 working days, so creators never wait forever. |
 | **Who approves a video** | The brand admin only, for now, because approval releases payment. Team members can view, comment and request revisions. An "approver" role may come later. |
 | **When a job closes** | After the creator is paid. The rating stays open for 7 days but doesn't block closing. The backend sends `job_outcome` on close and `rating` whenever it arrives. |
 
@@ -162,6 +178,8 @@ policy (needed for Meta App Review), one hour with a CA on refunds and TDS.
 
 ## Change log
 
+- 2026-11-14: State holidays, working days only for brand-side clocks, fault party per reason
+  code (+ `OTHER`, ops-only `FALSE_CLAIM`), late-ship refund as cash + fee credit.
 - 2026-11-14: Working days Mon–Sat minus a holiday table, DELIVERY_ISSUE state with issue_type,
   reason codes, late-ship refund rule.
 - 2026-11-14: Shipping rules: brand ships in 3 working days, tracking number required, clock
