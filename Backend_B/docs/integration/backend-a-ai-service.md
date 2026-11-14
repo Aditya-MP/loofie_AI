@@ -25,6 +25,9 @@ parsed brief, so outcomes link back to what the AI suggested.
 |---|---|---|
 | `job_state_changed` | Every job status change | `job_id`, `creator_ref`, `brief_ref`, `from`, `to`, `deadline_at` (when a timer is running) |
 | `job_outcome` | Job closes | `on_time`, `revisions`, `disputed`, `replaced`, `rating` |
+| `job_rating` | Brand rates the creator (within 7 days of close; never blocks closing) | TBD |
+| Shortlist picks / rejects | Brand marks a shortlisted creator pick / maybe / reject | TBD (include the Backend A `suggestion_id`) |
+| Brief edits | Brand edits an AI-parsed brief field before confirming | TBD (include the parse `event_id`) |
 | `video_performance` | Later: brand tags the video winner / average / loser ~30 days after approval | TBD |
 
 **Never send:** payout amounts, bank details, PAN, or free-text ops reasons (they can contain personal data).
@@ -41,8 +44,8 @@ Aditya will update `docs/API.md` with exact shapes when deployed. Build the forw
 
 ## Upcoming from Backend A
 
-- **Instagram Login:** Backend B passes its creator id as `account_ref`; the frontend adds a button, a return page
-  and a status poll. Not on `origin/backend-a` yet as of 2026-11-14.
+- **Instagram Login:** Aditya reports it is done (2026-11-14). Backend B passes its creator id as `account_ref`; the
+  frontend adds a button, a return page and a status poll. Not on `origin/backend-a` yet as of 2026-11-14.
 - **F7 draft checker:** after Backend B's upload, format and watermark checks, Backend A needs a signed URL to the
   draft video. Details when Aditya starts it.
 
@@ -51,7 +54,7 @@ Aditya will update `docs/API.md` with exact shapes when deployed. Build the forw
 1. `job_events` stays in core_db as the operational source of truth.
 2. The `core.events.v1` Kafka forward is dropped. An outbox-driven HTTP forwarder sends `job_state_changed` and
    `job_outcome` to `/ai/feedback`, so a Backend A outage never blocks a transition and calls are retried.
-3. Backend B now also owns accounts/auth (F1, non-AI part), briefs (F2), shortlists (F3) and rebook checkout (F11).
+3. Backend B now also owns accounts/auth (F1, non-AI part; Shreya guides the design), briefs (F2), shortlists (F3) and rebook checkout (F11).
    Jobs need a `brief_ref`, and `job_outcome` needs revision count, dispute/replacement flags and the brand's rating.
 
 ## Local development
