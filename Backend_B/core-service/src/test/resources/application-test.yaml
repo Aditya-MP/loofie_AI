@@ -1,0 +1,8 @@
+# Tests run against the local core_db but in their own schema, so dev data is never touched.
+# The schema is wiped and re-migrated at the start of every test run (see TestSupportConfig).
+spring:
+  datasource:
+    url: jdbc:postgresql://localhost:5432/core_db?currentSchema=core_test
+  flyway:
+    schemas: core_test
+    clean-disabled: false

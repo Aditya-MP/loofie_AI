@@ -1,9 +1,10 @@
 package com.loofie.core;
 
 import org.junit.jupiter.api.Test;
-import org.springframework.boot.test.context.SpringBootTest;
 
-@SpringBootTest
+import com.loofie.core.support.IntegrationTest;
+
+@IntegrationTest
 class CoreServiceApplicationTests {
 
 	@Test
