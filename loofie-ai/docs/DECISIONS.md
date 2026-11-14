@@ -107,7 +107,7 @@ Rules:
 
 | Situation | Decision |
 |---|---|
-| **Product clock** | The 5-day shooting clock starts only when the creator marks the product received (with a photo). |
+| **Product clock** | The brand clicks "Shipped" (courier tracking number optional). The 5-day (120-hour) shooting clock starts when the creator taps "Product received" with a photo. Fallback: no confirmation 3 days after "Shipped" → the creator is asked to confirm or report non-delivery; still no answer 24 hours later → the clock starts by itself and ops is alerted. Digital-only briefs (no product) skip the clock. Automatic courier tracking (Shiprocket, read-only on the brand's own tracking numbers) is Phase 2, built only when brands ask for it. |
 | **Product not received** | The brand gets 48 hours to share tracking or reship at its own cost. No tracking, or still missing after 7 days → ops steps in, the creator may withdraw with no penalty, the slot is replaced or refunded. **[CONFIRM]** the 7 days against real shipping times. |
 | **Deadline extension** | The system gives one 48-hour extension automatically if the creator asks before the deadline. Any further extension is ops only. |
 | **Creator ghosts** | After the deadline plus the extension, the job becomes `REPLACEMENT_NEEDED`. Ops offers the next creator from the shortlist. No one can deliver within 10 days → refund for that slot. |
