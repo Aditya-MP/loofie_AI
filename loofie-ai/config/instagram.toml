@@ -1,0 +1,30 @@
+# Instagram Login + fetch (F1 Creator Passport). Meta changes this API often: every URL, field
+# and metric name lives here so a change is a config edit, not a code change. [VERIFY] each
+# against developers.facebook.com/docs/instagram-platform before go-live and on every Meta
+# version deprecation notice.
+version = "instagram-ingest-v1"
+
+authorize_url = "https://www.instagram.com/oauth/authorize"
+token_url = "https://api.instagram.com/oauth/access_token"
+graph_url = "https://graph.instagram.com"
+graph_version = "v27.0"
+
+# instagram_business_basic: profile + media. manage_insights: views and reach per post.
+# Both need Meta App Review before real creators (not just app testers) can log in.
+scopes = ["instagram_business_basic", "instagram_business_manage_insights"]
+
+profile_fields = ["user_id", "username", "name", "account_type", "followers_count", "follows_count", "media_count"]
+# Meta's table marks caption / media_product_type as "Facebook Login only"; if they come back
+# empty under Instagram Login the ingester still works (captions just stay blank).
+media_fields = ["id", "caption", "media_type", "media_product_type", "timestamp", "permalink", "like_count", "comments_count"]
+media_limit = 30
+insight_metrics = ["views", "reach"]
+
+# Passport "avg views of last 10 reels" (Foundation v2 F1).
+avg_views_last_n_reels = 10
+
+state_ttl_minutes = 10        # how long a "Continue with Instagram" link stays valid
+refresh_when_days_left = 10   # long-lived tokens last 60 days; renew when this close to expiry
+min_token_age_hours = 24      # Meta refuses to refresh a token younger than this
+sync_every_days = 7           # automatic re-fetch, keeps numbers inside the 30-day staleness rule
+timeout_seconds = 15

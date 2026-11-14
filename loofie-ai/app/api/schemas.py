@@ -1,11 +1,11 @@
 """Request and response shapes. This file is the contract with the backend team: change it only
 together with docs/API.md."""
 
-from datetime import date
+from datetime import date, datetime
 from typing import Any, Literal
 from uuid import UUID
 
-from pydantic import BaseModel, Field
+from pydantic import AwareDatetime, BaseModel, Field
 
 # ------------------------------------------------------------------ brief
 
@@ -48,7 +48,9 @@ class PostIn(BaseModel):
 class CreatorIn(BaseModel):
     handle: str
     creator_ref: str | None = Field(None, description="Backend's creator id")
-    source: Literal["instagram_api", "manual_profile"] = "instagram_api"
+    # Only the AI service's own Instagram fetch (/auth/instagram/*) may mark numbers API_VERIFIED;
+    # numbers the backend sends are what the creator typed in.
+    source: Literal["manual_profile"] = "manual_profile"
     display_name: str | None = None
     city: str | None = None
     followers: int | None = Field(None, ge=0)
@@ -148,7 +150,32 @@ class FeedbackIn(BaseModel):
     subject_id: str
     suggestion_id: UUID | None = Field(None, description="The suggestion_id or event_id this reacts to")
     payload: dict = {}
+    event_id: UUID | None = Field(
+        None, description="Your own id for this event. Sending the same id again (a retry) is ignored."
+    )
+    occurred_at: AwareDatetime | None = Field(
+        None, description="When it happened, with a timezone. Default: when the AI service received it."
+    )
 
 
 class FeedbackOut(BaseModel):
     event_id: UUID
+    duplicate: bool = Field(False, description="True: this event_id was already saved; nothing new was stored")
+
+
+# ------------------------------------------------------------------ Instagram Login
+
+
+class InstagramLoginOut(BaseModel):
+    url: str = Field(description="Send the creator's browser here; valid for a few minutes")
+    expires_in: int
+
+
+class InstagramAccountOut(BaseModel):
+    account_ref: str
+    handle: str
+    status: Literal["connected", "syncing", "active", "error", "expired", "revoked"]
+    insights_allowed: bool = Field(description="False: views/reach can't be fetched (creator didn't allow it)")
+    token_expires_at: datetime | None
+    last_synced_at: datetime | None
+    last_error: str | None

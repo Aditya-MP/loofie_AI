@@ -12,6 +12,7 @@ loofie serve                                            # the API for the backen
 loofie models promote matcher candidate.toml           # goes live only if it scores at least as well
 loofie report                                           # weekly health report
 loofie backup                                           # database -> backups/
+loofie instagram maintain                               # daily: renew Instagram tokens, re-fetch weekly
 """
 
 import importlib
@@ -27,6 +28,7 @@ COMMANDS = {
     "report": ("app.ops.__main__", "weekly health report: corrections, shadow agreement, outcomes"),
     "backup": ("app.ops.__main__", "save the database to backups/"),
     "restore": ("app.ops.__main__", "put a backup back (asks for --yes)"),
+    "instagram": ("app.instagram.__main__", "Instagram Login: daily token refresh + weekly re-fetch, status"),
 }
 # These share one module, so the command name is passed on as its first argument.
 PASS_NAME = {"models", "report", "backup", "restore"}

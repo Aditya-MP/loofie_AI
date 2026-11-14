@@ -18,7 +18,27 @@ class Settings(BaseSettings):
     device: str = "cuda"
     embed_model: str = "intfloat/multilingual-e5-small"
     embed_dim: int = 384
-    ai_api_key: str = ""  # empty = the API refuses every call
+    ai_api_key: str = ""  # one shared key, caller name "default" (kept for local use)
+    # Named keys, one per caller: "backend:KEY1,ops:KEY2". Rotate by adding the new key under the
+    # same name ("backend:OLD,backend:NEW"), switching the caller over, then removing the old one.
+    ai_api_keys: str = ""
+
+    def api_keys(self) -> list[tuple[str, str]]:
+        """[(caller, key)]. Empty = the API refuses every call."""
+        keys = [("default", self.ai_api_key)] if self.ai_api_key else []
+        for item in filter(None, (x.strip() for x in self.ai_api_keys.split(","))):
+            name, sep, key = item.partition(":")
+            if not sep or not name.strip() or not key.strip():
+                raise ValueError("AI_API_KEYS must look like name:key,name:key")
+            keys.append((name.strip(), key.strip()))
+        return keys
+
+    # Instagram Login (Meta developer app → Instagram → API setup with Instagram login).
+    ig_app_id: str = ""  # empty = Instagram login switched off
+    ig_app_secret: str = ""
+    ig_redirect_uri: str = ""  # public https URL of /auth/instagram/callback, registered in the Meta app
+    ig_token_key: str = ""  # Fernet key that encrypts stored Instagram tokens
+    app_return_url: str = ""  # creator app page the browser returns to after login
 
 
 @lru_cache

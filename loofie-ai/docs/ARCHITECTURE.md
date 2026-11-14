@@ -63,6 +63,7 @@ loofie-ai/
 │   ├── quality/            Model 3 · trust
 │   ├── matcher/            Model 2 · retrieve.py → ranker.py → rerank.py, evaluate.py
 │   ├── feedback/           events log; learning job goes here
+│   ├── instagram/          Instagram Login, fetch, weekly refresh, Meta deletion callbacks (F1)
 │   ├── importer/           data team's sheet and old field CSV → database
 │   ├── ml/                 GPU device + embedding model
 │   └── db/                 tables (models.py) and connection

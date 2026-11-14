@@ -253,3 +253,43 @@ class ImportRun(Base):
     counts: Mapped[dict] = mapped_column(JSONB, server_default="{}")
     errors: Mapped[list] = mapped_column(JSONB, server_default="[]")
     warnings: Mapped[list] = mapped_column(JSONB, server_default="[]")
+
+
+class InstagramAccount(Timestamps, Base):
+    """A creator's Instagram Login connection (F1). The token is stored encrypted, never in plain text.
+
+    `account_ref` is the backend's creator account id; `ig_user_id` is Instagram's, and stays the
+    same when the creator renames their handle.
+    """
+
+    __tablename__ = "instagram_accounts"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    account_ref: Mapped[str] = mapped_column(String(64), unique=True)
+    ig_user_id: Mapped[str] = mapped_column(String(40), unique=True)
+    app_user_id: Mapped[str | None] = mapped_column(String(40), index=True)  # id in the token response
+    creator_id: Mapped[int | None] = mapped_column(ForeignKey("creators.id", ondelete="SET NULL"), unique=True)
+    username: Mapped[str] = mapped_column(String(30))
+    account_type: Mapped[str | None] = mapped_column(String(30))
+    permissions: Mapped[list[str]] = mapped_column(ARRAY(String(60)), server_default="{}")
+    token_encrypted: Mapped[str | None] = mapped_column(Text)
+    token_expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    token_refreshed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    # connected → syncing → active; expired / revoked need the creator to log in again; error = last sync failed
+    status: Mapped[str] = mapped_column(String(20), index=True)
+    last_synced_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    last_error: Mapped[str | None] = mapped_column(Text)
+
+
+class InstagramSnapshot(Base):
+    """Account numbers at every sync: the history that shows bought-follower jumps."""
+
+    __tablename__ = "instagram_snapshots"
+    __table_args__ = (Index("ix_instagram_snapshots_account_time", "account_id", "captured_at"),)
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    account_id: Mapped[int] = mapped_column(ForeignKey("instagram_accounts.id", ondelete="CASCADE"))
+    captured_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    followers: Mapped[int | None] = mapped_column(Integer)
+    following: Mapped[int | None] = mapped_column(Integer)
+    media_count: Mapped[int | None] = mapped_column(Integer)

@@ -9,7 +9,7 @@ CUDA 13, Docker, and the NVIDIA Container Toolkit.
 
 ```
 git clone -b backend-a https://github.com/Aditya-MP/loofie_AI.git && cd loofie_AI/loofie-ai
-cp .env.example .env          # then set AI_API_KEY and a real database password
+cp .env.example .env          # then set AI_API_KEYS and a real database password
 docker compose --profile server up -d --build
 curl localhost:8100/health    # {"status":"ok","device":"cuda",...}
 ```
@@ -22,7 +22,32 @@ start downloads the e5 model (~470 MB) into the `models` volume; later starts re
 - Don't expose port 5433 (the database) to the internet. Only the backend should reach 8100,
   through a private network or a firewall rule.
 - Put HTTPS in front of 8100 (the cloud load balancer, or Caddy / nginx).
-- Give the backend its own `AI_API_KEY`, and change it if it ever leaks.
+- Give each caller its own key in `AI_API_KEYS` (`backend:KEY`). To rotate: add the new key
+  under the same name (`backend:OLD,backend:NEW`), restart, let the backend switch, then remove
+  the old one and restart again. The request log's `caller` field shows who is still on which.
+  Generate keys with `python -c "import secrets; print(secrets.token_urlsafe(32))"` and send
+  them through a password manager, never chat or git.
+
+## Instagram Login
+
+1. In the Meta developer app: add the **Instagram** product → *API setup with Instagram login*.
+   Copy the Instagram app ID and secret into `IG_APP_ID` / `IG_APP_SECRET`.
+2. Register these URLs in the app (all on this service's public https address):
+   - OAuth redirect: `/auth/instagram/callback` (must equal `IG_REDIRECT_URI` exactly)
+   - Deauthorize callback: `/auth/instagram/deauthorize`
+   - Data deletion request URL: `/auth/instagram/data-deletion`
+3. `uv run loofie instagram new-key` → `IG_TOKEN_KEY`. Back it up with the other secrets;
+   losing or changing it means every creator has to log in again.
+4. Until App Review passes, only people added as **testers** in the Meta app can log in.
+   App Review needs: `instagram_business_basic` + `instagram_business_manage_insights`, a
+   privacy policy URL, and a screen recording of the login flow. **[VERIFY]** current
+   requirements in the Meta docs.
+5. Schedule `uv run loofie instagram maintain` **daily** (renews tokens ~10 days before they
+   expire, re-fetches anyone not synced for 7 days). Exit code 1 = some fetches failed;
+   `uv run loofie instagram status` shows who and why.
+
+Endpoints and field names live in `config/instagram.toml`. When Meta announces a version
+deprecation, bump `graph_version` there and run `tests/test_instagram.py` plus one real login.
 
 ## Every push is tested
 
@@ -84,6 +109,8 @@ quote that id when reporting a problem. Ship the container logs to whatever the 
 
 ## Not done yet
 
+- **A real Instagram login.** Everything is tested against a fake Meta server built from
+  Meta's documented responses; the first real tester login is the check that matters.
 - Rate limiting per caller (one shared key today; add when there's more than one caller).
 - Automatic retraining (the learning job), once real feedback exists. It will hand its
   candidates to `loofie models promote`, so it can't put an untested model live.

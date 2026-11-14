@@ -108,7 +108,9 @@ def test_creator_profile_builds_profile_and_quality(client):
     # The handle is cleaned; the backend's own id is stored exactly as sent.
     assert body["handle"] == "mira.skin" and body["creator_ref"] == "be-@Mira.Skin"
     assert body["stats"]["median_views"] == 3500 and body["missing"] == []
-    assert body["quality"]["label"] == "real" and body["quality"]["activity"] == "active"
+    # Numbers sent by the backend are self-reported, so Model 3 won't call them "real" yet;
+    # Instagram Login is the way to "real" (test_instagram.py).
+    assert body["quality"]["label"] == "unsure" and body["quality"]["activity"] == "active"
     assert client.get("/ai/creators/mira.skin", headers=H).json()["handle"] == "mira.skin"
 
 
@@ -204,7 +206,13 @@ def test_feedback_links_to_suggestion(client, session):
     )
     assert r.status_code == 200, r.text
     ev = session.get(Event, r.json()["event_id"])
-    assert ev.payload == {"creator_handle": "anu", "reason": "too expensive", "suggestion_id": sid}
+    # The backend's creator id is stored too: handles change, creator_ref doesn't.
+    assert ev.payload == {
+        "creator_handle": "anu",
+        "creator_ref": "be-anu",
+        "reason": "too expensive",
+        "suggestion_id": sid,
+    }
     assert len(session.scalars(select(Event)).all()) == 2
 
 
@@ -244,23 +252,17 @@ def test_disclosure_is_returned_and_locked(client):
     assert r.status_code == 422 and "cannot be edited" in r.json()["detail"]
 
 
-def test_metric_sources_and_trust_order_through_the_api(client):
+def test_backend_cannot_claim_api_verified(client):
+    # Only the AI service's own Instagram fetch may mark numbers API_VERIFIED (test_instagram.py).
+    r = client.post("/ai/creators/profile", headers=H, json=creator("trust_me") | {"source": "instagram_api"})
+    assert r.status_code == 422
     body = client.post("/ai/creators/profile", headers=H, json=creator("trust_me")).json()
-    assert body["metric_sources"]["followers"]["source"] == "API_VERIFIED"
-    assert body["quality"]["label"] == "real"
-
-    typed = {"handle": "trust_me", "source": "manual_profile", "followers": 99000, "city": "Mysuru"}
-    body = client.post("/ai/creators/profile", headers=H, json=typed).json()
-    assert body["update_notes"] == ["@trust_me followers: kept 12000 (API_VERIFIED) over 99000 (SELF_REPORTED)"]
-    assert body["metric_sources"]["followers"]["source"] == "API_VERIFIED"
-    # A description is the creator's to correct: latest wins, source recorded.
-    assert client.get("/ai/creators/trust_me", headers=H).json()["metric_sources"]["city"]["source"] == "SELF_REPORTED"
+    assert body["metric_sources"]["followers"]["source"] == "SELF_REPORTED"
+    assert body["metric_sources"]["city"]["source"] == "SELF_REPORTED"
 
 
 def test_self_reported_creator_is_unsure_not_real(client):
-    body = client.post(
-        "/ai/creators/profile", headers=H, json=creator("typed_in") | {"source": "manual_profile"}
-    ).json()
+    body = client.post("/ai/creators/profile", headers=H, json=creator("typed_in")).json()
     assert body["metric_sources"]["followers"]["source"] == "SELF_REPORTED"
     assert body["quality"]["label"] == "unsure" and "self-reported" in body["quality"]["summary"]
 
@@ -287,3 +289,80 @@ def test_unhandled_error_returns_request_id_not_a_stack_trace(client, monkeypatc
     r = client.post("/ai/brief/parse", headers=H, json={"text": "x"})
     assert r.status_code == 500 and r.json()["request_id"] == r.headers["X-Request-ID"]
     assert "exploded" not in r.text
+
+
+# ------------------------------------------------------------------ backend contract: retries, time, ids, keys
+
+
+def job_event(**over):
+    body = {
+        "event_type": "job_state_changed",
+        "actor_type": "system",
+        "subject_type": "job",
+        "subject_id": "job-42",
+        "payload": {"creator_ref": "be-anu", "job_id": "job-42", "from": "IN_PRODUCTION", "to": "DRAFT_SUBMITTED"},
+    }
+    return body | over
+
+
+def test_retry_with_same_event_id_is_saved_once(client, session):
+    eid = "6f1c2a52-8a7e-4c55-9d43-1b2f0f3c9a11"
+    first = client.post("/ai/feedback", headers=H, json=job_event(event_id=eid))
+    again = client.post("/ai/feedback", headers=H, json=job_event(event_id=eid))
+    assert first.json() == {"event_id": eid, "duplicate": False}
+    assert again.status_code == 200 and again.json() == {"event_id": eid, "duplicate": True}
+    assert len(session.scalars(select(Event).where(Event.event_type == "job_state_changed")).all()) == 1
+    # Same id, different content: a bug on the caller's side, not a retry.
+    other = job_event(event_id=eid, subject_id="job-43")
+    assert client.post("/ai/feedback", headers=H, json=other).status_code == 409
+
+
+def test_occurred_at_is_kept_and_checked(client, session):
+    when = "2026-11-10T09:30:00+05:30"
+    eid = client.post("/ai/feedback", headers=H, json=job_event(occurred_at=when)).json()["event_id"]
+    assert session.get(Event, eid).occurred_at.isoformat() == "2026-11-10T04:00:00+00:00"
+    future = (date.today() + timedelta(days=2)).isoformat() + "T00:00:00+00:00"
+    assert client.post("/ai/feedback", headers=H, json=job_event(occurred_at=future)).status_code == 422
+    no_zone = client.post("/ai/feedback", headers=H, json=job_event(occurred_at="2026-11-10T09:30:00"))
+    assert no_zone.status_code == 422
+
+
+def test_creator_ref_identifies_the_creator(client, session):
+    client.post("/ai/creators/profile", headers=H, json=creator("anu"))
+    eid = client.post("/ai/feedback", headers=H, json=job_event()).json()["event_id"]
+    assert session.get(Event, eid).payload["creator_handle"] == "anu"
+    # Unknown to the AI service yet: still accepted and stored by the backend's id.
+    unknown = job_event(payload={"creator_ref": "be-new", "job_id": "j", "from": "A", "to": "B"})
+    assert client.post("/ai/feedback", headers=H, json=unknown).status_code == 200
+    missing = job_event(payload={"job_id": "j", "from": "A", "to": "B"})
+    r = client.post("/ai/feedback", headers=H, json=missing)
+    assert r.status_code == 422 and "creator_ref" in r.json()["detail"]
+
+
+def test_payload_values_and_personal_data_are_checked(client):
+    perf = {
+        "event_type": "video_performance",
+        "actor_type": "brand",
+        "subject_type": "job",
+        "subject_id": "job-42",
+        "payload": {"creator_ref": "be-anu", "job_id": "job-42", "result": "amazing"},
+    }
+    r = client.post("/ai/feedback", headers=H, json=perf)
+    assert r.status_code == 422 and "winner" in r.json()["detail"]
+    perf["payload"]["result"] = "winner"
+    assert client.post("/ai/feedback", headers=H, json=perf).status_code == 200
+    leak = job_event(payload={"creator_ref": "x", "job_id": "j", "from": "A", "to": "B", "upi_id": "a@b"})
+    r = client.post("/ai/feedback", headers=H, json=leak)
+    assert r.status_code == 422 and "upi_id" in r.json()["detail"]
+
+
+def test_named_keys_rotation_and_caller_in_log(client, monkeypatch, caplog):
+    monkeypatch.setenv("AI_API_KEY", "")
+    monkeypatch.setenv("AI_API_KEYS", "backend:old-key-123, backend:new-key-456,ops:ops-key-789")
+    get_settings.cache_clear()
+    caplog.set_level("INFO", logger="loofie.api")
+    for k in ("old-key-123", "new-key-456", "ops-key-789"):
+        assert client.post("/ai/feedback", headers={"X-API-Key": k}, json=job_event()).status_code == 200
+    assert client.post("/ai/feedback", headers={"X-API-Key": KEY}, json=job_event()).status_code == 401
+    callers = [json.loads(r.message)["caller"] for r in caplog.records if r.message.startswith("{")]
+    assert callers[-4:] == ["backend", "backend", "ops", None]

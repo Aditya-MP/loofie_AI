@@ -5,9 +5,11 @@ HTTP; neither side touches the other's tables. Live, clickable docs: `http://<ho
 
 ## Basics
 
-- **Auth:** every call except `/health` needs the header `X-API-Key: <shared secret>`. Missing or wrong → `401`.
-- **Creators are identified by Instagram handle** (lowercase, no `@`). Send your own creator id as
-  `creator_ref`; we store it and return it, unchanged.
+- **Auth:** every `/ai/` call needs the header `X-API-Key: <your key>`. Missing or wrong → `401`.
+  The backend has its own key. When we rotate it, the old and new keys both work for a while:
+  switch to the new one, tell us, and we remove the old one.
+- **Creators:** send your own creator id as `creator_ref` everywhere you can; we store it and return
+  it unchanged. Instagram handles (lowercase, no `@`) also work, but they change.
 - **Errors:** `422` = bad input (the `detail` says which field), `404` = unknown creator or suggestion.
 - **Every AI result carries a `version`.** Store it with whatever you show the user.
 - **The AI only suggests.** A person confirms every brief field and every shortlist pick. Tell us
@@ -17,7 +19,8 @@ HTTP; neither side touches the other's tables. Live, clickable docs: `http://<ho
 
 | Moment in the app | Call |
 |---|---|
-| Creator signs up, reconnects Instagram, or data refreshes | `POST /ai/creators/profile` |
+| Creator taps "Continue with Instagram" | `GET /ai/instagram/login-url` (see Instagram Login) |
+| Creator fills in rate, city, languages, or uses the manual path | `POST /ai/creators/profile` |
 | Ops opens a creator | `GET /ai/creators/{handle}` |
 | Brand pastes notes into "Paste your notes" | `POST /ai/brief/parse` |
 | Brand edits a field the AI filled | `POST /ai/feedback` `brief_field_edited` |
@@ -55,7 +58,7 @@ review checklist (F7). It can't be edited: a `brief_field_edited` event for `dis
 ## `POST /ai/creators/profile`
 
 ```json
-{ "handle": "mira.skin", "creator_ref": "your-creator-id", "source": "instagram_api",
+{ "handle": "mira.skin", "creator_ref": "your-creator-id", "source": "manual_profile",
   "followers": 12400, "following": 610, "bio": "...", "city": "Bengaluru",
   "primary_language": "Kannada", "level": "NEW",
   "posts": [{ "post_url": "https://www.instagram.com/reel/ABC/", "post_date": "2026-11-10",
@@ -65,8 +68,8 @@ review checklist (F7). It can't be edited: a `brief_field_edited` event for `dis
 Send the latest 10+ posts. A field left out or `null` never erases what we already have.
 `level` is yours to set (`NEW` / `VERIFIED`) from job history.
 
-`source` matters (Foundation v2, F1): `instagram_api` → `API_VERIFIED`, `manual_profile` →
-`SELF_REPORTED`. Every metric is stored with its source and date (`metric_sources` in the response).
+Everything sent here is `SELF_REPORTED` (`source` accepts only `manual_profile`): Instagram
+numbers become `API_VERIFIED` only through Instagram Login, which the AI service fetches itself. Every metric is stored with its source and date (`metric_sources` in the response).
 **Numbers** (followers, following, posts, views, posting dates) are never overwritten by a less
 trusted source unless the stored one is over 30 days old; the response's `update_notes` lists what
 was kept. **Descriptions** (city, bio, language...) always take the latest value.
@@ -86,6 +89,57 @@ Response: the profile plus the quality check.
 - `quality.activity`: `active` / `slow` / `inactive` / `unknown`. Not posting is not fraud.
 - A creator whose followers are only self-reported is never `real`: they get `unsure` with
   "verify with an insights screenshot or Instagram connect". Show brands which numbers are verified.
+
+## Instagram Login (F1): `Continue with Instagram`
+
+The AI service does the whole login and fetch. The backend only needs a button and a status poll.
+Only Creator / Business Instagram accounts can log in (Meta's rule). Personal accounts: show the
+"switch to a free Creator account" guide, or the manual profile path.
+
+```
+Creator app                  Backend                         AI service                     Instagram
+───────────                  ───────                         ──────────                     ─────────
+taps "Continue with      →   GET /ai/instagram/login-url
+Instagram"                       ?account_ref=<creator id>  →  signed 10-min link
+                         ←   302 to that url
+approves on Instagram    ─────────────────────────────────────────────────────────────→  /oauth/authorize
+                         ←────────────────────────── 303 to APP_RETURN_URL  ←  /auth/instagram/callback
+lands on the app page        (?instagram=connected&account_ref=..&handle=..           (fetch runs in
+                              or ?instagram=failed&reason=..)                          the background)
+"Fetching your numbers…" →   GET /ai/instagram/accounts/{account_ref}  every 2 s until status = active
+                             then GET /ai/creators/{handle}
+```
+
+`reason` on failure: `denied` (creator cancelled), `expired_link` (link older than 10 minutes:
+start again), `not_professional` (Personal account), `already_linked` (this Instagram account is
+connected to a different Loofie account: send to support), `instagram_error`, `bad_request`.
+
+`GET /ai/instagram/accounts/{account_ref}`:
+```json
+{ "account_ref": "be-123", "handle": "mira.skin", "status": "active", "insights_allowed": true,
+  "token_expires_at": "2027-01-13T10:00:00Z", "last_synced_at": "2026-11-14T10:00:05Z", "last_error": null }
+```
+| `status` | Meaning | Show the creator |
+|---|---|---|
+| `syncing` | fetching (10–30 s) | spinner |
+| `active` | done, numbers are `API_VERIFIED` | "Instagram connected ✓" |
+| `error` | last fetch failed; retried automatically | nothing yet; ops sees `last_error` |
+| `expired` / `revoked` | the login no longer works | "Reconnect Instagram" button (same flow) |
+
+`insights_allowed: false`: the creator unticked views/reach on Instagram's screen; followers and
+posts are verified but views aren't. Ask them to reconnect and allow it.
+
+Other calls:
+- `POST /ai/instagram/accounts/{account_ref}/sync`: re-fetch now (ops button). `409` if the login expired.
+- `DELETE /ai/instagram/accounts/{account_ref}`: creator disconnected in the app (data kept).
+  `?delete_data=true`: also delete everything fetched from Instagram.
+
+The AI service also answers Meta directly at `/auth/instagram/deauthorize`,
+`/auth/instagram/data-deletion` and `/auth/instagram/deletion-status` (required by Meta's App
+Review). These and the callback are public URLs; everything under `/ai/` still needs the API key.
+
+After login, the AI service re-fetches every creator **weekly** and renews their token before it
+expires (daily job), so the backend never has to resend Instagram numbers.
 
 ## `POST /ai/match`
 
@@ -111,29 +165,51 @@ Response:
 ## `POST /ai/feedback`
 
 ```json
-{ "event_type": "shortlist_reject", "actor_type": "brand", "actor_id": "brand-7",
-  "subject_type": "shortlist", "subject_id": "your-brief-id",
-  "suggestion_id": "uuid from /ai/match", "payload": { "creator_handle": "mira.skin", "reason": "too expensive" } }
+{ "event_type": "job_state_changed", "actor_type": "system", "subject_type": "job", "subject_id": "job-42",
+  "event_id": "6f1c2a52-8a7e-4c55-9d43-1b2f0f3c9a11",
+  "occurred_at": "2026-11-14T15:30:00+05:30",
+  "payload": { "creator_ref": "your-creator-id", "job_id": "job-42", "brief_ref": "your-brief-id",
+               "from": "IN_PRODUCTION", "to": "DRAFT_SUBMITTED", "deadline_at": "2026-11-16T10:00:00+05:30" } }
 ```
 `actor_type`: `brand` / `creator` / `ops` / `system`. `subject_type`: `brief` / `creator` / `shortlist` / `job`.
 
-| event_type | required payload keys |
+- **`event_id` (send it):** your own UUID for the event. Retrying with the same `event_id` saves
+  nothing new and returns `{"event_id": ..., "duplicate": true}`. Same `event_id` with different
+  content → `409` (that's a bug, not a retry). Without it we generate one, and a retry is saved twice.
+- **`occurred_at` (send it):** when it happened, with a timezone. Missing → the time we received it.
+  More than 5 minutes in the future, or no timezone → `422`.
+- **Creator:** `creator_ref` (your id) **or** `creator_handle`. Prefer `creator_ref`: handles change.
+  We store both when we know the creator.
+- `suggestion_id`: the id from `/ai/match` this reacts to (shortlist events).
+
+| event_type | required payload keys (`creator` = `creator_ref` or `creator_handle`) |
 |---|---|
 | `brief_field_edited` | `field`, `old`, `new` |
 | `brief_confirmed` | none |
 | `shortlist_shown` | `creator_handles` |
-| `shortlist_pick`, `shortlist_maybe` | `creator_handle` |
-| `shortlist_reject` | `creator_handle`, `reason` |
-| `ops_added_creator` | `creator_handle` |
-| `ops_removed_creator` | `creator_handle`, `reason` |
-| `quality_override` | `creator_handle`, `label` |
-| `niche_override` | `creator_handle`, `sub_niche` |
-| `job_outcome` | `creator_handle`, `on_time` |
-| `rating` | `creator_handle`, `stars` |
-| `rebooked` | `creator_handle` |
+| `shortlist_pick`, `shortlist_maybe` | `creator` |
+| `shortlist_reject` | `creator`, `reason` |
+| `ops_added_creator` | `creator` |
+| `ops_removed_creator` | `creator`, `reason` |
+| `quality_override` | `creator`, `label` |
+| `niche_override` | `creator`, `sub_niche` |
+| `job_state_changed` | `creator`, `job_id`, `from`, `to` (+ `brief_ref`, `deadline_at` when known) |
+| `job_outcome` | `creator`, `job_id`, `on_time` (true/false) (+ `revisions`, `disputed`, `replaced`, `rating`) |
+| `video_performance` | `creator`, `job_id`, `result`: `winner` / `average` / `loser` |
+| `rating` | `creator`, `stars` |
+| `rebooked` | `creator` |
 
-Unknown type or missing key → `422`. Unknown `suggestion_id` → `404`. Extra payload keys are kept.
-**Reject reasons matter most:** "too expensive", "wrong vibe", "too small" each teach the matcher something different.
+**Send `job_state_changed` on every job status change** (invited, accepted, declined, product
+received, draft submitted, revision requested, approved, auto-approved, disputed, replaced...), and
+`job_outcome` when a job closes or the creator is replaced. The reliability score and rebook timing
+learn from how jobs go, not just how they end.
+
+**Never send personal or payment data** (PAN, Aadhaar, bank account, IFSC, UPI id, phone, email,
+payout amount): the models don't need it, and those keys are refused with `422`.
+
+Unknown type, missing key or a value outside its list → `422`. Unknown `suggestion_id` → `404`.
+Extra payload keys are kept. **Reject reasons matter most:** "too expensive", "wrong vibe", "too
+small" each teach the matcher something different.
 
 ## `GET /health`
 
