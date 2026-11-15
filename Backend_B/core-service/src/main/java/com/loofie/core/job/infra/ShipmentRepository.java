@@ -15,4 +15,6 @@ public interface ShipmentRepository extends JpaRepository<Shipment, UUID> {
     List<Shipment> findByJobIdOrderByAttempt(UUID jobId);
 
     long countByJobId(UUID jobId);
+
+    Optional<Shipment> findByJobIdAndAttempt(UUID jobId, int attempt);
 }

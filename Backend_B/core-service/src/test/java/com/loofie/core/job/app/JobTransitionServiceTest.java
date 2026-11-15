@@ -74,7 +74,7 @@ class JobTransitionServiceTest {
 
         clock.advance(Duration.ofHours(30));
         TransitionResult received = engine.transition(TransitionCommand.of(jobId, JobAction.CONFIRM_RECEIVED, creatorActor,
-                null).with(TransitionDetails.photo("uploads/receipt-1.jpg")));
+                null).with(TransitionDetails.photo(JobFixtures.photoKey())));
         assertThat(received.to()).isEqualTo(JobStatus.IN_PRODUCTION);
         assertThat(received.eventIds()).hasSize(2); // SHIPPED -> RECEIVED, then RECEIVED -> IN_PRODUCTION
         assertThat(job(jobId).getProductionDueAt()).isEqualTo(clock.instant().plus(JobDeadlines.PRODUCTION_WINDOW));

@@ -97,7 +97,7 @@ class OutboxRelayTest {
                     WHERE a.job_id = ? AND a.status = 'ACTIVE'
                     """).params(Ids.newId(), seeded.jobId(), UUID.randomUUID(), seeded.jobId()).update();
             engine.transition(TransitionCommand.of(seeded.jobId(), JobAction.CONFIRM_RECEIVED,
-                    Actor.creator(seeded.creatorId()), null).with(TransitionDetails.photo("photos/p.jpg")));
+                    Actor.creator(seeded.creatorId()), null).with(TransitionDetails.photo(JobFixtures.photoKey())));
             jobIds.add(seeded.jobId());
         }
 

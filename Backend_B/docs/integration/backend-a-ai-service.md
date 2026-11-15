@@ -83,3 +83,13 @@ Leave PostgreSQL 14 running if Aditya's service is run locally.
   `totalCapped: true` above that; use `nextCursor` → `?after=` for further pages (page numbers stop at row 10,000).
 - **Errors:** a job outside the caller's brand or assignment now returns 404 (as if it did not exist).
   `OPS_EXTEND` needs an `Idempotency-Key` (428 without one).
+
+## Changes on 2026-11-15 (F6 hardening)
+
+- `CONFIRM_RECEIVED` `photoRef` must be a storage key `receipts/<uuid>.<jpg|jpeg|png|heic|webp>` (422 otherwise).
+  F7 upload must issue keys in this format.
+- `COURIER_DELIVERED` from ops needs `deliverySource` (`TRACKING_PAGE` or `COURIER_CALL`) and may send
+  `deliveredAt` (the courier's time; default now). A tracking integration calls it as SYSTEM (`TRACKING_API`).
+- `CONFIRM_RECEIVED` may send `shipmentAttempt` (which parcel arrived). Event payloads now carry
+  `shipmentAttempt`, plus `deliverySource`/`deliveredAt` on courier delivery and `olderShipmentReceived: true`
+  when the first parcel turned up after a reship (ops should stop or recall the reship).

@@ -46,7 +46,8 @@ public final class JobViews {
 
     /** One shipment attempt (F6). A reship adds another. */
     public record ShipmentView(int attempt, String courier, String trackingNumber, Instant shippedAt,
-                               Instant courierDeliveredAt, Instant receivedAt, boolean hasReceiptPhoto) {
+                               Instant courierDeliveredAt, String courierDeliveredSource,
+                               Instant courierDeliveredRecordedAt, Instant receivedAt, boolean hasReceiptPhoto) {
     }
 
     public record JobDetail(JobSummary job, boolean freeRevisionUsed, String deliveryIssueType, List<Deadline> deadlines,

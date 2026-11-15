@@ -117,13 +117,15 @@ public class JobReadRepository {
 
     public List<ShipmentView> shipments(UUID jobId) {
         return jdbc.sql("""
-                SELECT attempt, courier, tracking_number, shipped_at, courier_delivered_at, received_at,
+                SELECT attempt, courier, tracking_number, shipped_at, courier_delivered_at, courier_delivered_source,
+                       courier_delivered_recorded_at, received_at,
                        receipt_photo_ref IS NOT NULL AS has_photo
                 FROM shipments WHERE job_id = :id ORDER BY attempt
                 """)
                 .param("id", jobId)
                 .query((rs, n) -> new ShipmentView(rs.getInt("attempt"), rs.getString("courier"),
                         rs.getString("tracking_number"), instant(rs, "shipped_at"), instant(rs, "courier_delivered_at"),
+                        rs.getString("courier_delivered_source"), instant(rs, "courier_delivered_recorded_at"),
                         instant(rs, "received_at"), rs.getBoolean("has_photo")))
                 .list();
     }

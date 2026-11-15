@@ -133,7 +133,8 @@ class DeadlineWorkerTest {
     @Test
     void clockStartsByItself24HoursAfterCourierDelivered() {
         UUID jobId = shipped();
-        engine.transition(jobId, JobAction.COURIER_DELIVERED, ops, "tracking shows Delivered");
+        engine.transition(TransitionCommand.of(jobId, JobAction.COURIER_DELIVERED, ops, "tracking shows Delivered")
+                .with(TransitionDetails.courierDelivered(com.loofie.core.job.domain.DeliverySource.TRACKING_PAGE, null)));
 
         clock.advance(Duration.ofHours(23));
         drain();

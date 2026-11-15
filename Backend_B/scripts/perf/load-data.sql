@@ -23,6 +23,7 @@ SELECT gen_random_uuid(), o.id, o.brand_org_id, 'CLOSED',
        random() < 0.3, 500000, false, o.created_at, o.created_at + random() * interval '30 days', 5
 FROM orders o CROSS JOIN generate_series(1, 4) n;
 
+ANALYZE jobs; -- without statistics the UPDATE below joins 1M x 1M rows (it ran for 17+ minutes)
 -- Realistic status mix. Done as an UPDATE with a per-row random() in a subquery: a random() inside a
 -- CASE in the INSERT above was evaluated once for all rows (twice tried, every job came out CLOSED).
 UPDATE jobs SET status = CASE WHEN r < 0.60 THEN 'CLOSED' WHEN r < 0.65 THEN 'IN_PRODUCTION' WHEN r < 0.68 THEN 'IN_REVIEW'

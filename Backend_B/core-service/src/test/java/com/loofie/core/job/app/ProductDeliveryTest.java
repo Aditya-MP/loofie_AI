@@ -30,7 +30,9 @@ import com.loofie.core.job.infra.JobRepository;
 import com.loofie.core.job.infra.ShipmentRepository;
 import com.loofie.core.order.app.OrderSubmissionService;
 import com.loofie.core.order.app.OrderSubmissionService.Pick;
+import com.loofie.core.job.domain.DeliverySource;
 import com.loofie.core.support.IntegrationTest;
+import com.loofie.core.support.JobFixtures;
 import com.loofie.core.support.MutableClock;
 
 /** F6 product delivery: the DewDrop / Ananya story from docs/product-decisions.md, step by step. */
@@ -115,14 +117,15 @@ class ProductDeliveryTest {
         assertThatThrownBy(() -> engine.transition(jobId, JobAction.CONFIRM_RECEIVED, creator, null))
                 .isInstanceOf(TransitionGuardException.class).hasMessageContaining("photo");
 
+        String photo = JobFixtures.photoKey();
         TransitionResult r = engine.transition(TransitionCommand.of(jobId, JobAction.CONFIRM_RECEIVED, creator, null)
-                .with(TransitionDetails.photo("uploads/sunscreen.jpg")));
+                .with(TransitionDetails.photo(photo)));
 
         assertThat(r.to()).isEqualTo(JobStatus.IN_PRODUCTION);
         assertThat(job(jobId).getProductionDueAt()).isEqualTo(clock.instant().plus(JobDeadlines.PRODUCTION_WINDOW));
         Shipment s = shipments.findTopByJobIdOrderByAttemptDesc(jobId).orElseThrow();
         assertThat(s.getReceivedAt()).isEqualTo(clock.instant());
-        assertThat(s.getReceiptPhotoRef()).isEqualTo("uploads/sunscreen.jpg");
+        assertThat(s.getReceiptPhotoRef()).isEqualTo(photo);
     }
 
     @Test
@@ -174,7 +177,7 @@ class ProductDeliveryTest {
         report(jobId, DeliveryIssueType.NOT_RECEIVED);
 
         TransitionResult r = engine.transition(TransitionCommand.of(jobId, JobAction.CONFIRM_RECEIVED, creator, null)
-                .with(TransitionDetails.photo("uploads/late.jpg")));
+                .with(TransitionDetails.photo(JobFixtures.photoKey())));
 
         assertThat(r.to()).isEqualTo(JobStatus.IN_PRODUCTION);
         assertThat(job(jobId).getDeliveryIssueType()).isNull();
@@ -191,7 +194,8 @@ class ProductDeliveryTest {
         assertThatThrownBy(() -> engine.transition(jobId, JobAction.AUTO_START_PRODUCTION, Actor.system(), null))
                 .isInstanceOf(TransitionGuardException.class).hasMessageContaining("courier");
 
-        engine.transition(jobId, JobAction.COURIER_DELIVERED, ops, "Delhivery tracking shows Delivered");
+        engine.transition(TransitionCommand.of(jobId, JobAction.COURIER_DELIVERED, ops, "Delhivery tracking shows Delivered")
+                .with(TransitionDetails.courierDelivered(DeliverySource.TRACKING_PAGE, null)));
         Instant delivered = clock.instant();
         assertThat(job(jobId).getStatus()).isEqualTo(JobStatus.PRODUCT_SHIPPED);
         assertThat(job(jobId).getAutoStartAt()).isEqualTo(delivered.plus(JobDeadlines.AUTO_START_AFTER_DELIVERED));
@@ -292,6 +296,93 @@ class ProductDeliveryTest {
         engine.transition(TransitionCommand.of(jobId, JobAction.INVITE, ops, "best fit").withCreator(creatorId));
         engine.transition(jobId, JobAction.ACCEPT, creator, null);
         return jobId;
+    }
+
+    // ---- F6 hardening (docs/features/f6-product-delivery.md plan items 1, 4, 6) ----
+
+    /** Item 1: a receipt "photo" that is a link or script would be opened by ops. Only our storage keys pass. */
+    @Test
+    void aReceiptPhotoMustBeAnUploadedPhotoKeyNeverALinkOrScript() {
+        UUID jobId = shippedJob();
+        for (String bad : List.of("javascript:alert(1)", "https://evil.example/receipt.jpg", "receipts/../../etc.jpg",
+                "receipts/not-a-uuid.jpg", "receipts/" + UUID.randomUUID() + ".exe", " receipts/" + UUID.randomUUID() + ".jpg")) {
+            assertThatThrownBy(() -> engine.transition(TransitionCommand.of(jobId, JobAction.CONFIRM_RECEIVED, creator, null)
+                    .with(TransitionDetails.photo(bad))))
+                    .as(bad).isInstanceOf(TransitionGuardException.class).hasMessageContaining("photo key");
+        }
+        assertThat(job(jobId).getStatus()).isEqualTo(JobStatus.PRODUCT_SHIPPED);
+
+        // The database refuses it too, whatever writes it.
+        assertThatThrownBy(() -> jdbc.sql("UPDATE shipments SET receipt_photo_ref = 'javascript:alert(1)' WHERE job_id = ?")
+                .param(jobId).update()).isInstanceOf(org.springframework.dao.DataIntegrityViolationException.class);
+
+        engine.transition(TransitionCommand.of(jobId, JobAction.CONFIRM_RECEIVED, creator, null)
+                .with(TransitionDetails.photo(JobFixtures.photoKey())));
+        assertThat(job(jobId).getStatus()).isEqualTo(JobStatus.IN_PRODUCTION);
+    }
+
+    /** Item 4: ops records "Delivered" late; the creator's 24h window counts from the courier's delivery time. */
+    @Test
+    void courierDeliveredUsesTheCouriersDeliveryTimeAndSaysWhereItCameFrom() {
+        UUID jobId = shippedJob();                    // shipped Tuesday 10:00
+        clock.advance(Duration.ofDays(2));            // ops looks on Thursday
+        Instant deliveredWednesday = clock.instant().minus(Duration.ofDays(1));
+
+        assertThatThrownBy(() -> engine.transition(jobId, JobAction.COURIER_DELIVERED, ops, "tracking says delivered"))
+                .isInstanceOf(TransitionGuardException.class).hasMessageContaining("TRACKING_PAGE or COURIER_CALL");
+        assertThatThrownBy(() -> courierDelivered(jobId, DeliverySource.TRACKING_API, null))
+                .isInstanceOf(TransitionGuardException.class).hasMessageContaining("integration only");
+        assertThatThrownBy(() -> courierDelivered(jobId, DeliverySource.TRACKING_PAGE, clock.instant().plus(Duration.ofHours(1))))
+                .isInstanceOf(TransitionGuardException.class).hasMessageContaining("future");
+        assertThatThrownBy(() -> courierDelivered(jobId, DeliverySource.TRACKING_PAGE, clock.instant().minus(Duration.ofDays(5))))
+                .isInstanceOf(TransitionGuardException.class).hasMessageContaining("before the parcel was shipped");
+
+        courierDelivered(jobId, DeliverySource.COURIER_CALL, deliveredWednesday);
+
+        assertThat(job(jobId).getCourierDeliveredAt()).isEqualTo(deliveredWednesday);
+        assertThat(job(jobId).getAutoStartAt()).isEqualTo(deliveredWednesday.plus(JobDeadlines.AUTO_START_AFTER_DELIVERED));
+        Shipment s = shipments.findTopByJobIdOrderByAttemptDesc(jobId).orElseThrow();
+        assertThat(s.getCourierDeliveredSource()).isEqualTo(DeliverySource.COURIER_CALL);
+        assertThat(lastPayloadField(jobId, "deliverySource")).isEqualTo("COURIER_CALL");
+        assertThat(lastPayloadField(jobId, "deliveredAt")).isEqualTo(deliveredWednesday.toString());
+    }
+
+    @Test
+    void aTrackingIntegrationReportsDeliveredAsSystemWithoutSayingSo() {
+        UUID jobId = shippedJob();
+        engine.transition(jobId, JobAction.COURIER_DELIVERED, Actor.system(), null);
+        assertThat(shipments.findTopByJobIdOrderByAttemptDesc(jobId).orElseThrow().getCourierDeliveredSource())
+                .isEqualTo(DeliverySource.TRACKING_API);
+    }
+
+    /** Item 6: after a reship the first parcel turns up; the receipt is recorded on the right shipment and ops is told. */
+    @Test
+    void whenTheFirstParcelTurnsUpAfterAReshipItIsTheOneMarkedReceived() {
+        UUID jobId = shippedJob();
+        report(jobId, DeliveryIssueType.NOT_RECEIVED);
+        engine.transition(TransitionCommand.of(jobId, JobAction.RESHIP, brand, null)
+                .with(TransitionDetails.shipment("Blue Dart", "BD99887766")));
+
+        assertThatThrownBy(() -> engine.transition(TransitionCommand.of(jobId, JobAction.CONFIRM_RECEIVED, creator, null)
+                .with(TransitionDetails.received(JobFixtures.photoKey(), 3))))
+                .isInstanceOf(TransitionGuardException.class).hasMessageContaining("no shipment attempt 3");
+
+        engine.transition(TransitionCommand.of(jobId, JobAction.CONFIRM_RECEIVED, creator, null)
+                .with(TransitionDetails.received(JobFixtures.photoKey(), 1)));
+
+        List<Shipment> all = shipments.findByJobIdOrderByAttempt(jobId);
+        assertThat(all.get(0).isReceived()).as("first parcel").isTrue();
+        assertThat(all.get(1).isReceived()).as("reship still on its way").isFalse();
+        String received = jdbc.sql("""
+                SELECT payload::text FROM job_events WHERE job_id = ? AND action = 'CONFIRM_RECEIVED'
+                """).param(jobId).query(String.class).single();
+        assertThat(received).contains("\"shipmentAttempt\": 1").contains("\"olderShipmentReceived\": true");
+        assertThat(job(jobId).getStatus()).isEqualTo(JobStatus.IN_PRODUCTION);
+    }
+
+    private void courierDelivered(UUID jobId, DeliverySource source, Instant at) {
+        engine.transition(TransitionCommand.of(jobId, JobAction.COURIER_DELIVERED, ops, "checked")
+                .with(TransitionDetails.courierDelivered(source, at)));
     }
 
     private UUID shippedJob() {

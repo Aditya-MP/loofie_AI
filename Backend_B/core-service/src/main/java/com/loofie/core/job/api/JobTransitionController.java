@@ -1,9 +1,11 @@
 package com.loofie.core.job.api;
 
+import java.time.Instant;
 import java.util.UUID;
 
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotNull;
+import jakarta.validation.constraints.Positive;
 import jakarta.validation.constraints.PositiveOrZero;
 import jakarta.validation.constraints.Size;
 
@@ -24,6 +26,7 @@ import com.loofie.core.job.app.TransitionDetails;
 import com.loofie.core.job.app.TransitionResult;
 import com.loofie.core.job.domain.Actor;
 import com.loofie.core.job.domain.DeliveryIssueType;
+import com.loofie.core.job.domain.DeliverySource;
 import com.loofie.core.job.domain.JobAction;
 import com.loofie.core.job.domain.ReasonCode;
 
@@ -34,7 +37,8 @@ import tools.jackson.databind.json.JsonMapper;
  * controller only maps the request. Ops console actions (F10) use this same endpoint.
  *
  * <p>Action-specific fields: {@code courier} + {@code trackingNumber} (MARK_SHIPPED, RESHIP),
- * {@code photoRef} (CONFIRM_RECEIVED), {@code issueType} (REPORT_DELIVERY_ISSUE),
+ * {@code photoRef} + optional {@code shipmentAttempt} (CONFIRM_RECEIVED), {@code issueType}
+ * (REPORT_DELIVERY_ISSUE), {@code deliverySource} + optional {@code deliveredAt} (COURIER_DELIVERED),
  * {@code reasonCode} (ops only).
  *
  * <p><b>Retries.</b> Clients should send an {@code Idempotency-Key} header (a new UUID per user
@@ -49,7 +53,8 @@ class JobTransitionController {
     record TransitionRequest(@NotNull JobAction action, @Size(max = 1000) String reason, UUID creatorId,
                              @Size(max = 64) String courier, @Size(max = 64) String trackingNumber,
                              @Size(max = 512) String photoRef, DeliveryIssueType issueType, ReasonCode reasonCode,
-                             @PositiveOrZero Long expectedVersion) {
+                             @PositiveOrZero Long expectedVersion, Instant deliveredAt, DeliverySource deliverySource,
+                             @Positive Integer shipmentAttempt) {
     }
 
     private final JobTransitionService engine;
@@ -74,7 +79,7 @@ class JobTransitionController {
                                                 Actor actor,
                                                 @RequestHeader(name = Idempotency.HEADER, required = false) String key) {
         TransitionDetails details = new TransitionDetails(body.courier(), body.trackingNumber(), body.photoRef(),
-                body.issueType(), body.reasonCode());
+                body.issueType(), body.reasonCode(), body.deliveredAt(), body.deliverySource(), body.shipmentAttempt());
         TransitionCommand cmd = new TransitionCommand(jobId, body.action(), actor, body.reason(), body.creatorId(),
                 RequestIdFilter.current(), details, body.expectedVersion());
         if (key == null) {

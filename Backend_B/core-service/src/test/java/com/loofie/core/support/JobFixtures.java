@@ -77,6 +77,11 @@ public class JobFixtures {
         return jdbc.sql("SELECT status FROM jobs WHERE id = ?").param(jobId).query(String.class).single();
     }
 
+    /** A valid receipt photo storage key (the only format the engine accepts). */
+    public static String photoKey() {
+        return "receipts/" + UUID.randomUUID() + ".jpg";
+    }
+
     /** Whether {@link #jobIn} puts an active creator on a job in this state. */
     public static boolean hasActiveCreator(JobStatus s) {
         return switch (s) {

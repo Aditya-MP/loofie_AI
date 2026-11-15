@@ -45,7 +45,8 @@ class JobEventRecorder {
 
     @Transactional(propagation = Propagation.MANDATORY)
     UUID recordStateChange(Job job, UUID assignmentId, JobStatus from, JobAction action, Actor actor, String reason,
-                           ReasonCode reasonCode, DeliveryIssueType issueType, Instant occurredAt, UUID correlationId,
+                           ReasonCode reasonCode, DeliveryIssueType issueType, Map<String, Object> facts,
+                           Instant occurredAt, UUID correlationId,
                            UUID causationId) {
         UUID eventId = Ids.newId();
 
@@ -66,6 +67,10 @@ class JobEventRecorder {
         payload.put("reasonCode", reasonCode == null ? null : reasonCode.name());
         payload.put("faultParty", reasonCode == null ? null : reasonCode.fault().name());
         payload.put("deliveryIssueType", issueType == null ? null : issueType.name());
+        // Action-specific facts (shipment attempt, delivery source...): ids and codes only, never free text.
+        if (facts != null) {
+            facts.forEach(payload::putIfAbsent);
+        }
 
         eventLog.append(new JobEventRecord(eventId, JOB_STATE_CHANGED, job.getOrderId(), job.getId(), job.getVersion(),
                 assignmentId,

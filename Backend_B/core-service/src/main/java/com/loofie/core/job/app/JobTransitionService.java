@@ -3,7 +3,9 @@ package com.loofie.core.job.app;
 import java.time.Clock;
 import java.time.Instant;
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -18,6 +20,7 @@ import com.loofie.core.common.Ids;
 import com.loofie.core.job.domain.Actor;
 import com.loofie.core.job.domain.ActorRole;
 import com.loofie.core.job.domain.Assignment;
+import com.loofie.core.job.domain.DeliverySource;
 import com.loofie.core.job.domain.Job;
 import com.loofie.core.job.domain.JobAction;
 import com.loofie.core.job.domain.JobDeadlines;
@@ -153,7 +156,7 @@ public class JobTransitionService {
         checkGuards(job, rule, details, now);
         ReasonCode reasonCode = reasonCodeFor(job, rule, details);
         UUID assignmentId = changeAssignment(job, rule, creatorId, now);
-        applyDeliveryFacts(job, rule, actor, details, assignmentId, now);
+        Map<String, Object> facts = applyDeliveryFacts(job, rule, actor, details, assignmentId, now);
         if (rule.action() == JobAction.REQUEST_REVISION) {
             job.markFreeRevisionUsed();
         }
@@ -170,7 +173,7 @@ public class JobTransitionService {
         countAfterCommit(rule.action(), actor);
 
         return recorder.recordStateChange(job, assignmentId, from, rule.action(), actor, reason, reasonCode,
-                job.getDeliveryIssueType(), now, correlationId, causationId);
+                job.getDeliveryIssueType(), facts, now, correlationId, causationId);
     }
 
     /** Business metric per action; counted only once the transaction really commits. */
@@ -234,6 +237,11 @@ public class JobTransitionService {
                 if (isBlank(details.photoRef())) {
                     throw new TransitionGuardException("Confirming receipt needs a photo of the product");
                 }
+                // Only a storage key we issue, never a URL or free text: ops opens it (stored-XSS / phishing risk).
+                if (!Shipment.isReceiptPhotoKey(details.photoRef())) {
+                    throw new TransitionGuardException("The receipt photo must be an uploaded photo key "
+                            + "(receipts/<id>.jpg, .jpeg, .png, .heic or .webp)");
+                }
             }
             case REPORT_DELIVERY_ISSUE -> {
                 if (details.issueType() == null) {
@@ -294,9 +302,16 @@ public class JobTransitionService {
         };
     }
 
-    /** F6 facts that ride along with a transition: shipments, courier proof, receipt, issues. */
-    private void applyDeliveryFacts(Job job, TransitionRule rule, Actor actor, TransitionDetails details,
-                                    UUID assignmentId, Instant now) {
+    /** How far ahead of our clock a reported delivery time may be (courier and server clocks differ a little). */
+    static final java.time.Duration DELIVERY_CLOCK_SKEW = java.time.Duration.ofMinutes(5);
+
+    /**
+     * F6 facts that ride along with a transition: shipments, courier proof, receipt, issues. Returns the facts
+     * to add to the event (shipment attempt, delivery source...), so the log says which parcel it was about.
+     */
+    private Map<String, Object> applyDeliveryFacts(Job job, TransitionRule rule, Actor actor, TransitionDetails details,
+                                                   UUID assignmentId, Instant now) {
+        Map<String, Object> facts = new LinkedHashMap<>();
         switch (rule.action()) {
             case INVITE, APPROVE_SWAP -> job.resetForNewCreator(); // fresh shipment and their own extension
             case MARK_SHIPPED, RESHIP -> {
@@ -304,14 +319,28 @@ public class JobTransitionService {
                 shipments.save(Shipment.create(Ids.newId(), job.getId(), assignmentId, attempt, details.courier(),
                         details.trackingNumber(), now, actor.userId()));
                 job.recordShipped(now);
+                facts.put("shipmentAttempt", attempt);
             }
             case COURIER_DELIVERED -> {
-                latestShipment(job).markCourierDelivered(now, actor.userId());
-                job.recordCourierDelivered(now);
+                Shipment latest = latestShipment(job);
+                DeliverySource source = deliverySource(actor, details);
+                Instant deliveredAt = deliveredAt(details, latest, now);
+                latest.markCourierDelivered(deliveredAt, actor.userId(), source, now);
+                job.recordCourierDelivered(deliveredAt); // the creator's 24h window counts from here
+                facts.put("shipmentAttempt", latest.getAttempt());
+                facts.put("deliverySource", source.name());
+                facts.put("deliveredAt", deliveredAt.toString());
             }
             case CONFIRM_RECEIVED -> {
-                latestShipment(job).markReceived(now, details.photoRef().trim());
+                Shipment latest = latestShipment(job);
+                Shipment received = receivedShipment(job, details, latest);
+                received.markReceived(now, details.photoRef());
                 job.clearDeliveryIssue();
+                facts.put("shipmentAttempt", received.getAttempt());
+                if (received.getAttempt() < latest.getAttempt()) {
+                    // The first parcel turned up after a reship: ops should stop or recall the reship.
+                    facts.put("olderShipmentReceived", true);
+                }
             }
             case REPORT_DELIVERY_ISSUE -> job.recordDeliveryIssue(details.issueType(), now);
             case RESOLVE_FALSE_CLAIM -> job.clearDeliveryIssue();
@@ -319,6 +348,49 @@ public class JobTransitionService {
                 // nothing to record
             }
         }
+        return facts;
+    }
+
+    /** Ops must say what the "Delivered" fact is based on; only the tracking integration (SYSTEM) may say TRACKING_API. */
+    private static DeliverySource deliverySource(Actor actor, TransitionDetails details) {
+        DeliverySource source = details.deliverySource();
+        if (actor.role() == ActorRole.SYSTEM) {
+            return source != null ? source : DeliverySource.TRACKING_API;
+        }
+        if (source == null) {
+            throw new TransitionGuardException("Say where \"Delivered\" comes from: TRACKING_PAGE or COURIER_CALL");
+        }
+        if (source == DeliverySource.TRACKING_API) {
+            throw new TransitionGuardException("TRACKING_API is reported by the tracking integration only");
+        }
+        return source;
+    }
+
+    /** The courier's delivery time: given by ops (it may be recorded late), never in the future or before shipping. */
+    private static Instant deliveredAt(TransitionDetails details, Shipment shipment, Instant now) {
+        Instant at = details.deliveredAt() != null ? details.deliveredAt() : now;
+        if (at.isAfter(now.plus(DELIVERY_CLOCK_SKEW))) {
+            throw new TransitionGuardException("The delivery time cannot be in the future");
+        }
+        if (at.isAfter(now)) {
+            at = now; // a few minutes of clock difference
+        }
+        if (at.isBefore(shipment.getShippedAt())) {
+            throw new TransitionGuardException("The delivery time is before the parcel was shipped");
+        }
+        return at;
+    }
+
+    /** Which parcel the creator got: the latest by default, or an earlier attempt that turned up after a reship. */
+    private Shipment receivedShipment(Job job, TransitionDetails details, Shipment latest) {
+        Shipment received = details.shipmentAttempt() == null ? latest
+                : shipments.findByJobIdAndAttempt(job.getId(), details.shipmentAttempt())
+                        .orElseThrow(() -> new TransitionGuardException(
+                                "This job has no shipment attempt " + details.shipmentAttempt()));
+        if (received.isReceived()) {
+            throw new TransitionGuardException("Shipment attempt " + received.getAttempt() + " is already confirmed");
+        }
+        return received;
     }
 
     private Shipment latestShipment(Job job) {
