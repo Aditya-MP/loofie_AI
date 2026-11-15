@@ -35,7 +35,6 @@ from app.api.schemas import (
     MatchOut,
     ProfileOut,
     QualityOut,
-    TrackRecordOut,
 )
 from app.brief.extract import Field, brief_config, parse
 from app.config import get_settings
@@ -263,17 +262,7 @@ def profile_out(session: Session, handle: str, notes: list[str] | None = None) -
         )
         if q
         else None,
-        track_record=TrackRecordOut(
-            jobs=rec.jobs,
-            on_time=rec.on_time,
-            creator_faults=rec.creator_faults,
-            avg_stars=round(sum(rec.stars) / len(rec.stars), 2) if rec.stars else None,
-            rebooks=rec.rebooks,
-            score=rec.score,
-            summary=track_record.describe(rec),
-        )
-        if rec and not rec.empty
-        else None,
+        track_record=track_record.summary(rec),
     )
 
 

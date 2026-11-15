@@ -120,6 +120,34 @@ No evaluation data → refused unless `--force`. Every decision is recorded in `
 The old file goes to `config/history/`; to undo: `uv run loofie models rollback matcher`.
 Restart the API after a promote or rollback so it reads the new file.
 
+## Pilot log: recording jobs run by hand
+
+While pilot jobs run on WhatsApp there is no app to send events, so ops records them in a sheet and
+it is loaded into the events log as if the app had sent them. **Without it the pilot teaches the
+models nothing.**
+
+```
+uv run loofie pilot template pilot_log.xlsx       # once: blank sheet with dropdowns + "How to fill" tab
+uv run loofie pilot import pilot_log.xlsx --dry-run   # check: lists every bad row, changes nothing
+uv run loofie pilot import pilot_log.xlsx         # load (Google Sheets: download the Log tab as .csv)
+```
+
+- **One row per thing that happened**: Date, Brief, Brand, Creator, What happened, Detail, Reason
+  code. "What happened" and "Reason code" are dropdowns. The "How to fill" tab explains each one
+  and has a worked example.
+- **Same checks as the app** (`/ai/feedback` rules), so pilot data and app data look the same.
+- **All or nothing**: one bad row and nothing loads; every bad row is listed with what to fix.
+- **Re-import any time** (weekly is fine). It syncs: edited rows are replaced, deleted rows removed,
+  unchanged rows left alone. To fix a mistake, edit the row. Only events that came from the sheet
+  are ever touched.
+- **Revisions are counted for you**: one "Revision asked" row each time; "Delivered" adds them up.
+- **Dropped out needs a reason code**: it decides whose fault it was, so brand and courier problems
+  never count against the creator.
+- **Never type** phone numbers, emails, UPI ids, bank or ID numbers: rows with them are refused.
+- The creator must already be in Loofie (`POST /ai/creators/profile` or the data sheet import).
+- Keep the sheet in the team drive, **not in this repo** (it names real creators and brands).
+- When the app sends events itself, stop adding rows; the imported pilot events stay.
+
 ## Weekly check
 
 ```
@@ -128,7 +156,9 @@ uv run loofie report
 
 Watch **"ops picks in matcher top"** (shadow mode): the share of creators ops showed brands that
 the matcher had already suggested. It should rise over time. Also watch which brief fields
-brands fix most (Model 1's weak spots) and the top reject reasons.
+brands fix most (Model 1's weak spots) and the top reject reasons. The report also counts real
+prices recorded (the follower-based rate estimate is replaced after 20-30) and how many events came
+from the pilot log.
 
 ## Backups
 

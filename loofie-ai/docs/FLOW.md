@@ -67,7 +67,9 @@ and one tap per brief, and only see briefs that fit them.
 | Brand picks a Suggested creator | Brand | invite, 24 h to accept (the old flow) | `shortlist_pick` | 14 | ❌ backend |
 | Booked creator backs out | Creator | replacement rules (DECISIONS.md section 5) | `job_state_changed` + `CREATOR_WITHDREW` | 19 | ✅ AI rules |
 
-Pilot without the app: ops sends the Monday message and the "fits you" notice on WhatsApp and marks
+Pilot without the app (every scene): ops records each step in the pilot log and runs `loofie pilot
+import` (OPERATIONS.md "Pilot log"), so pilot jobs teach the models like app jobs will.
+Also by hand: ops sends the Monday message and the "fits you" notice on WhatsApp and marks
 Ready / Interested on the shortlist by hand.
 
 ## Scenes 5-10: payment and the job (F4-F9, F13)
@@ -98,6 +100,8 @@ same id with different content is a bug and answers 409 (example 24).
 | Rates the creator (within 7 days) | Brand | saves the rating | `rating` (`stars`; **not** `job_rating`, example 27) | 21 | ❌ backend |
 | Tags the video result (~30 days) | Brand | saves it | `video_performance`: `winner` / `average` / `loser` | 22 | ❌ backend |
 | Books the same creator again | Brand | rebook checkout | `rebooked` | 23 | ❌ backend F11 |
+| Price agreed for the video | System | at payment | `deal_price` | 32 | ❌ backend |
+| Creator card shows past jobs | App | shows `track_record.summary` | `GET /ai/creators/<handle>` | 33 | ✅ AI · ❌ screen |
 | "Book again?" nudge | System | shows it | *planned: rebook nudge* | | ❌ AI |
 | Weekly check | Aditya | none | `loofie report`: are the models improving? | | ✅ AI |
 

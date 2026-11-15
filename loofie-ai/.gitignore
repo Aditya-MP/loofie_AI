@@ -8,3 +8,7 @@ models_cache/
 *.egg-info/
 backups/
 config/history/
+
+# Pilot log sheets name real creators and brands: keep them in the team drive, never here.
+pilot_log*.xlsx
+pilot_log*.csv

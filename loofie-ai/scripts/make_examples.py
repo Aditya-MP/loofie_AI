@@ -547,6 +547,28 @@ def main() -> int:
             },
             note="pass_reason: BUSY, RATE_TOO_LOW, PRODUCT_NOT_FOR_ME, DEADLINE_TOO_SHORT, OTHER. Never free text.",
         )
+        call(
+            "The price the brand paid for this creator's video",
+            11,
+            "POST",
+            "/ai/feedback",
+            {
+                "event_type": "deal_price",
+                **job,
+                "event_id": eid(32),
+                "payload": {"creator_ref": "cr-ananya", "job_id": "job-42", "price_inr": 5000},
+            },
+            note="The agreed fee for the video, whole rupees. Replaces the follower-based rate estimate once "
+            "20-30 real deals exist. Not a payout: never send payout amounts or bank details.",
+        )
+        call(
+            "Creator profile after her first job: the track record appears",
+            11,
+            "GET",
+            "/ai/creators/ananya.glows",
+            None,
+            note="track_record is null until the first job. Show `summary` on the creator card.",
+        )
 
     app.dependency_overrides.clear()
     session.close()

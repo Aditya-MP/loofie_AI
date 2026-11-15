@@ -14,6 +14,8 @@ loofie models promote matcher candidate.toml           # goes live only if it sc
 loofie report                                           # weekly health report
 loofie backup                                           # database -> backups/
 loofie instagram maintain                               # daily: renew Instagram tokens, re-fetch weekly
+loofie pilot template pilot_log.xlsx                    # blank pilot log for ops (WhatsApp pilot)
+loofie pilot import pilot_log.xlsx                      # load it into the events log (safe to repeat)
 """
 
 import importlib
@@ -30,6 +32,7 @@ COMMANDS = {
     "backup": ("app.ops.__main__", "save the database to backups/"),
     "restore": ("app.ops.__main__", "put a backup back (asks for --yes)"),
     "instagram": ("app.instagram.__main__", "Instagram Login: daily token refresh + weekly re-fetch, status"),
+    "pilot": ("app.pilot.__main__", "pilot log: blank template for ops, import it into the events log"),
 }
 # These share one module, so the command name is passed on as its first argument.
 PASS_NAME = {"models", "report", "backup", "restore"}

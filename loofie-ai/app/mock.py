@@ -18,6 +18,7 @@ import hmac
 import json
 import uuid
 from datetime import UTC, date, datetime, timedelta
+from types import SimpleNamespace
 from typing import Annotated
 from urllib.parse import urlencode
 
@@ -42,6 +43,8 @@ from app.api.schemas import (
 from app.brief.extract import Field, parse
 from app.config import ROOT, get_settings
 from app.importer import parse as p
+from app.matcher import track_record
+from app.matcher.features import matcher_config
 
 EXAMPLES = ROOT / "contracts" / "examples"
 
@@ -62,6 +65,7 @@ class State:
         self.examples = load_examples()
         self.known_ids: set[str] = set()  # brief event_ids and suggestion_ids feedback may point at
         self.events: dict[str, dict] = {}
+        self.timeline: list[SimpleNamespace] = []  # what the track record reads
         self.creators: dict[str, dict] = {}
         self.accounts: dict[str, dict] = {}
         for ex in self.examples.values():  # the ids inside the example files work too
@@ -145,9 +149,20 @@ def creator_profile(body: CreatorIn, request: Request, x_api_key: Key = ""):
 def get_creator(handle: str, request: Request, x_api_key: Key = ""):
     require_key(x_api_key)
     h = clean_handle(handle)
-    if h not in state(request).creators:
+    st = state(request)
+    if h not in st.creators:
         raise HTTPException(404, f"no profile for @{h}")
-    return state(request).creators[h]
+    out = copy.deepcopy(st.creators[h])
+    # Same scoring as the real service, on the job events sent to this mock.
+    ref = out.get("creator_ref")
+    mine = [
+        e
+        for e in st.timeline
+        if e.event_type in track_record.TRACK_EVENTS
+        and (e.payload.get("creator_handle") == h or (ref and e.payload.get("creator_ref") == ref))
+    ]
+    out["track_record"] = track_record.summary(track_record.build(mine, matcher_config())) if mine else None
+    return out
 
 
 @app.post("/ai/match", response_model=MatchOut)
@@ -186,6 +201,14 @@ def feedback(body: FeedbackIn, request: Request, x_api_key: Key = ""):
             return FeedbackOut(event_id=body.event_id, duplicate=True)
     event_id = body.event_id or uuid.uuid4()
     st.events[str(event_id)] = fields
+    st.timeline.append(
+        SimpleNamespace(
+            id=event_id,
+            event_type=body.event_type,
+            payload=body.payload,
+            occurred_at=body.occurred_at or datetime.now(UTC),
+        )
+    )
     return FeedbackOut(event_id=event_id)
 
 

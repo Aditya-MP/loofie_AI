@@ -59,6 +59,10 @@ def build_report(session: Session, days: int = 7, now: datetime | None = None) -
         "jobs_finished": len(outcomes),
         "on_time_rate": round(sum(on_time) / len(on_time), 3) if on_time else None,
         "rebooked": by_type["rebooked"],
+        "deal_prices": sorted(
+            e.payload["price_inr"] for e in events if e.event_type == "deal_price" and "price_inr" in e.payload
+        ),
+        "from_pilot_sheet": sum(e.model_name == "pilot_sheet" for e in events),
     }
 
 
@@ -86,3 +90,8 @@ def print_report(r: dict) -> None:
     print(f"  jobs finished            {r['jobs_finished']}")
     print(f"  on time                  {pct(r['on_time_rate'])}")
     print(f"  rebooked                 {r['rebooked']}")
+    prices = r["deal_prices"]
+    median = f"median ₹{prices[len(prices) // 2]:,}" if prices else "-"
+    print(f"  real prices recorded     {len(prices)}   {median}   (rate estimate is replaced after 20-30)")
+    print()
+    print(f"{r['from_pilot_sheet']} of these events came from the pilot log (loofie pilot import)")

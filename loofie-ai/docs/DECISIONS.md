@@ -191,6 +191,7 @@ out when the request is made, and an approved request can't be edited (a change 
 | Named API keys with rotation, feedback contract (`event_id`, `occurred_at`, `creator_ref`) | Built, tested |
 | F2 brief checks (too few matches, price sanity, risky claims) | Next |
 | F7 draft checker (ticks the video checklist from speech and on-screen text, on our GPU) | Planned |
+| Pilot log: ops' sheet loaded as events (`loofie pilot`) | Built, tested |
 | Track record in the matcher (on time, revisions, rating, rebooks, creator-fault drop-outs) | Built, tested (section 9); weights are starting guesses until real jobs |
 | Rebook nudge | Planned; needs real campaign results |
 | Automatic retraining | After real feedback exists |
@@ -275,6 +276,9 @@ the brand's `video_performance` verdict (too subjective and too few yet: report 
 
 ## Change log
 
+- 2026-11-15: Pilot log (`loofie pilot template` / `import`, OPERATIONS.md): ops' hand-filled sheet
+  becomes the same events the app will send; re-import syncs. New event `deal_price` (agreed fee per
+  video). The mock now computes `track_record` from the events sent to it.
 - 2026-11-15: Track record in the matcher (section 9, matcher-v4): `track_record` score part (10%;
   similarity 40→35%, budget 10→5%), on the creator profile too. `rating.stars` must be 1-5 and
   `job_outcome.revisions` a whole number (422 otherwise).

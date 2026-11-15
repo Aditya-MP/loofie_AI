@@ -1,0 +1,24 @@
+{
+  "id": 32,
+  "title": "The price the brand paid for this creator's video",
+  "scene": 11,
+  "call": "POST /ai/feedback",
+  "status": 200,
+  "note": "The agreed fee for the video, whole rupees. Replaces the follower-based rate estimate once 20-30 real deals exist. Not a payout: never send payout amounts or bank details.",
+  "request": {
+    "event_type": "deal_price",
+    "actor_type": "system",
+    "subject_type": "job",
+    "subject_id": "job-42",
+    "event_id": "339f1111-6ed0-57d1-9061-a0c542a7f885",
+    "payload": {
+      "creator_ref": "cr-ananya",
+      "job_id": "job-42",
+      "price_inr": 5000
+    }
+  },
+  "response": {
+    "event_id": "339f1111-6ed0-57d1-9061-a0c542a7f885",
+    "duplicate": false
+  }
+}

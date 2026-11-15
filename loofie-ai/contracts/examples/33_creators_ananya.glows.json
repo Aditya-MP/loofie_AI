@@ -1,0 +1,83 @@
+{
+  "id": 33,
+  "title": "Creator profile after her first job: the track record appears",
+  "scene": 11,
+  "call": "GET /ai/creators/ananya.glows",
+  "status": 200,
+  "note": "track_record is null until the first job. Show `summary` on the creator card.",
+  "response": {
+    "handle": "ananya.glows",
+    "creator_ref": "cr-ananya",
+    "category": "beauty_skincare",
+    "sub_niche": "skincare",
+    "niche_confidence": 0.615,
+    "niche_unsure": false,
+    "caption_language": "English",
+    "brands_mentioned": [],
+    "stats": {
+      "paid_posts": 0,
+      "paid_share": 0.0,
+      "posts_seen": 8,
+      "reels_seen": 8,
+      "view_spike": 1.03,
+      "median_likes": 389.5,
+      "median_views": 3849.5,
+      "posts_last_30d": 8,
+      "engagement_rate": 0.0349,
+      "median_comments": 43.5,
+      "views_to_followers": 0.3104,
+      "days_since_last_post": 2
+    },
+    "completeness": 1.0,
+    "missing": [],
+    "version": "profile-v1|intfloat/multilingual-e5-small|niche-zeroshot-v2|lang-rules-v1",
+    "quality": {
+      "label": "unsure",
+      "activity": "active",
+      "score": 100,
+      "summary": "no red flags, but the numbers are self-reported; verify with an insights screenshot or Instagram connect",
+      "findings": [],
+      "version": "quality-rules-v4"
+    },
+    "track_record": {
+      "jobs": 1,
+      "on_time": 1,
+      "creator_faults": 0,
+      "avg_stars": 5.0,
+      "rebooks": 1,
+      "score": 0.749,
+      "summary": "1 Loofie job, 1 on time, ★5.0, rebooked 1×"
+    },
+    "metric_sources": {
+      "bio": {
+        "source": "SELF_REPORTED",
+        "captured_on": "2026-11-15"
+      },
+      "city": {
+        "source": "SELF_REPORTED",
+        "captured_on": "2026-11-15"
+      },
+      "followers": {
+        "source": "SELF_REPORTED",
+        "captured_on": "2026-11-15"
+      },
+      "following": {
+        "source": "SELF_REPORTED",
+        "captured_on": "2026-11-15"
+      },
+      "total_posts": {
+        "source": "SELF_REPORTED",
+        "captured_on": "2026-11-15"
+      },
+      "display_name": {
+        "source": "SELF_REPORTED",
+        "captured_on": "2026-11-15"
+      },
+      "primary_language": {
+        "source": "SELF_REPORTED",
+        "captured_on": "2026-11-15"
+      }
+    },
+    "update_notes": []
+  }
+}

@@ -217,6 +217,7 @@ Response:
 | `video_performance` | `creator`, `job_id`, `result`: `winner` / `average` / `loser` |
 | `rating` | `creator`, `stars` (whole number 1-5) (+ `job_id`: send it, so a resent rating counts once) |
 | `rebooked` | `creator` |
+| `deal_price` | `creator`, `job_id`, `price_inr` (whole rupees > 0): the fee agreed for this creator's video, **not** a payout. Replaces the follower-based rate estimate once 20-30 exist |
 | `job_timer_fired` | `creator`, `job_id`, `kind` (core-service notice name: `SHIP_REMINDER`, `SHIP_LATE`, `RECEIPT_PROMPT`, `DISPUTE_REVIEW_OVERDUE`...; new names need no AI change) (+ `audience`, `due_at`) |
 | `creator_availability` | `creator`, `available` (true/false) (+ `capacity_per_week`) |
 | `brief_interest` | `creator`, `answer`: `in` / `pass` (+ `pass_reason`: `BUSY`, `RATE_TOO_LOW`, `PRODUCT_NOT_FOR_ME`, `DEADLINE_TOO_SHORT`, `OTHER`) |

@@ -149,3 +149,18 @@ def describe(rec: TrackRecord | None) -> str | None:
     if rec.creator_faults:
         bits.append(f"{rec.creator_faults} creator-side issue{'s' if rec.creator_faults != 1 else ''}")
     return ", ".join(bits)
+
+
+def summary(rec: TrackRecord | None) -> dict | None:
+    """The `track_record` object on GET /ai/creators/{handle} (real service and mock)."""
+    if rec is None or rec.empty:
+        return None
+    return {
+        "jobs": rec.jobs,
+        "on_time": rec.on_time,
+        "creator_faults": rec.creator_faults,
+        "avg_stars": round(sum(rec.stars) / len(rec.stars), 2) if rec.stars else None,
+        "rebooks": rec.rebooks,
+        "score": rec.score,
+        "summary": describe(rec),
+    }

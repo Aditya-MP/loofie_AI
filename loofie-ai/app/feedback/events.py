@@ -31,6 +31,9 @@ FEEDBACK_TYPES: dict[str, set[str]] = {
     "video_performance": {CREATOR, "job_id", "result"},  # brand's verdict ~30 days after approval
     "rating": {CREATOR, "stars"},
     "rebooked": {CREATOR},
+    # What the brand actually paid for this creator's video (the agreed fee, not a payout): replaces
+    # the follower-based rate guess once 20-30 real deals exist.
+    "deal_price": {CREATOR, "job_id", "price_inr"},
     # A reminder or alert went out (core-service TimerFired: SHIP_REMINDER, SHIP_LATE, RECEIPT_PROMPT,
     # DISPUTE_REVIEW_OVERDUE...). Shows who acts only after a nudge; kind stays open so new notices
     # don't need an AI release.
@@ -96,6 +99,9 @@ def bad_values(event_type: str, payload: dict) -> list[str]:
     rev = payload.get("revisions")
     if event_type == "job_outcome" and rev is not None and (type(rev) is not int or rev < 0):
         errors.append("revisions must be a whole number, 0 or more")
+    price = payload.get("price_inr")
+    if event_type == "deal_price" and (type(price) is not int or price <= 0):
+        errors.append("price_inr must be a whole number of rupees, more than 0")
     code, fault = payload.get("reasonCode"), payload.get("faultParty")
     if code in REASON_FAULT and fault is not None and fault != REASON_FAULT[code]:
         errors.append(f"reasonCode {code} has faultParty {REASON_FAULT[code]}, not {fault}")
