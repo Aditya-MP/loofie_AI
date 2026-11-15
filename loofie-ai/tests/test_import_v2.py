@@ -278,3 +278,23 @@ def test_v2_honesty_rules(session, tmp_path):
     # An out-of-scope hand label keeps a food creator out of beauty briefs.
     food = to_candidate(by["food.trails"], None, None)
     assert food.category == "food_beverage"
+
+
+def test_creators_who_look_under_18_are_never_stored(session, tmp_path):
+    from openpyxl import load_workbook
+
+    path = write_v2(tmp_path / "v2.xlsx")
+    wb = load_workbook(path)
+    ws = wb["Creators"]
+    ws.cell(row=4, column=ws.max_column + 1, value="looks_under_18")
+    col = ws.max_column
+    ws.cell(row=5, column=col, value="yes")  # skin.by.mira
+    ws.cell(row=6, column=col, value="no")
+    wb.save(path)
+    report = import_sheet(session, path)
+    session.commit()
+    handles = set(session.scalars(select(Creator.handle)))
+    assert "skin.by.mira" not in handles and "kannada.glow" in handles
+    assert report.counts["Creators"]["skipped_under_18"] == 1
+    # Her posts point at a creator that was never stored: refused, not loaded.
+    assert any("skin.by.mira" in e["error"] for e in report.errors if e["tab"] == "Posts")

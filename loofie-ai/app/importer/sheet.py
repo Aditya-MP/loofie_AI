@@ -297,6 +297,9 @@ def load_tab(
         if status(raw) == "REJECTED":
             report.bump(tab, "skipped_rejected")
             continue
+        if str(raw.get("looks_under_18") or "").strip().lower() == "yes":
+            report.bump(tab, "skipped_under_18")  # Loofie never works with minors: not even stored
+            continue
         if not include_examples and is_example(raw):
             report.bump(tab, "skipped_example")
             continue
