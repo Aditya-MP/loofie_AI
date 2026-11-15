@@ -107,7 +107,7 @@ def test_quality_real_beats_unverified():
 
 def test_parts_the_brief_does_not_ask_about_do_not_count():
     results, _ = rank(SKINCARE, [cand(1)], vec(1, 0))
-    assert set(results[0].parts) == {"similarity", "niche", "quality", "completeness"}
+    assert set(results[0].parts) == {"similarity", "niche", "quality", "completeness", "track_record"}
 
 
 def test_why_line_is_readable():

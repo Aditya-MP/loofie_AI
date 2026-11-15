@@ -1,7 +1,7 @@
 # Model 2 (Matcher) settings. Weights are hand-set starting values; the learning step replaces
 # them with weights learned from brand picks and rejects. Bump `version` on any change.
 
-version = "matcher-v3"
+version = "matcher-v4"
 top_k = 10
 
 # Stage 1: how many candidates the database hands to the ranker (nearest by text, after hard filters).
@@ -29,13 +29,25 @@ interested_boost = 0.03
 
 # Each part scores 0..1; the final score is the weighted sum. Weights should add up to 1.
 [weights]
-similarity = 0.40     # brief text vs creator bio + captions
+similarity = 0.35     # brief text vs creator bio + captions
 niche = 0.15          # same sub-niche / category
 quality = 0.15        # Model 3 label and score
 language = 0.10
-budget = 0.10
+budget = 0.05        # still estimated from followers; raise once real rates exist
 city = 0.05
 completeness = 0.05   # prefer creators we have more data on
+track_record = 0.10   # past Loofie jobs: on time, revisions, rating, rebooks, creator-fault drop-outs
+
+# Track record (docs/DECISIONS.md section 9). Every value is a starting guess: tune after real jobs.
+[track_record]
+prior = 0.5               # a creator with no Loofie history sits in the middle
+prior_jobs = 3            # the prior counts as 3 neutral jobs, so one job can't swing the score
+late_job = 0.4            # a late delivery is worth 0.4 of an on-time one
+free_revisions = 1        # one revision is normal; each extra one costs a little
+revision_penalty = 0.1
+revision_penalty_cap = 0.3
+creator_fault_job = 0.0   # withdrew / unresponsive / false claim (CREATOR codes only)
+half_life_days = 180      # a job 6 months old counts half: people can recover
 
 [filters]
 exclude_quality = ["suspicious"]

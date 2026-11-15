@@ -22,7 +22,8 @@ stage is a separate module with one job, so any stage can be replaced without to
  │              pgvector nearest neighbours → ~300 candidates, reasons counted   │
  ├───────────────────────────────────────────────────────────────────────────────┤
  │ 3 RANK       app/matcher/ranker.py     score each: similarity, niche,         │
- │              quality, language, budget, city, completeness → "why matched"    │
+ │              quality, language, budget, city, completeness, track record      │
+ │              (track_record.py: past jobs from the events log) → "why matched" │
  ├───────────────────────────────────────────────────────────────────────────────┤
  │ 4 RE-RANK    app/matcher/rerank.py     business rules: competitor conflict,   │
  │              near-duplicate diversity, exploration slot for NEW creators      │

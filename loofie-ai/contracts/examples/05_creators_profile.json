@@ -17,7 +17,7 @@
     "posts": [
       {
         "post_url": "https://www.instagram.com/reel/oldglow0/",
-        "post_date": "2026-06-17",
+        "post_date": "2026-06-18",
         "post_type": "reel",
         "views": 4500,
         "likes": 450,
@@ -27,7 +27,7 @@
       },
       {
         "post_url": "https://www.instagram.com/reel/oldglow1/",
-        "post_date": "2026-06-13",
+        "post_date": "2026-06-14",
         "post_type": "reel",
         "views": 4537,
         "likes": 455,
@@ -37,7 +37,7 @@
       },
       {
         "post_url": "https://www.instagram.com/reel/oldglow2/",
-        "post_date": "2026-06-09",
+        "post_date": "2026-06-10",
         "post_type": "reel",
         "views": 4574,
         "likes": 460,
@@ -47,7 +47,7 @@
       },
       {
         "post_url": "https://www.instagram.com/reel/oldglow3/",
-        "post_date": "2026-06-05",
+        "post_date": "2026-06-06",
         "post_type": "reel",
         "views": 4611,
         "likes": 465,
@@ -57,7 +57,7 @@
       },
       {
         "post_url": "https://www.instagram.com/reel/oldglow4/",
-        "post_date": "2026-06-01",
+        "post_date": "2026-06-02",
         "post_type": "reel",
         "views": 4648,
         "likes": 470,
@@ -67,7 +67,7 @@
       },
       {
         "post_url": "https://www.instagram.com/reel/oldglow5/",
-        "post_date": "2026-05-28",
+        "post_date": "2026-05-29",
         "post_type": "reel",
         "views": 4685,
         "likes": 475,
@@ -77,7 +77,7 @@
       },
       {
         "post_url": "https://www.instagram.com/reel/oldglow6/",
-        "post_date": "2026-05-24",
+        "post_date": "2026-05-25",
         "post_type": "reel",
         "views": 4722,
         "likes": 480,
@@ -87,7 +87,7 @@
       },
       {
         "post_url": "https://www.instagram.com/reel/oldglow7/",
-        "post_date": "2026-05-20",
+        "post_date": "2026-05-21",
         "post_type": "reel",
         "views": 4759,
         "likes": 485,
@@ -139,34 +139,35 @@
       ],
       "version": "quality-rules-v4"
     },
+    "track_record": null,
     "metric_sources": {
       "bio": {
         "source": "SELF_REPORTED",
-        "captured_on": "2026-11-14"
+        "captured_on": "2026-11-15"
       },
       "city": {
         "source": "SELF_REPORTED",
-        "captured_on": "2026-11-14"
+        "captured_on": "2026-11-15"
       },
       "followers": {
         "source": "SELF_REPORTED",
-        "captured_on": "2026-11-14"
+        "captured_on": "2026-11-15"
       },
       "following": {
         "source": "SELF_REPORTED",
-        "captured_on": "2026-11-14"
+        "captured_on": "2026-11-15"
       },
       "total_posts": {
         "source": "SELF_REPORTED",
-        "captured_on": "2026-11-14"
+        "captured_on": "2026-11-15"
       },
       "display_name": {
         "source": "SELF_REPORTED",
-        "captured_on": "2026-11-14"
+        "captured_on": "2026-11-15"
       },
       "primary_language": {
         "source": "SELF_REPORTED",
-        "captured_on": "2026-11-14"
+        "captured_on": "2026-11-15"
       }
     },
     "update_notes": []

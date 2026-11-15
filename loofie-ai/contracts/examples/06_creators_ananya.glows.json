@@ -38,34 +38,35 @@
       "findings": [],
       "version": "quality-rules-v4"
     },
+    "track_record": null,
     "metric_sources": {
       "bio": {
         "source": "SELF_REPORTED",
-        "captured_on": "2026-11-14"
+        "captured_on": "2026-11-15"
       },
       "city": {
         "source": "SELF_REPORTED",
-        "captured_on": "2026-11-14"
+        "captured_on": "2026-11-15"
       },
       "followers": {
         "source": "SELF_REPORTED",
-        "captured_on": "2026-11-14"
+        "captured_on": "2026-11-15"
       },
       "following": {
         "source": "SELF_REPORTED",
-        "captured_on": "2026-11-14"
+        "captured_on": "2026-11-15"
       },
       "total_posts": {
         "source": "SELF_REPORTED",
-        "captured_on": "2026-11-14"
+        "captured_on": "2026-11-15"
       },
       "display_name": {
         "source": "SELF_REPORTED",
-        "captured_on": "2026-11-14"
+        "captured_on": "2026-11-15"
       },
       "primary_language": {
         "source": "SELF_REPORTED",
-        "captured_on": "2026-11-14"
+        "captured_on": "2026-11-15"
       }
     },
     "update_notes": []

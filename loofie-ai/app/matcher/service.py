@@ -6,6 +6,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.db.models import Brand
+from app.matcher import track_record
 from app.matcher.features import BriefQuery, matcher_config
 from app.matcher.ranker import MatchResult, rank
 from app.matcher.rerank import apply_availability, rerank
@@ -30,6 +31,9 @@ def match(session: Session, brief: BriefQuery, embedder) -> tuple[list[MatchResu
         brief.competitor_handles = competitors_of(session, brief.brand_handle)
 
     candidates, left_out = retrieve(session, brief, query_vec, cfg=cfg)
+    records = track_record.load(session, ((c.creator_id, c.creator_ref, c.handle) for c in candidates), cfg)
+    for c in candidates:
+        c.track = records.get(c.creator_id)
     ranked, rank_out = rank(brief, candidates, query_vec, cfg, keep_all=True)
     ranked = apply_availability(brief, ranked, cfg)
     results = rerank(brief, ranked, {c.creator_id: c for c in candidates}, cfg)

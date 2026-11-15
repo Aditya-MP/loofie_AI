@@ -101,12 +101,18 @@ same id with different content is a bug and answers 409 (example 24).
 | "Book again?" nudge | System | shows it | *planned: rebook nudge* | | ❌ AI |
 | Weekly check | Aditya | none | `loofie report`: are the models improving? | | ✅ AI |
 
+These events also feed the **track record** (DECISIONS.md section 9): the next shortlist ranks a
+creator who delivered on time and got rebooked a little higher, and says why. For it to be fair the
+backend must send `revisions` and `replaced` on `job_outcome`, `job_id` on `rating`, and the
+**corrected** reason code when ops reverses a decision.
+
 ## Mistakes the AI service refuses (all `422` unless noted)
 
 | Mistake | # |
 |---|---|
 | Same `event_id`, different content | 24 (409) |
 | `reasonCode` with the wrong `faultParty`, or without one | 25 |
+| `rating.stars` not a whole number 1-5, `job_outcome.revisions` negative or not a whole number | tests/test_api.py |
 | Personal or payment data (`upi_id`, `phone`, `pan`, `email`...) | 26 |
 | Unknown event type | 27 |
 | Missing creator, `occurred_at` in the future or without a timezone, editing `disclosure`, unknown `suggestion_id` (404) | tests/test_contract.py |

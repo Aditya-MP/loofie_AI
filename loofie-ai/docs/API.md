@@ -173,6 +173,11 @@ Response:
   `availability`: `ready` / `interested` (picking books at once) or `suggested` (picking sends an
   invite). They get a small boost (`ready` +0.04, `interested` +0.03): it breaks near-ties, it
   never lifts a weak fit over a clearly better one. Unknown refs are ignored.
+- **Track record** (DECISIONS.md section 9): `parts.track_record` (0..1, 0.5 = no Loofie jobs yet)
+  comes from the job events you send. The reason line says it in words ("4 Loofie jobs, 4 on time,
+  ★4.8"). The same facts are in `track_record` on `GET /ai/creators/{handle}` (`null` until the
+  creator's first job): `jobs`, `on_time`, `creator_faults`, `avg_stars`, `rebooks`, `score`,
+  `summary`.
 - **Who gets the "this brief fits you" notice:** call `/ai/match` for the brief with `top_k` 30 and
   notify those creators. No separate endpoint: the same filters decide who can see a brief.
 
@@ -208,9 +213,9 @@ Response:
 | `quality_override` | `creator`, `label` |
 | `niche_override` | `creator`, `sub_niche` |
 | `job_state_changed` | `creator`, `job_id`, `from`, `to` (+ `brief_ref`, `deadline_at` when known; `issue_type` for `DELIVERY_ISSUE`; `reasonCode` + `faultParty` on disputes and drop-outs, codes from `DECISIONS.md` section 5) |
-| `job_outcome` | `creator`, `job_id`, `on_time` (true/false) (+ `revisions`, `disputed`, `replaced`, `rating`) |
+| `job_outcome` | `creator`, `job_id`, `on_time` (true/false) (+ `revisions` whole number ≥ 0, `disputed`, `replaced`: **send `revisions` and `replaced`**, the track record needs them) |
 | `video_performance` | `creator`, `job_id`, `result`: `winner` / `average` / `loser` |
-| `rating` | `creator`, `stars` |
+| `rating` | `creator`, `stars` (whole number 1-5) (+ `job_id`: send it, so a resent rating counts once) |
 | `rebooked` | `creator` |
 | `job_timer_fired` | `creator`, `job_id`, `kind` (core-service notice name: `SHIP_REMINDER`, `SHIP_LATE`, `RECEIPT_PROMPT`, `DISPUTE_REVIEW_OVERDUE`...; new names need no AI change) (+ `audience`, `due_at`) |
 | `creator_availability` | `creator`, `available` (true/false) (+ `capacity_per_week`) |
@@ -218,8 +223,8 @@ Response:
 
 **Send `job_state_changed` on every job status change** (invited, accepted, declined, product
 received, draft submitted, revision requested, approved, auto-approved, disputed, replaced...), and
-`job_outcome` when a job closes or the creator is replaced. The reliability score and rebook timing
-learn from how jobs go, not just how they end.
+`job_outcome` when a job closes or the creator is replaced. The track record score (DECISIONS.md
+section 9) and rebook timing learn from how jobs go, not just how they end.
 
 **Never send personal or payment data** (PAN, Aadhaar, bank account, IFSC, UPI id, phone, email,
 payout amount): the models don't need it, and those keys are refused with `422`.

@@ -72,6 +72,16 @@ class QualityOut(BaseModel):
     version: str
 
 
+class TrackRecordOut(BaseModel):
+    jobs: int = Field(description="Loofie jobs that count: finished, or ended by the creator's own fault")
+    on_time: int
+    creator_faults: int = Field(description="Jobs ended by a CREATOR reason code (withdrew, unresponsive, false claim)")
+    avg_stars: float | None
+    rebooks: int
+    score: float = Field(description="0..1, 0.5 = no history yet")
+    summary: str | None
+
+
 class ProfileOut(BaseModel):
     handle: str
     creator_ref: str | None
@@ -86,6 +96,7 @@ class ProfileOut(BaseModel):
     missing: list[str]
     version: str
     quality: QualityOut | None
+    track_record: TrackRecordOut | None = Field(None, description="Past Loofie jobs; null until the first one")
     metric_sources: dict[str, dict] = Field(
         {}, description="Per metric: {source: API_VERIFIED | OPS_CHECKED | SELF_REPORTED | LEGACY_IMPORT, captured_on}"
     )

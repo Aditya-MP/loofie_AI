@@ -18,6 +18,7 @@ from app.matcher.features import (
     niche_fit,
     price_band,
     quality_fit,
+    track_fit,
 )
 
 
@@ -108,6 +109,7 @@ def rank(
         quality, quality_reason = quality_fit(c, cfg)
         lang, lang_reason = language_fit(brief.languages, c, cfg)
         city, city_reason = city_fit(brief.city, c.city, cfg)
+        track, track_reason = track_fit(c.track, cfg)
         parts = {
             "similarity": float(sim),
             "niche": niche,
@@ -116,6 +118,7 @@ def rank(
             "budget": budget,
             "city": city,
             "completeness": c.completeness,
+            "track_record": track,
         }
         used = {k: v for k, v in parts.items() if v is not None}
         # Parts the brief doesn't ask about (no city, no budget...) drop out instead of counting as 0.
@@ -129,6 +132,7 @@ def rank(
             _views(c.median_views),
             budget_reason,
             quality_reason,
+            track_reason,
         ]
         results.append(
             MatchResult(

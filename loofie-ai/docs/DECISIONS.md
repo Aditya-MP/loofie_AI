@@ -191,7 +191,7 @@ out when the request is made, and an approved request can't be edited (a change 
 | Named API keys with rotation, feedback contract (`event_id`, `occurred_at`, `creator_ref`) | Built, tested |
 | F2 brief checks (too few matches, price sanity, risky claims) | Next |
 | F7 draft checker (ticks the video checklist from speech and on-screen text, on our GPU) | Planned |
-| Reliability score | Planned; needs `job_outcome` events |
+| Track record in the matcher (on time, revisions, rating, rebooks, creator-fault drop-outs) | Built, tested (section 9); weights are starting guesses until real jobs |
 | Rebook nudge | Planned; needs real campaign results |
 | Automatic retraining | After real feedback exists |
 | Real data test | Waiting for the creator sheet |
@@ -236,8 +236,48 @@ most **one tap**, and the brand rarely waits for a "yes".
 - **Pilot, by hand:** ops sends the Monday message and the "fits you" notice on WhatsApp and marks
   Ready / Interested on the shortlist.
 
+## 9. Track record: past Loofie jobs in the matcher
+
+Every marketplace's strongest signal is "did this person deliver last time?". The matcher scores it
+as one part, `track_record` (10% of the score), from events the backend already sends. Nothing new
+to build on the backend beyond the fields marked **send**.
+
+| Signal | From | Effect |
+|---|---|---|
+| Delivered on time | `job_outcome` `on_time: true` | counts fully |
+| Late | `on_time: false` | counts 0.4 of an on-time job |
+| Extra revisions | `job_outcome` `revisions` (**send it**) | 1 is normal; each extra one -0.1, at most -0.3 |
+| Withdrew, unresponsive, false claim | `job_state_changed` with a CREATOR `reasonCode` | that job counts 0 |
+| Rating | `rating` `stars` 1-5 (**send `job_id`**) | 1★ = 0, 5★ = 1 |
+| Rebooked | `rebooked` | counts as one more good job |
+
+**Fairness rules**
+- **Only the creator's own fault counts.** A job replaced because of the brand or the courier
+  (`BRAND_LATE_SHIP`, `COURIER_LOST`...) is ignored, even if its `job_outcome` says
+  `on_time: false`. **Send `replaced: true`** on those outcomes.
+- **The latest reason code per job wins**, so when ops corrects a decision (e.g. `FALSE_CLAIM`
+  reversed to `COURIER_LOST`), the backend sends the corrected code and the penalty disappears.
+- **One outcome and one rating per job**: retries and resends don't count twice.
+- **New creators start at 0.5**, in the middle. The starting point counts as 3 neutral jobs, so one
+  great or one bad job can't swing the score far. The explore slot (section 4 rerank) still gives
+  new creators their first job.
+- **Old jobs fade**: a job 6 months old counts half, so a creator can recover from a bad month.
+- Brands and ops see the facts, not the number: "4 Loofie jobs, 4 on time, ★4.8, rebooked 1×" in
+  the shortlist reason and in `track_record` on `GET /ai/creators/{handle}`.
+
+**Size of the effect:** a creator with a strong record gains about +0.04 over a new one, about the
+same as the Ready boost: it wins a close call, never beats a clearly better fit. All numbers are in
+`config/matcher.toml` `[track_record]` and are starting guesses. **[CONFIRM]** after the first
+30-50 finished jobs, then learn the weights from brand picks (see "What's next").
+
+**Not in v1:** auto-booking or auto-yes based on the score; hiding low-score creators (ops decides);
+the brand's `video_performance` verdict (too subjective and too few yet: report only).
+
 ## Change log
 
+- 2026-11-15: Track record in the matcher (section 9, matcher-v4): `track_record` score part (10%;
+  similarity 40→35%, budget 10→5%), on the creator profile too. `rating.stars` must be 1-5 and
+  `job_outcome.revisions` a whole number (422 otherwise).
 - 2026-11-15: Creator side (section 8): creator card, Monday availability, one-tap "I'm in" /
   "Pass", Ready / Interested / Suggested labels and boost in the matcher (matcher-v3),
   `creator_availability` and `brief_interest` events.

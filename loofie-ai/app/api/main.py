@@ -35,6 +35,7 @@ from app.api.schemas import (
     MatchOut,
     ProfileOut,
     QualityOut,
+    TrackRecordOut,
 )
 from app.brief.extract import Field, brief_config, parse
 from app.config import get_settings
@@ -47,6 +48,7 @@ from app.importer.upsert import upsert
 from app.instagram import security
 from app.instagram import service as ig_service
 from app.instagram.client import InstagramClient, InstagramError, instagram_config
+from app.matcher import track_record
 from app.matcher.features import BriefQuery, matcher_config
 from app.matcher.service import match as run_match
 from app.profile.builder import build_and_save
@@ -240,6 +242,7 @@ def profile_out(session: Session, handle: str, notes: list[str] | None = None) -
     if row is None:
         raise HTTPException(404, f"no profile for @{handle}")
     c, prof, q = row
+    rec = track_record.load(session, [(c.id, c.external_id, c.handle)], matcher_config()).get(c.id)
     return ProfileOut(
         handle=c.handle,
         creator_ref=c.external_id,
@@ -259,6 +262,17 @@ def profile_out(session: Session, handle: str, notes: list[str] | None = None) -
             label=q.label, activity=q.activity, score=q.score, summary=q.summary, findings=q.findings, version=q.version
         )
         if q
+        else None,
+        track_record=TrackRecordOut(
+            jobs=rec.jobs,
+            on_time=rec.on_time,
+            creator_faults=rec.creator_faults,
+            avg_stars=round(sum(rec.stars) / len(rec.stars), 2) if rec.stars else None,
+            rebooks=rec.rebooks,
+            score=rec.score,
+            summary=track_record.describe(rec),
+        )
+        if rec and not rec.empty
         else None,
     )
 

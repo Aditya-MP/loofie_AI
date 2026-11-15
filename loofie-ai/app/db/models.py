@@ -21,6 +21,7 @@ from sqlalchemy import (
     Text,
     UniqueConstraint,
     func,
+    text,
 )
 from sqlalchemy.dialects.postgresql import ARRAY, JSONB, UUID
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
@@ -215,6 +216,11 @@ class Event(Base):
     """Append-only log of everything the models learn from (F12). Never update or delete rows."""
 
     __tablename__ = "events"
+    # Track record looks events up by creator (migration 0008).
+    __table_args__ = (
+        Index("ix_events_payload_creator_ref", text("(payload->>'creator_ref')")),
+        Index("ix_events_payload_creator_handle", text("(payload->>'creator_handle')")),
+    )
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     occurred_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), index=True)

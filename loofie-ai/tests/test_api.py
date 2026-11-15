@@ -416,3 +416,61 @@ def test_creator_side_feedback_events(client):
         ).status_code
         == 422
     )
+
+
+# Track record (docs/DECISIONS.md section 9); the scoring rules are in test_track_record.py.
+
+
+def job_feedback(client, event_type, payload, **kw):
+    body = {
+        "event_type": event_type,
+        "actor_type": "system",
+        "subject_type": "job",
+        "subject_id": "j",
+        "payload": payload,
+    }
+    return client.post("/ai/feedback", headers=H, json=body | kw)
+
+
+def test_match_and_profile_use_job_history(client):
+    seed(client)
+    for i in range(4):
+        assert (
+            job_feedback(
+                client, "job_outcome", {"creator_ref": "be-anu", "job_id": f"j{i}", "on_time": True}
+            ).status_code
+            == 200
+        )
+    assert job_feedback(client, "rating", {"creator_ref": "be-anu", "job_id": "j0", "stars": 5}).status_code == 200
+    assert (
+        job_feedback(
+            client,
+            "job_state_changed",
+            {
+                "creator_ref": "be-sara",
+                "job_id": "j9",
+                "from": "CREATOR_ACCEPTED",
+                "to": "REPLACEMENT_NEEDED",
+                "reasonCode": "CREATOR_WITHDREW",
+                "faultParty": "CREATOR",
+            },
+        ).status_code
+        == 200
+    )
+
+    r = client.post("/ai/match", headers=H, json={"text": "sunscreen", "category": "beauty_skincare"}).json()
+    by = {i["handle"]: i for i in r["results"]}
+    assert by["anu"]["parts"]["track_record"] > 0.5 > by["sara"]["parts"]["track_record"]
+    assert "4 Loofie jobs, 4 on time" in by["anu"]["why"]
+
+    anu = client.get("/ai/creators/anu", headers=H).json()["track_record"]
+    assert anu["jobs"] == 4 and anu["avg_stars"] == 5 and anu["score"] > 0.5
+    assert client.get("/ai/creators/glow", headers=H).json()["track_record"] is None  # no history yet
+
+
+def test_bad_track_values_are_refused(client):
+    seed(client)
+    assert job_feedback(client, "rating", {"creator_ref": "be-anu", "stars": 6}).status_code == 422
+    assert job_feedback(client, "rating", {"creator_ref": "be-anu", "stars": 4.5}).status_code == 422
+    bad = {"creator_ref": "be-anu", "job_id": "j1", "on_time": True, "revisions": -1}
+    assert job_feedback(client, "job_outcome", bad).status_code == 422

@@ -5,6 +5,7 @@ from dataclasses import dataclass, field
 import numpy as np
 
 from app.config import load_toml
+from app.matcher.track_record import TrackRecord, describe
 
 
 def matcher_config() -> dict:
@@ -50,6 +51,8 @@ class Candidate:
     median_views: float | None
     completeness: float
     paid_brands: list[str] = field(default_factory=list)  # brands in recent paid posts
+    creator_ref: str | None = None  # the backend's id; events are keyed by it
+    track: "TrackRecord | None" = None  # past Loofie jobs (filled by the service, None = no history)
 
 
 def city_key(city: str | None, aliases: dict[str, list[str]]) -> str | None:
@@ -147,3 +150,11 @@ def quality_fit(c: Candidate, cfg: dict) -> tuple[float, str | None]:
     if c.quality_label == "unsure" or c.quality_label is None:
         return s["quality_unsure"] * max(scale, 0.5), "quality not yet verified"
     return 0.0, "flagged suspicious"
+
+
+def track_fit(track: TrackRecord | None, cfg: dict) -> tuple[float, str | None]:
+    """Always scored: a creator with no history gets the neutral prior, so she is neither helped nor
+    punished, and the explore slot (rerank) still gives new creators their first job."""
+    if track is None:
+        return cfg["track_record"]["prior"], None
+    return track.score, describe(track)

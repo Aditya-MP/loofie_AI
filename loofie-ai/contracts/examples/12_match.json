@@ -24,14 +24,14 @@
     ]
   },
   "response": {
-    "version": "matcher-v3",
+    "version": "matcher-v4",
     "suggestion_id": "2d1a9567-4819-472a-b00e-fca2ce8a1eb0",
     "results": [
       {
         "rank": 1,
         "handle": "ananya.glows",
         "creator_ref": "cr-ananya",
-        "score": 0.92,
+        "score": 0.87,
         "why": "skincare creator · content close to the brief · speaks Kannada · based in Bengaluru · median 3.8k views · est. ₹3,000–₹7,000 fits budget · quality not yet verified · ready this week",
         "parts": {
           "similarity": 1.0,
@@ -40,7 +40,8 @@
           "language": 1.0,
           "budget": 1.0,
           "city": 1.0,
-          "completeness": 1.0
+          "completeness": 1.0,
+          "track_record": 0.5
         },
         "estimated_rate_inr": {
           "low": 3000,
@@ -56,7 +57,7 @@
         "rank": 2,
         "handle": "kavya.skincare",
         "creator_ref": "cr-kavya",
-        "score": 0.88,
+        "score": 0.83,
         "why": "skincare creator · content close to the brief · speaks Kannada · based in Bengaluru · median 5.6k views · est. ₹3,000–₹7,000 fits budget · quality not yet verified",
         "parts": {
           "similarity": 1.0,
@@ -65,7 +66,8 @@
           "language": 1.0,
           "budget": 1.0,
           "city": 1.0,
-          "completeness": 1.0
+          "completeness": 1.0,
+          "track_record": 0.5
         },
         "estimated_rate_inr": {
           "low": 3000,
@@ -81,7 +83,7 @@
         "rank": 3,
         "handle": "riya.routines",
         "creator_ref": "cr-riya",
-        "score": 0.7207,
+        "score": 0.6818,
         "why": "skincare creator · content close to the brief · speaks English · based in Bengaluru · median 2.9k views · est. ₹1,500–₹4,000 fits budget · quality not yet verified · said I'm in",
         "parts": {
           "similarity": 0.777,
@@ -90,7 +92,8 @@
           "language": 0.0,
           "budget": 1.0,
           "city": 1.0,
-          "completeness": 1.0
+          "completeness": 1.0,
+          "track_record": 0.5
         },
         "estimated_rate_inr": {
           "low": 1500,
@@ -115,7 +118,8 @@
           "language": 1.0,
           "budget": 1.0,
           "city": 1.0,
-          "completeness": 1.0
+          "completeness": 1.0,
+          "track_record": 0.5
         },
         "estimated_rate_inr": {
           "low": 3000,

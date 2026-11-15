@@ -41,6 +41,7 @@ def to_candidate(c: Creator, p: CreatorProfile | None, q: CreatorQuality | None)
         median_views=(p.stats or {}).get("median_views") if p else None,
         completeness=p.completeness if p else 0.0,
         paid_brands=list(p.brands_mentioned or []) if p else [],
+        creator_ref=c.external_id,
     )
 
 

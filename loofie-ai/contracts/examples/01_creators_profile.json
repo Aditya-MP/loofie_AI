@@ -17,7 +17,7 @@
     "posts": [
       {
         "post_url": "https://www.instagram.com/reel/ananyaglows0/",
-        "post_date": "2026-11-12",
+        "post_date": "2026-11-13",
         "post_type": "reel",
         "views": 3720,
         "likes": 372,
@@ -27,7 +27,7 @@
       },
       {
         "post_url": "https://www.instagram.com/reel/ananyaglows1/",
-        "post_date": "2026-11-08",
+        "post_date": "2026-11-09",
         "post_type": "reel",
         "views": 3757,
         "likes": 377,
@@ -37,7 +37,7 @@
       },
       {
         "post_url": "https://www.instagram.com/reel/ananyaglows2/",
-        "post_date": "2026-11-04",
+        "post_date": "2026-11-05",
         "post_type": "reel",
         "views": 3794,
         "likes": 382,
@@ -47,7 +47,7 @@
       },
       {
         "post_url": "https://www.instagram.com/reel/ananyaglows3/",
-        "post_date": "2026-10-31",
+        "post_date": "2026-11-01",
         "post_type": "reel",
         "views": 3831,
         "likes": 387,
@@ -57,7 +57,7 @@
       },
       {
         "post_url": "https://www.instagram.com/reel/ananyaglows4/",
-        "post_date": "2026-10-27",
+        "post_date": "2026-10-28",
         "post_type": "reel",
         "views": 3868,
         "likes": 392,
@@ -67,7 +67,7 @@
       },
       {
         "post_url": "https://www.instagram.com/reel/ananyaglows5/",
-        "post_date": "2026-10-23",
+        "post_date": "2026-10-24",
         "post_type": "reel",
         "views": 3905,
         "likes": 397,
@@ -77,7 +77,7 @@
       },
       {
         "post_url": "https://www.instagram.com/reel/ananyaglows6/",
-        "post_date": "2026-10-19",
+        "post_date": "2026-10-20",
         "post_type": "reel",
         "views": 3942,
         "likes": 402,
@@ -87,7 +87,7 @@
       },
       {
         "post_url": "https://www.instagram.com/reel/ananyaglows7/",
-        "post_date": "2026-10-15",
+        "post_date": "2026-10-16",
         "post_type": "reel",
         "views": 3979,
         "likes": 407,
@@ -131,34 +131,35 @@
       "findings": [],
       "version": "quality-rules-v4"
     },
+    "track_record": null,
     "metric_sources": {
       "bio": {
         "source": "SELF_REPORTED",
-        "captured_on": "2026-11-14"
+        "captured_on": "2026-11-15"
       },
       "city": {
         "source": "SELF_REPORTED",
-        "captured_on": "2026-11-14"
+        "captured_on": "2026-11-15"
       },
       "followers": {
         "source": "SELF_REPORTED",
-        "captured_on": "2026-11-14"
+        "captured_on": "2026-11-15"
       },
       "following": {
         "source": "SELF_REPORTED",
-        "captured_on": "2026-11-14"
+        "captured_on": "2026-11-15"
       },
       "total_posts": {
         "source": "SELF_REPORTED",
-        "captured_on": "2026-11-14"
+        "captured_on": "2026-11-15"
       },
       "display_name": {
         "source": "SELF_REPORTED",
-        "captured_on": "2026-11-14"
+        "captured_on": "2026-11-15"
       },
       "primary_language": {
         "source": "SELF_REPORTED",
-        "captured_on": "2026-11-14"
+        "captured_on": "2026-11-15"
       }
     },
     "update_notes": []

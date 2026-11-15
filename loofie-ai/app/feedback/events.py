@@ -58,6 +58,8 @@ REASON_FAULT: dict[str, str] = {
 PAYLOAD_CHOICES: dict[str, dict[str, set]] = {
     "video_performance": {"result": {"winner", "average", "loser"}},
     "job_outcome": {"on_time": {True, False}},
+    # Track record reads these, so a typo would skew a creator's score: refused.
+    "rating": {"stars": {1, 2, 3, 4, 5}},
     "creator_availability": {"available": {True, False}},
     # pass_reason: why a creator said no; a code, never free text.
     "brief_interest": {
@@ -91,6 +93,9 @@ def bad_values(event_type: str, payload: dict) -> list[str]:
         for k, ok in PAYLOAD_CHOICES.get(event_type, {}).items()
         if k in payload and payload[k] not in ok
     ]
+    rev = payload.get("revisions")
+    if event_type == "job_outcome" and rev is not None and (type(rev) is not int or rev < 0):
+        errors.append("revisions must be a whole number, 0 or more")
     code, fault = payload.get("reasonCode"), payload.get("faultParty")
     if code in REASON_FAULT and fault is not None and fault != REASON_FAULT[code]:
         errors.append(f"reasonCode {code} has faultParty {REASON_FAULT[code]}, not {fault}")
