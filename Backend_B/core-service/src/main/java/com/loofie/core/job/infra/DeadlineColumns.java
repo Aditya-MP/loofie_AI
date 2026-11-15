@@ -26,6 +26,7 @@ public final class DeadlineColumns {
         COLUMNS.put(JobDeadline.PRODUCTION, "production_due_at");
         COLUMNS.put(JobDeadline.REVIEW, "review_due_at");
         COLUMNS.put(JobDeadline.REPLACEMENT, "replacement_due_at");
+        COLUMNS.put(JobDeadline.DISPUTE_REVIEW, "dispute_review_due_at");
         if (COLUMNS.size() != JobDeadline.values().length) {
             throw new IllegalStateException("Every JobDeadline needs a column");
         }

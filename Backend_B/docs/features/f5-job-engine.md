@@ -1,7 +1,7 @@
-# F5 job engine: production-readiness research (steps 1-11)
+# F5 job engine: production readiness (steps 1-15)
 
 Scope: the job state machine, its event log and outbox, the timer worker, and the transition API.
-Date: 2026-11-15. Status: **research done, plan awaiting approval. Not production-ready.**
+Date: 2026-11-15. Status: **plan built and measured (sections 12-15). Code-side Definition of Done met; hosting and auth items not verified (see 14).**
 
 ---
 
@@ -178,3 +178,78 @@ Ranked by damage. Each item names the problem it solves.
 
 **Will stay "not verified" after this plan:** behaviour on production hosting (load at scale, failover, PgBouncer,
 alerts) and real authentication (F1).
+
+---
+
+## 12-13. What was built (2026-11-15)
+
+All 11 plan items. Migration `V6__dispute_clock_and_overdue_index.sql`. 129 tests pass (19 new).
+
+| # | Built | Where |
+|---|---|---|
+| 1 | Totals capped at 10,000 (`totalCapped`), one extra row instead of counting for "has more", keyset paging (`?after=` / `nextCursor`); page numbers only up to row 10,000 | `JobQueryService`, `JobReadRepository`, `JobViews.Page/Cursor` |
+| 2 | Partial expression index on the earliest real deadline, plus a test that fails if the query and the index drift apart | V6, `JobReadRepositoryPlanTest` |
+| 3 | Read isolation: **two bulkheads** (lists 5, single-job reads 8), 1s queue wait then 503, 2s statement limit per read transaction. Engine keeps at least 7 of 20 connections. | `JobQueryService` |
+| 4 | Reminder query bounded (deadline still ahead; at-deadline alerts within 7 days) | `JobDeadlineRepository` |
+| 5 | Every notice also logged in `job_events` as `TimerFired` (no `job_version`, same id as the outbox event); timeline ordered by time | `JobNoticeService` |
+| 6 | Dispute review clock: 2 working days, `DISPUTE_REVIEW_OVERDUE` to ops, never moves the job | `JobDeadlines`, `TimerRules` |
+| 7 | **Scope checked first**: another brand or a non-assigned creator gets the same 404 as a missing job, before state, version or rules are revealed. `OPS_EXTEND` without a deadline: 422. | `JobTransitionService` |
+| 8 | `Idempotency-Key` required for `OPS_EXTEND` (428 without); `loofie.api.require-idempotency-key` switches it on for every transition (off until the apps send keys) | `JobTransitionController` |
+| 9 | Failure tests: row locked past `lock_timeout` (503 + Retry-After, nothing written, the same key succeeds later); Kafka unreachable (run stops fast, nothing lost or marked sent, backoff); fresh worker after a restart; `prod` and no-profile never use the dev login; brand member refused every admin-only action | `DatabaseContentionTest`, `BrokerDownTest`, `DeadlineWorkerTest`, `ProductionAuthTest`, `BrandRoleMatrixTest` |
+| 10 | Load test gate (exit code: p95 <= 300 ms and 0 failed) | `scripts/perf/LoadTest.java` |
+| 11 | Migration policy (expand, then contract) | `docs/architecture-layers.md` |
+
+## 14. Validation: measured after the changes
+
+Same data (1M jobs), same laptop.
+
+| Query | Before | After |
+|---|---|---|
+| Ops list total, no filter | 282 ms | 3 ms (capped) |
+| Ops list total, overdue filter | 1,101 ms | 28 ms |
+| Deep page (position 50,000) | 464 ms (OFFSET) | 1.1 ms (cursor) |
+| 48h reminder query | 659 ms | 126 ms (bounded; 10k jobs in the window, far above our scale) |
+
+| Load (open loop, warm) | Rate | p95 | Errors | Gate |
+|---|---|---|---|---|
+| Realistic mix: detail 83%, transitions 15%, lists 2% | 500 rps | **5 ms** | 0 | PASS |
+| Heavy ops mix: 25% lists | 50 rps (collapsed before: 23% errors) | 57 ms | 0 | PASS |
+| Heavy ops mix: 25% lists | 200 rps | 76 ms | 0 | PASS |
+| Heavy ops mix: 25% lists (~125 list calls/s) | 500 rps | lists shed with 503 above ~80/s; **transitions p95 6 ms, detail p95 3 ms, 0 errors** | 1,334 list 503s | FAIL, by design |
+
+**What this proves:** a slow or overloaded screen can no longer take down the engine. Lists are shed instead.
+Lists top out at about 80 per second per instance. Ops staff will make a few per minute, so this is not a limit
+we will meet. If it ever is: a read replica for `JobQueryService`.
+
+**Found while measuring:** the first load test right after reloading 1M rows (cold cache, cold JIT) failed even
+the realistic mix, because reads were slow until the cache warmed. A deploy or a database failover also starts
+cold. Mitigation, to do with hosting: a readiness delay, or warm-up traffic before the load balancer sends
+users, plus managed PostgreSQL with enough memory to hold the hot indexes.
+
+### Definition of Done (philosophy, section 8)
+
+| Criterion | Status |
+|---|---|
+| Business rules (F5, F12 timer log, F9 dispute clock) | Done, tested |
+| Architecture and service boundaries | Done, enforced by ArchUnit |
+| Database design (constraints, indexes justified by measurement, migration policy) | Done |
+| Security: authorization, scope (404), reason codes, idempotency, no internals in errors | Done, tested |
+| Security: **authentication** | **Not verified: F1 does not exist** |
+| Validation and error handling (400/404/409/422/428/503/500 with requestId) | Done, tested |
+| Concurrency (races, 20 parallel retries, optimistic lock, leases) | Done, tested |
+| Failure and recovery (DB contention, broker down, restart) | Done in tests. **A real database failover and a real process kill are not verified** (needs hosting). |
+| Performance against targets | **Engine: met** (p95 5 ms at 500 rps, laptop). **On production hosting: not verified.** |
+| Automated tests of business behaviour | 129 tests |
+| Logging and monitoring | Metrics, JSON logs, request ids. **Alert rules not set up** (needs a monitoring tool). |
+| Documentation | This file, `docs/architecture-layers.md`, `docs/production-readiness.md` |
+
+## 15. Known limits and remaining risks
+
+1. **No authentication** (F1). Production refuses every request until it exists.
+2. **Not verified on real infrastructure**: load at scale, PgBouncer, database failover, cold-start warm-up, alerts.
+3. **Ops are all-powerful** (S3): one ops user can refund or cancel. Waiting for a decision.
+4. `Idempotency-Key` is optional except for `OPS_EXTEND` until the apps send it; then switch it on.
+5. An at-deadline alert more than 7 days late (worker down for a week) is not sent.
+6. Ops list throughput is about 80 list calls per second per instance (see 14).
+7. "Creator moved back to NEW level" (F9) waits for creator profiles.
+8. The F6 rules that differ from Foundation v2 are provisional until the founder signs off.

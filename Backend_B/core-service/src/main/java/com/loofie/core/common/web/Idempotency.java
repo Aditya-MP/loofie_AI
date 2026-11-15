@@ -47,6 +47,12 @@ public class Idempotency {
         }
     }
 
+    public static class KeyRequiredException extends RuntimeException {
+        public KeyRequiredException(String what) {
+            super(what + " needs an " + HEADER + " header (a new UUID per user action, reused for its retries)");
+        }
+    }
+
     public static class KeyReusedException extends RuntimeException {
         KeyReusedException() {
             super("This " + HEADER + " was already used for a different request");

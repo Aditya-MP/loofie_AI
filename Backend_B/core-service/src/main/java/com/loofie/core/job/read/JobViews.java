@@ -1,6 +1,8 @@
 package com.loofie.core.job.read;
 
+import java.nio.charset.StandardCharsets;
 import java.time.Instant;
+import java.util.Base64;
 import java.util.List;
 import java.util.Set;
 import java.util.UUID;
@@ -36,7 +38,8 @@ public final class JobViews {
                                  Instant openedAt, Instant closedAt) {
     }
 
-    public record EventView(UUID eventId, long jobVersion, String action, String fromState, String toState,
+    /** One timeline row. {@code jobVersion} is null for {@code TimerFired} rows (not a state change). */
+    public record EventView(UUID eventId, Long jobVersion, String action, String fromState, String toState,
                             String actorType, UUID actorId, String reason, Instant occurredAt,
                             @JsonRawValue String payload) {
     }
@@ -50,6 +53,35 @@ public final class JobViews {
                             List<AssignmentView> assignments, List<ShipmentView> shipments, List<EventView> timeline) {
     }
 
-    public record Page<T>(List<T> items, int page, int size, long total) {
+    /**
+     * One page of a list.
+     *
+     * @param total       matching rows, counted up to a cap; when {@code totalCapped} is true the real number is
+     *                    larger ("10,000+"), because an exact count of a big list costs a full scan every call
+     * @param nextCursor  pass as {@code after} to get the next page (keyset paging, same speed at any depth);
+     *                    null when there are no more rows
+     */
+    public record Page<T>(List<T> items, int page, int size, long total, boolean totalCapped, String nextCursor) {
+    }
+
+    /** Position in the "newest change first" job list: the last row of the previous page. */
+    public record Cursor(Instant updatedAt, UUID id) {
+
+        /** Opaque to clients: base64url of "updatedAt|id". */
+        public String encode() {
+            return Base64.getUrlEncoder().withoutPadding()
+                    .encodeToString((updatedAt + "|" + id).getBytes(StandardCharsets.UTF_8));
+        }
+
+        /** @throws IllegalArgumentException for anything that is not a cursor this service issued */
+        public static Cursor decode(String value) {
+            try {
+                String raw = new String(Base64.getUrlDecoder().decode(value), StandardCharsets.UTF_8);
+                int bar = raw.indexOf('|');
+                return new Cursor(Instant.parse(raw.substring(0, bar)), UUID.fromString(raw.substring(bar + 1)));
+            } catch (RuntimeException e) {
+                throw new IllegalArgumentException("Invalid cursor");
+            }
+        }
     }
 }

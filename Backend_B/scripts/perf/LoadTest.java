@@ -21,7 +21,8 @@ import java.util.concurrent.atomic.LongAdder;
  * slow server shows up as latency instead of being hidden. Mix: 60% job detail, 25% job list
  * (varied filters), 15% transitions (OPS_EXTEND with an Idempotency-Key).
  *
- * Usage: java LoadTest.java <rps> <seconds> <jobIdsFile>
+ * Usage: java LoadTest.java <rps> <seconds> <jobIdsFile> [listShare]
+ * Exits 1 unless p95 <= 300 ms and every request got 200 (the gate).
  */
 public class LoadTest {
 
@@ -105,7 +106,18 @@ public class LoadTest {
                 pct(all, 95), pct(all, 99), all.getLast());
         statuses.entrySet().stream().sorted(Map.Entry.comparingByKey())
                 .forEach(e -> System.out.println("  " + e.getKey() + ": " + e.getValue().sum()));
+
+        // Gate (docs/features/f5-job-engine.md, target): p95 under P95_LIMIT_MS and no failed request.
+        long failed = statuses.entrySet().stream()
+                .filter(e -> !e.getKey().endsWith(" 200")).mapToLong(e -> e.getValue().sum()).sum();
+        long p95 = pct(all, 95);
+        boolean pass = p95 <= P95_LIMIT_MS && failed == 0;
+        System.out.printf("GATE %s: p95=%dms (limit %dms), failed=%d (limit 0)%n", pass ? "PASS" : "FAIL", p95,
+                P95_LIMIT_MS, failed);
+        System.exit(pass ? 0 : 1);
     }
+
+    static final long P95_LIMIT_MS = 300;
 
     static HttpRequest.Builder ops(HttpRequest.Builder b) {
         return b.timeout(Duration.ofSeconds(10)).header("X-Dev-Role", "OPS").header("X-Dev-User-Id", OPS);

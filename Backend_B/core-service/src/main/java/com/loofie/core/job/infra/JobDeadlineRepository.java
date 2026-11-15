@@ -31,6 +31,9 @@ public class JobDeadlineRepository {
     public record DueNotice(UUID jobId, UUID orderId, long version, Instant dueAt) {
     }
 
+    /** How long after its due time an at-deadline alert is still sent (covers a worker outage of days). */
+    public static final Duration NOTICE_LOOKBACK = Duration.ofDays(7);
+
     private final JdbcClient jdbc;
 
     public JobDeadlineRepository(JdbcClient jdbc) {
@@ -61,9 +64,14 @@ public class JobDeadlineRepository {
                                       int limit) {
         String col = "j." + DeadlineColumns.of(deadline);
         String due = "(" + col + " - make_interval(secs => :beforeSecs))";
+        // Bounded on both sides, so a run only looks at jobs whose notice can still matter (measured: unbounded,
+        // the 48h reminder scanned every already-reminded job each run, 659 ms on 1M jobs):
+        //  - a reminder ahead of a deadline only while that deadline is still in the future;
+        //  - an alert at a deadline only within NOTICE_LOOKBACK of it (if the worker was down longer, it is stale).
         // "col <= now + before" (not "col - before <= now") so the column's index is used.
+        Instant from = before.isZero() ? now.minus(NOTICE_LOOKBACK) : now;
         return jdbc.sql("SELECT j.id, j.order_id, j.version, " + due + " AS due_at FROM jobs j"
-                        + " WHERE j.status = :status AND " + col + " <= :horizon"
+                        + " WHERE j.status = :status AND " + col + " <= :horizon AND " + col + " > :from"
                         + " AND NOT EXISTS (SELECT 1 FROM deadline_notices n"
                         + "   WHERE n.job_id = j.id AND n.kind = :kind AND n.due_at = " + due + ")"
                         + " ORDER BY " + col + " LIMIT :limit")
@@ -71,6 +79,7 @@ public class JobDeadlineRepository {
                 .param("kind", kind)
                 .param("beforeSecs", (double) before.toSeconds())
                 .param("horizon", utc(now.plus(before)))
+                .param("from", utc(from))
                 .param("limit", limit)
                 .query((rs, n) -> new DueNotice(rs.getObject("id", UUID.class), rs.getObject("order_id", UUID.class),
                         rs.getLong("version"), rs.getObject("due_at", OffsetDateTime.class).toInstant()))

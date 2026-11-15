@@ -56,6 +56,13 @@ public final class JobExceptions {
         }
     }
 
+    /** A list or search request the service will not run as asked (bad cursor, too deep a page). */
+    public static class InvalidQueryException extends RuntimeException {
+        public InvalidQueryException(String message) {
+            super(message);
+        }
+    }
+
     /** The transition exists and the actor is allowed, but a business rule blocks it right now. */
     public static class TransitionGuardException extends RuntimeException {
         public TransitionGuardException(String message) {

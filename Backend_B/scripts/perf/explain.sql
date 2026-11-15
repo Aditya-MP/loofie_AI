@@ -1,6 +1,8 @@
+-- EXPLAIN ANALYZE of every hot query, exactly as the app sends them. Run after load-data.sql.
 SET search_path = core_test;
 SET statement_timeout = 0;
 SELECT id AS job, brand_org_id AS brand FROM jobs WHERE status = 'IN_PRODUCTION' LIMIT 1 \gset
+SELECT id AS cursor_id, updated_at AS cursor_at FROM jobs ORDER BY updated_at DESC, id DESC OFFSET 50000 LIMIT 1 \gset
 
 \echo '=== Q1 engine: load job by id'
 EXPLAIN (ANALYZE, BUFFERS, COSTS OFF) SELECT * FROM jobs WHERE id = :'job';
@@ -13,14 +15,21 @@ EXPLAIN (ANALYZE, BUFFERS, COSTS OFF) SELECT count(*) FROM shipments WHERE job_i
 EXPLAIN (ANALYZE, BUFFERS, COSTS OFF)
 SELECT j.id, j.production_due_at FROM jobs j WHERE j.status = 'IN_PRODUCTION' AND j.production_due_at <= now()
 ORDER BY j.production_due_at LIMIT 100;
-\echo '=== Q5 timer: due 48h production reminders not yet sent'
+\echo '=== Q5 timer: 48h production reminder not yet sent (bounded: deadline still ahead)'
 EXPLAIN (ANALYZE, BUFFERS, COSTS OFF)
 SELECT j.id, j.order_id, j.version, (j.production_due_at - make_interval(secs => 172800)) AS due_at FROM jobs j
-WHERE j.status = 'IN_PRODUCTION' AND j.production_due_at <= now() + interval '48 hours'
+WHERE j.status = 'IN_PRODUCTION' AND j.production_due_at <= now() + interval '48 hours' AND j.production_due_at > now()
   AND NOT EXISTS (SELECT 1 FROM deadline_notices n WHERE n.job_id = j.id AND n.kind = 'PRODUCTION_DUE_48H'
                   AND n.due_at = (j.production_due_at - make_interval(secs => 172800)))
 ORDER BY j.production_due_at LIMIT 100;
-\echo '=== Q6 timer: due review (another rule, same shape)'
+\echo '=== Q5b timer: at-deadline alert (bounded: 7-day lookback)'
+EXPLAIN (ANALYZE, BUFFERS, COSTS OFF)
+SELECT j.id FROM jobs j
+WHERE j.status = 'CREATOR_ACCEPTED' AND j.ship_due_at <= now() AND j.ship_due_at > now() - interval '7 days'
+  AND NOT EXISTS (SELECT 1 FROM deadline_notices n WHERE n.job_id = j.id AND n.kind = 'SHIP_LATE'
+                  AND n.due_at = j.ship_due_at)
+ORDER BY j.ship_due_at LIMIT 100;
+\echo '=== Q6 timer: due review'
 EXPLAIN (ANALYZE, BUFFERS, COSTS OFF)
 SELECT j.id FROM jobs j WHERE j.status = 'IN_REVIEW' AND j.review_due_at <= now() ORDER BY j.review_due_at LIMIT 100;
 
@@ -35,34 +44,41 @@ ORDER BY o.seq LIMIT 100;
 EXPLAIN (ANALYZE, BUFFERS, COSTS OFF)
 SELECT count(*), count(*) FILTER (WHERE attempts > 0), min(created_at) FROM outbox WHERE published_at IS NULL;
 
-\echo '=== Q9 ops list: default page 1'
+\echo '=== Q9 ops list: page 1 (26 rows: one extra tells if there is a next page)'
 EXPLAIN (ANALYZE, BUFFERS, COSTS OFF)
 SELECT j.id, a.creator_id FROM jobs j LEFT JOIN assignments a ON a.job_id = j.id AND a.status = 'ACTIVE'
-ORDER BY j.updated_at DESC, j.id DESC LIMIT 25 OFFSET 0;
-\echo '=== Q10 ops list: page 2000 (offset 50000)'
+ORDER BY j.updated_at DESC, j.id DESC LIMIT 26;
+\echo '=== Q10 ops list: deep page by cursor (same position as OFFSET 50000)'
 EXPLAIN (ANALYZE, BUFFERS, COSTS OFF)
 SELECT j.id, a.creator_id FROM jobs j LEFT JOIN assignments a ON a.job_id = j.id AND a.status = 'ACTIVE'
-ORDER BY j.updated_at DESC, j.id DESC LIMIT 25 OFFSET 50000;
+WHERE (j.updated_at, j.id) < (:'cursor_at'::timestamptz, :'cursor_id'::uuid)
+ORDER BY j.updated_at DESC, j.id DESC LIMIT 26;
 \echo '=== Q11 ops list: status filter'
 EXPLAIN (ANALYZE, BUFFERS, COSTS OFF)
-SELECT j.id FROM jobs j WHERE j.status IN ('IN_PRODUCTION') ORDER BY j.updated_at DESC, j.id DESC LIMIT 25;
+SELECT j.id FROM jobs j WHERE j.status IN ('IN_PRODUCTION') ORDER BY j.updated_at DESC, j.id DESC LIMIT 26;
 \echo '=== Q12 ops list: brand filter'
 EXPLAIN (ANALYZE, BUFFERS, COSTS OFF)
-SELECT j.id FROM jobs j WHERE j.brand_org_id = :'brand' ORDER BY j.updated_at DESC, j.id DESC LIMIT 25;
-\echo '=== Q13 ops list: overdue filter'
+SELECT j.id FROM jobs j WHERE j.brand_org_id = :'brand' ORDER BY j.updated_at DESC, j.id DESC LIMIT 26;
+\echo '=== Q13 ops list: overdue page'
 EXPLAIN (ANALYZE, BUFFERS, COSTS OFF)
 SELECT j.id FROM jobs j WHERE LEAST(j.accept_due_at, j.ship_due_at, j.receipt_ops_check_at, j.auto_start_at,
-  j.issue_response_due_at, j.missing_escalate_at, j.production_due_at, j.review_due_at, j.replacement_due_at) < now()
-ORDER BY j.updated_at DESC, j.id DESC LIMIT 25;
-\echo '=== Q14 ops list: total count, no filter'
-EXPLAIN (ANALYZE, BUFFERS, COSTS OFF) SELECT count(*) FROM jobs j;
-\echo '=== Q15 ops list: count with overdue filter'
+  j.issue_response_due_at, j.missing_escalate_at, j.production_due_at, j.review_due_at, j.replacement_due_at,
+  j.dispute_review_due_at) < now()
+ORDER BY j.updated_at DESC, j.id DESC LIMIT 26;
+\echo '=== Q14 ops list: capped total, no filter'
+EXPLAIN (ANALYZE, BUFFERS, COSTS OFF) SELECT count(*) FROM (SELECT 1 FROM jobs j LIMIT 10000) capped;
+\echo '=== Q15 ops list: capped total, overdue filter'
 EXPLAIN (ANALYZE, BUFFERS, COSTS OFF)
-SELECT count(*) FROM jobs j WHERE LEAST(j.accept_due_at, j.ship_due_at, j.receipt_ops_check_at, j.auto_start_at,
-  j.issue_response_due_at, j.missing_escalate_at, j.production_due_at, j.review_due_at, j.replacement_due_at) < now();
+SELECT count(*) FROM (SELECT 1 FROM jobs j WHERE LEAST(j.accept_due_at, j.ship_due_at, j.receipt_ops_check_at,
+  j.auto_start_at, j.issue_response_due_at, j.missing_escalate_at, j.production_due_at, j.review_due_at,
+  j.replacement_due_at, j.dispute_review_due_at) < now() LIMIT 10000) capped;
+\echo '=== Q15b ops list: capped total, brand filter (small list: exact)'
+EXPLAIN (ANALYZE, BUFFERS, COSTS OFF)
+SELECT count(*) FROM (SELECT 1 FROM jobs j WHERE j.brand_org_id = :'brand' LIMIT 10000) capped;
 
 \echo '=== Q16 job detail: timeline'
-EXPLAIN (ANALYZE, BUFFERS, COSTS OFF) SELECT * FROM job_events WHERE job_id = :'job' ORDER BY job_version;
+EXPLAIN (ANALYZE, BUFFERS, COSTS OFF)
+SELECT * FROM job_events WHERE job_id = :'job' ORDER BY occurred_at, job_version NULLS LAST, event_id;
 \echo '=== Q17 job detail: assignments'
 EXPLAIN (ANALYZE, BUFFERS, COSTS OFF) SELECT * FROM assignments WHERE job_id = :'job' ORDER BY opened_at, id;
 

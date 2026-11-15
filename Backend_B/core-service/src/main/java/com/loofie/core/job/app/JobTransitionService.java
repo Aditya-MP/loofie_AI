@@ -74,6 +74,8 @@ public class JobTransitionService {
     @Transactional
     public TransitionResult transition(TransitionCommand cmd) {
         Job job = jobs.findById(cmd.jobId()).orElseThrow(() -> new JobNotFoundException(cmd.jobId()));
+        // Scope first: someone outside the job learns nothing about it (not its state, version or rules).
+        requireInScope(job, cmd.actor());
         if (cmd.expectedVersion() != null && !cmd.expectedVersion().equals(job.getVersion())) {
             throw new StaleJobVersionException(job.getId(), cmd.expectedVersion(), job.getVersion());
         }
@@ -125,14 +127,21 @@ public class JobTransitionService {
         if (details.reasonCode() != null && actor.role() != ActorRole.OPS) {
             throw new ActorNotAllowedException("Only ops may set a reason code");
         }
-        if (actor.role().isBrand() && !job.getBrandOrgId().equals(actor.orgId())) {
-            throw new ActorNotAllowedException("Job " + job.getId() + " does not belong to this brand");
-        }
-        if (actor.role() == ActorRole.CREATOR) {
-            UUID assigned = activeAssignment(job).map(Assignment::getCreatorId).orElse(null);
-            if (!actor.userId().equals(assigned)) {
-                throw new ActorNotAllowedException("Creator is not assigned to job " + job.getId());
-            }
+    }
+
+    /**
+     * A brand sees only its own jobs, a creator only the job they are currently assigned to. Anyone else
+     * gets exactly the answer a missing job gives (404), so job ids cannot be probed. Ops and the system
+     * see every job.
+     */
+    private void requireInScope(Job job, Actor actor) {
+        boolean inScope = switch (actor.role()) {
+            case OPS, SYSTEM -> true;
+            case BRAND_ADMIN, BRAND_MEMBER -> job.getBrandOrgId().equals(actor.orgId());
+            case CREATOR -> actor.userId().equals(activeAssignment(job).map(Assignment::getCreatorId).orElse(null));
+        };
+        if (!inScope) {
+            throw new JobNotFoundException(job.getId());
         }
     }
 
@@ -184,6 +193,11 @@ public class JobTransitionService {
 
     private static void checkGuards(Job job, TransitionRule rule, TransitionDetails details, Instant now) {
         switch (rule.action()) {
+            case OPS_EXTEND -> {
+                if (job.getProductionDueAt() == null) {
+                    throw new TransitionGuardException("This job has no production deadline to extend");
+                }
+            }
             case REQUEST_EXTENSION -> {
                 if (job.isCreatorExtensionUsed()) {
                     throw new TransitionGuardException("The creator's one extension is already used; ask ops");

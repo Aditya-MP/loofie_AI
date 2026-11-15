@@ -72,3 +72,14 @@ Aditya will update `docs/API.md` with exact shapes when deployed. Build the forw
 
 Backend A runs on 5433 (the PostgreSQL 14 instance on this machine) and 8100. Backend B uses PostgreSQL 18 on 5432.
 Leave PostgreSQL 14 running if Aditya's service is run locally.
+
+## Changes on 2026-11-15 (F5 hardening)
+
+- **Timers fired are logged.** Each reminder or alert is now a `TimerFired` row in `job_events` (same id as its
+  `JobDeadlineNotice` Kafka event, `job_version` empty because it is not a state change). Forward these to
+  `/ai/feedback` too: they show, for example, which brands review only after the 24h reminder.
+- **New alert:** `DISPUTE_REVIEW_OVERDUE` (to ops) when a dispute is not reviewed within 2 working days.
+- **Ops job list response** (for whoever builds the ops console): `total` is capped at 10,000 with
+  `totalCapped: true` above that; use `nextCursor` → `?after=` for further pages (page numbers stop at row 10,000).
+- **Errors:** a job outside the caller's brand or assignment now returns 404 (as if it did not exist).
+  `OPS_EXTEND` needs an `Idempotency-Key` (428 without one).

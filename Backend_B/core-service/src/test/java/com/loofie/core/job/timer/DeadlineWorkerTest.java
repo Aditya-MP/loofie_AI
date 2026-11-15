@@ -30,6 +30,8 @@ import com.loofie.core.support.JobFixtures;
 import com.loofie.core.support.JobFixtures.Seeded;
 import com.loofie.core.support.MutableClock;
 
+import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
+
 /**
  * The timer worker acts only on what the database says is due. Other tests' jobs share the schema,
  * so assertions look at specific jobs, never at totals.
@@ -44,6 +46,8 @@ class DeadlineWorkerTest {
     @Autowired AssignmentRepository assignments;
     @Autowired JdbcClient jdbc;
     @Autowired MutableClock clock;
+    @Autowired com.loofie.core.job.infra.JobDeadlineRepository deadlineRepo;
+    @Autowired com.loofie.core.job.app.JobNoticeService noticeService;
     @Autowired io.micrometer.core.instrument.MeterRegistry meters;
 
     final Actor ops = Actor.ops(UUID.randomUUID());
@@ -119,7 +123,7 @@ class DeadlineWorkerTest {
     void withoutCourierProofTheClockNeverStartsAndOpsIsAlerted() {
         UUID jobId = shipped();
 
-        clock.advance(Duration.ofDays(10));
+        clock.advance(Duration.ofDays(5)); // both alerts are due (72h, 96h) and still within the 7-day lookback
         drain();
 
         assertThat(status(jobId)).isEqualTo(JobStatus.PRODUCT_SHIPPED);
@@ -213,6 +217,88 @@ class DeadlineWorkerTest {
         assertThat(refused() - refusedBefore).as("retried after the backoff").isEqualTo(2.0);
     }
 
+    /** Foundation v2 F9: ops reviews a dispute within 2 working days. */
+    @Test
+    void anUnreviewedDisputeAlertsOpsAfterTwoWorkingDaysAndNeverMovesByItself() {
+        Seeded seeded = fixtures.jobIn(JobStatus.IN_REVIEW, false, true); // free revision already used
+        engine.transition(seeded.jobId(), JobAction.REJECT, Actor.brandAdmin(UUID.randomUUID(), seeded.brandOrgId()), null);
+        Instant due = job(seeded.jobId()).getDisputeReviewDueAt();
+        // Monday 10:00 IST + 2 working days = end of Wednesday IST
+        assertThat(due).isEqualTo(Instant.parse("2026-11-18T18:30:00Z"));
+
+        clock.set(due.minusSeconds(1));
+        drain();
+        assertThat(notices(seeded.jobId())).isEmpty();
+
+        clock.set(due);
+        drain();
+        assertThat(notices(seeded.jobId())).containsExactly("DISPUTE_REVIEW_OVERDUE");
+        assertThat(lastNoticePayload(seeded.jobId(), "audience")).contains("OPS");
+        clock.advance(Duration.ofDays(5));
+        drain();
+        assertThat(status(seeded.jobId())).isEqualTo(JobStatus.DISPUTED); // the outcome is ops' decision
+    }
+
+    /** Foundation v2 F12: "timers fired" are logged, not only sent. */
+    @Test
+    void everyNoticeIsAlsoWrittenToTheEventLog() {
+        Seeded seeded = fixtures.jobIn(JobStatus.CREATOR_INVITED);
+        engine.transition(seeded.jobId(), JobAction.ACCEPT, Actor.creator(seeded.creatorId()), null);
+        clock.set(job(seeded.jobId()).getShipReminderAt());
+        drain();
+
+        var row = jdbc.sql("""
+                SELECT event_type, action, job_version, actor_type, from_state, to_state, payload ->> 'kind' AS kind
+                FROM job_events WHERE job_id = ? AND event_type = 'TimerFired'
+                """).param(seeded.jobId()).query().singleRow();
+        assertThat(row.get("action")).isEqualTo("SHIP_REMINDER");
+        assertThat(row.get("kind")).isEqualTo("SHIP_REMINDER");
+        assertThat(row.get("job_version")).as("not a state change").isNull();
+        assertThat(row.get("actor_type")).isEqualTo("SYSTEM");
+        assertThat(row.get("from_state")).isEqualTo("CREATOR_ACCEPTED");
+        assertThat(row.get("to_state")).isEqualTo("CREATOR_ACCEPTED");
+        // Same id in the log and the outbox, so consumers and the AI log can match them.
+        assertThat(jdbc.sql("""
+                SELECT count(*) FROM job_events e JOIN outbox o ON o.id = e.event_id
+                WHERE e.job_id = ? AND e.event_type = 'TimerFired'
+                """).param(seeded.jobId()).query(Long.class).single()).isEqualTo(1);
+    }
+
+    @Test
+    void staleAlertsAndRemindersForPassedDeadlinesAreNotSent() {
+        // A reminder ahead of a deadline that has already passed is pointless.
+        Seeded review = fixtures.jobIn(JobStatus.IN_REVIEW);
+        fixtures.setDeadline(review.jobId(), "review_due_at", clock.instant().minus(Duration.ofMinutes(1)));
+        // An at-deadline alert more than 7 days old (worker was down) is stale.
+        Seeded accepted = fixtures.jobIn(JobStatus.CREATOR_ACCEPTED);
+        fixtures.setDeadline(accepted.jobId(), "ship_due_at", clock.instant().minus(Duration.ofDays(8)));
+
+        worker.runOnce();
+
+        assertThat(notices(review.jobId())).doesNotContain("REVIEW_DUE_48H", "REVIEW_DUE_24H");
+        assertThat(notices(accepted.jobId())).isEmpty();
+    }
+
+    /**
+     * A restart (or a new leader taking over) starts with an empty worker: everything it needs must come
+     * from the database, so a brand-new instance acts on what was due while nothing was running.
+     */
+    @Test
+    void aFreshWorkerAfterARestartPicksUpWhateverBecameDue() {
+        Seeded seeded = fixtures.jobIn(JobStatus.DRAFT_SUBMITTED);
+        engine.transition(seeded.jobId(), JobAction.PREVIEW_READY, Actor.system(), null);
+        clock.set(job(seeded.jobId()).getReviewDueAt().plus(Duration.ofHours(3))); // "down" when it fell due
+
+        DeadlineWorker afterRestart = new DeadlineWorker(deadlineRepo, engine, noticeService, clock,
+                new TimerProperties(true, Duration.ofSeconds(30), 100), new SimpleMeterRegistry());
+        for (int i = 0; i < 20 && afterRestart.runOnce().didWork(); i++) {
+            // drain
+        }
+
+        assertThat(status(seeded.jobId())).isEqualTo(JobStatus.APPROVED);
+        assertThat(lastAction(seeded.jobId())).isEqualTo("AUTO_APPROVE");
+    }
+
     @Test
     void theWorkerReportsItsLagAndLastRun() {
         worker.runOnce();
@@ -271,12 +357,12 @@ class DeadlineWorkerTest {
     }
 
     private String lastAction(UUID jobId) {
-        return jdbc.sql("SELECT action FROM job_events WHERE job_id = ? ORDER BY job_version DESC LIMIT 1")
+        return jdbc.sql("SELECT action FROM job_events WHERE job_id = ? ORDER BY job_version DESC NULLS LAST LIMIT 1")
                 .param(jobId).query(String.class).single();
     }
 
     private String lastActorType(UUID jobId) {
-        return jdbc.sql("SELECT actor_type FROM job_events WHERE job_id = ? ORDER BY job_version DESC LIMIT 1")
+        return jdbc.sql("SELECT actor_type FROM job_events WHERE job_id = ? ORDER BY job_version DESC NULLS LAST LIMIT 1")
                 .param(jobId).query(String.class).single();
     }
 }

@@ -3,7 +3,6 @@ package com.loofie.core.job.timer;
 import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
-import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -16,9 +15,8 @@ import org.slf4j.LoggerFactory;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.orm.ObjectOptimisticLockingFailureException;
 import org.springframework.stereotype.Component;
-import org.springframework.transaction.support.TransactionTemplate;
 
-import com.loofie.core.common.Ids;
+import com.loofie.core.job.app.JobNoticeService;
 import com.loofie.core.job.app.JobTransitionService;
 import com.loofie.core.job.domain.Actor;
 import com.loofie.core.job.domain.JobExceptions.IllegalTransitionException;
@@ -26,9 +24,6 @@ import com.loofie.core.job.domain.JobExceptions.TransitionGuardException;
 import com.loofie.core.job.infra.JobDeadlineRepository;
 import com.loofie.core.job.infra.JobDeadlineRepository.DueJob;
 import com.loofie.core.job.infra.JobDeadlineRepository.DueNotice;
-import com.loofie.core.messaging.EventEnvelope;
-import com.loofie.core.messaging.Outbox;
-import com.loofie.core.messaging.Topics;
 import com.loofie.core.job.timer.TimerRules.Action;
 import com.loofie.core.job.timer.TimerRules.Notice;
 
@@ -43,7 +38,8 @@ import io.micrometer.core.instrument.MeterRegistry;
  *
  * <p>State changes go through {@link JobTransitionService} as SYSTEM, one transaction per job, so a
  * failure on one job never blocks the others. Notices go to the outbox as {@code JobDeadlineNotice}
- * events for a notification service to deliver.
+ * events for a notification service to deliver, and are logged in {@code job_events} as {@code TimerFired}
+ * (see {@link JobNoticeService}).
  *
  * <p><b>Failing jobs back off.</b> A job whose timer action fails is left out of the query for
  * {@link #FAILURE_BACKOFF}, so a handful of broken jobs can never fill every batch and starve the
@@ -54,7 +50,7 @@ import io.micrometer.core.instrument.MeterRegistry;
 @EnableConfigurationProperties(TimerProperties.class)
 public class DeadlineWorker {
 
-    static final String DEADLINE_NOTICE = "JobDeadlineNotice";
+    static final String DEADLINE_NOTICE = JobNoticeService.DEADLINE_NOTICE;
     static final Duration FAILURE_BACKOFF = Duration.ofMinutes(5);
 
     private static final Logger log = LoggerFactory.getLogger(DeadlineWorker.class);
@@ -68,8 +64,7 @@ public class DeadlineWorker {
 
     private final JobDeadlineRepository deadlines;
     private final JobTransitionService engine;
-    private final Outbox outbox;
-    private final TransactionTemplate tx;
+    private final JobNoticeService notices;
     private final Clock clock;
     private final TimerProperties props;
     private final MeterRegistry meters;
@@ -78,12 +73,11 @@ public class DeadlineWorker {
     private final AtomicLong oldestDueAgeSeconds = new AtomicLong();
     private final AtomicReference<Instant> lastRunAt = new AtomicReference<>();
 
-    DeadlineWorker(JobDeadlineRepository deadlines, JobTransitionService engine, Outbox outbox, TransactionTemplate tx, Clock clock,
+    DeadlineWorker(JobDeadlineRepository deadlines, JobTransitionService engine, JobNoticeService notices, Clock clock,
                    TimerProperties props, MeterRegistry meters) {
         this.deadlines = deadlines;
         this.engine = engine;
-        this.outbox = outbox;
-        this.tx = tx;
+        this.notices = notices;
         this.clock = clock;
         this.props = props;
         this.meters = meters;
@@ -173,28 +167,11 @@ public class DeadlineWorker {
         return deadlines.dueNotices(rule.kind(), rule.status(), rule.deadline(), rule.before(), now, props.batchSize());
     }
 
-    /** Records the notice and enqueues its event in one transaction; false if it was already sent. */
+    /** Raises the notice (log + event, once); false if it was already raised. */
     private boolean send(Notice rule, DueNotice due, Instant now) {
         try {
-            Boolean inserted = tx.execute(status -> {
-                UUID eventId = Ids.newId();
-                if (!deadlines.recordNotice(due.jobId(), rule.kind(), due.dueAt(), eventId, now)) {
-                    return false;
-                }
-                Map<String, Object> payload = new LinkedHashMap<>();
-                payload.put("jobId", due.jobId().toString());
-                payload.put("orderId", due.orderId().toString());
-                payload.put("kind", rule.kind());
-                payload.put("jobStatus", rule.status().name());
-                payload.put("dueAt", due.dueAt().toString());
-                payload.put("audience", rule.audience().stream().map(Enum::name).toList());
-                // aggregateVersion = the job's version when the notice was raised. It is NOT unique per
-                // event (a JobStateChanged has the same version); consumers order notices by dueAt.
-                outbox.enqueue(Topics.CORE_JOB, due.jobId().toString(), new EventEnvelope(eventId, DEADLINE_NOTICE, 1,
-                        now, EventEnvelope.PRODUCER, due.jobId(), due.version(), eventId, null, payload));
-                return true;
-            });
-            boolean ok = Boolean.TRUE.equals(inserted);
+            boolean ok = notices.raise(new JobNoticeService.Notice(due.jobId(), due.orderId(), due.version(),
+                    rule.status(), rule.kind(), due.dueAt(), rule.audience().stream().map(Enum::name).toList()), now);
             if (ok) {
                 meters.counter("loofie.timer.notices", "kind", rule.kind()).increment();
             }

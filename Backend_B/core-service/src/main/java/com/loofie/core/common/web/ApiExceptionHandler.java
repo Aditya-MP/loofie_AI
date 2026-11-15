@@ -18,8 +18,10 @@ import org.springframework.web.bind.annotation.RestControllerAdvice;
 import org.springframework.web.servlet.mvc.method.annotation.ResponseEntityExceptionHandler;
 
 import com.loofie.core.common.Ids;
+import com.loofie.core.common.ServiceBusyException;
 import com.loofie.core.job.domain.JobExceptions.ActorNotAllowedException;
 import com.loofie.core.job.domain.JobExceptions.IllegalTransitionException;
+import com.loofie.core.job.domain.JobExceptions.InvalidQueryException;
 import com.loofie.core.job.domain.JobExceptions.JobNotFoundException;
 import com.loofie.core.job.domain.JobExceptions.StaleJobVersionException;
 import com.loofie.core.job.domain.JobExceptions.TransitionGuardException;
@@ -91,6 +93,11 @@ class ApiExceptionHandler extends ResponseEntityExceptionHandler {
         return problem(HttpStatus.BAD_REQUEST, "invalid-idempotency-key", e.getMessage());
     }
 
+    @ExceptionHandler(Idempotency.KeyRequiredException.class)
+    ProblemDetail keyRequired(Idempotency.KeyRequiredException e) {
+        return problem(HttpStatus.PRECONDITION_REQUIRED, "idempotency-key-required", e.getMessage());
+    }
+
     @ExceptionHandler(Idempotency.KeyReusedException.class)
     ProblemDetail keyReused(Idempotency.KeyReusedException e) {
         return problem(HttpStatus.UNPROCESSABLE_CONTENT, "idempotency-key-reused", e.getMessage());
@@ -108,8 +115,17 @@ class ApiExceptionHandler extends ResponseEntityExceptionHandler {
         return problem(HttpStatus.CONFLICT, "conflict", "This change conflicts with another one made at the same time; reload and retry");
     }
 
-    /** The database is overloaded or briefly unreachable: tell the client to retry, do not pretend it is a bug. */
-    @ExceptionHandler({CannotCreateTransactionException.class, TransientDataAccessException.class})
+    @ExceptionHandler(InvalidQueryException.class)
+    ProblemDetail invalidQuery(InvalidQueryException e) {
+        return problem(HttpStatus.BAD_REQUEST, "invalid-query", e.getMessage());
+    }
+
+    /**
+     * The database is overloaded or briefly unreachable, or a protective limit was hit: tell the client to
+     * retry, do not pretend it is a bug.
+     */
+    @ExceptionHandler({CannotCreateTransactionException.class, TransientDataAccessException.class,
+            ServiceBusyException.class})
     ResponseEntity<ProblemDetail> unavailable(Exception e) {
         log.warn("Service temporarily unavailable: {}", e.toString());
         return ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE)

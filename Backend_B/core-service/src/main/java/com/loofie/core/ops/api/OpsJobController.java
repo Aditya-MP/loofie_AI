@@ -39,8 +39,9 @@ class OpsJobController {
                           @RequestParam(required = false) UUID orderId,
                           @RequestParam(defaultValue = "false") boolean overdue,
                           @RequestParam(defaultValue = "0") int page,
-                          @RequestParam(defaultValue = "25") int size) {
-        return queries.list(actor, new JobFilter(status, brandOrgId, orderId, overdue), page, size);
+                          @RequestParam(defaultValue = "25") int size,
+                          @RequestParam(required = false) String after) {
+        return queries.list(actor, new JobFilter(status, brandOrgId, orderId, overdue), page, size, after);
     }
 
     @GetMapping("/{jobId}")

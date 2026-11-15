@@ -26,6 +26,7 @@ import com.loofie.core.job.domain.Job;
 import com.loofie.core.job.domain.JobAction;
 import com.loofie.core.job.domain.JobDeadlines;
 import com.loofie.core.job.domain.JobExceptions.ActorNotAllowedException;
+import com.loofie.core.job.domain.JobExceptions.JobNotFoundException;
 import com.loofie.core.job.domain.JobExceptions.IllegalTransitionException;
 import com.loofie.core.job.domain.JobExceptions.TransitionGuardException;
 import com.loofie.core.job.domain.JobStatus;
@@ -193,6 +194,13 @@ class JobTransitionServiceTest {
     }
 
     @Test
+    void extendingAJobWithNoDeadlineIsARuleErrorNotACrash() {
+        Seeded broken = fixtures.jobIn(JobStatus.IN_PRODUCTION); // bad data: no production deadline
+        assertThatThrownBy(() -> engine.transition(broken.jobId(), JobAction.OPS_EXTEND, ops, "creator asked"))
+                .isInstanceOf(TransitionGuardException.class).hasMessageContaining("no production deadline");
+    }
+
+    @Test
     void laterExtensionsAreOpsOnlyAndCountFromNowIfLate() {
         UUID creator = UUID.randomUUID();
         UUID jobId = jobInProductionWith(creator);
@@ -235,7 +243,7 @@ class JobTransitionServiceTest {
 
         // The declined creator can no longer act on the job.
         assertThatThrownBy(() -> engine.transition(jobId, JobAction.ACCEPT, Actor.creator(first), null))
-                .isInstanceOf(ActorNotAllowedException.class);
+                .isInstanceOf(JobNotFoundException.class); // no longer their job: they see nothing
     }
 
     @Test
@@ -246,7 +254,7 @@ class JobTransitionServiceTest {
                 .isInstanceOf(ActorNotAllowedException.class);
         assertThatThrownBy(() -> engine.transition(seeded.jobId(), JobAction.APPROVE,
                 Actor.brandAdmin(UUID.randomUUID(), UUID.randomUUID()), null))
-                .isInstanceOf(ActorNotAllowedException.class);
+                .isInstanceOf(JobNotFoundException.class); // another brand: indistinguishable from a missing job
         assertThatThrownBy(() -> engine.transition(seeded.jobId(), JobAction.APPROVE,
                 Actor.brandMember(UUID.randomUUID(), seeded.brandOrgId()), null))
                 .isInstanceOf(ActorNotAllowedException.class);
@@ -254,7 +262,7 @@ class JobTransitionServiceTest {
         Seeded inProduction = fixtures.jobIn(JobStatus.IN_PRODUCTION);
         assertThatThrownBy(() -> engine.transition(inProduction.jobId(), JobAction.SUBMIT_DRAFT,
                 Actor.creator(UUID.randomUUID()), null))
-                .isInstanceOf(ActorNotAllowedException.class);
+                .isInstanceOf(JobNotFoundException.class); // not the assigned creator
 
         assertThat(fixtures.eventCount(seeded.jobId())).isZero();
         assertThat(fixtures.eventCount(inProduction.jobId())).isZero();

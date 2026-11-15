@@ -7,6 +7,7 @@ import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.PositiveOrZero;
 import jakarta.validation.constraints.Size;
 
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -54,11 +55,18 @@ class JobTransitionController {
     private final JobTransitionService engine;
     private final Idempotency idempotency;
     private final JsonMapper json;
+    private final boolean requireKeyForAll;
 
-    JobTransitionController(JobTransitionService engine, Idempotency idempotency, JsonMapper json) {
+    /**
+     * @param requireKeyForAll {@code loofie.api.require-idempotency-key}: when true every transition needs an
+     *                         {@code Idempotency-Key}. Off until the apps send one; then switch it on in prod.
+     */
+    JobTransitionController(JobTransitionService engine, Idempotency idempotency, JsonMapper json,
+                            @Value("${loofie.api.require-idempotency-key:false}") boolean requireKeyForAll) {
         this.engine = engine;
         this.idempotency = idempotency;
         this.json = json;
+        this.requireKeyForAll = requireKeyForAll;
     }
 
     @PostMapping
@@ -70,6 +78,10 @@ class JobTransitionController {
         TransitionCommand cmd = new TransitionCommand(jobId, body.action(), actor, body.reason(), body.creatorId(),
                 RequestIdFilter.current(), details, body.expectedVersion());
         if (key == null) {
+            // OPS_EXTEND is the one action a plain retry would apply twice (+96h instead of +48h).
+            if (requireKeyForAll || body.action() == JobAction.OPS_EXTEND) {
+                throw new Idempotency.KeyRequiredException(body.action().name());
+            }
             return ResponseEntity.ok(engine.transition(cmd));
         }
         String scope = actor.role().name() + ":" + actor.userId();

@@ -15,7 +15,8 @@ public enum JobDeadline {
     MISSING_ESCALATE,
     PRODUCTION,
     REVIEW,
-    REPLACEMENT;
+    REPLACEMENT,
+    DISPUTE_REVIEW;
 
     private final boolean reminder;
 

@@ -53,10 +53,10 @@ class TransitionApiHardeningTest {
         Instant due = jobs.findById(jobId).orElseThrow().getProductionDueAt();
         String key = UUID.randomUUID().toString();
 
-        mvc.perform(extend(jobId).header("Idempotency-Key", key))
+        mvc.perform(extendNoKey(jobId).header("Idempotency-Key", key))
                 .andExpect(status().isOk())
                 .andExpect(header().string("Idempotent-Replayed", "false"));
-        MvcResult retry = mvc.perform(extend(jobId).header("Idempotency-Key", key))
+        MvcResult retry = mvc.perform(extendNoKey(jobId).header("Idempotency-Key", key))
                 .andExpect(status().isOk())
                 .andExpect(header().string("Idempotent-Replayed", "true"))
                 .andReturn();
@@ -73,7 +73,7 @@ class TransitionApiHardeningTest {
 
         List<Callable<Integer>> calls = new ArrayList<>();
         for (int i = 0; i < 20; i++) {
-            calls.add(() -> mvc.perform(extend(jobId).header("Idempotency-Key", key)).andReturn().getResponse().getStatus());
+            calls.add(() -> mvc.perform(extendNoKey(jobId).header("Idempotency-Key", key)).andReturn().getResponse().getStatus());
         }
         List<Integer> statuses = new ArrayList<>();
         try (ExecutorService pool = Executors.newFixedThreadPool(20)) {
@@ -90,7 +90,7 @@ class TransitionApiHardeningTest {
     void reusingAKeyForADifferentRequestIsRefused() throws Exception {
         UUID jobId = jobInProduction();
         String key = UUID.randomUUID().toString();
-        mvc.perform(extend(jobId).header("Idempotency-Key", key)).andExpect(status().isOk());
+        mvc.perform(extendNoKey(jobId).header("Idempotency-Key", key)).andExpect(status().isOk());
 
         mvc.perform(json(post("/api/core/jobs/{id}/transitions", jobId), """
                         {"action":"OPS_EXTEND","reason":"a different reason"}""").header("Idempotency-Key", key))
@@ -100,9 +100,39 @@ class TransitionApiHardeningTest {
     }
 
     @Test
+    void anExtensionWithoutAKeyIsRefusedBeforeItActs() throws Exception {
+        UUID jobId = jobInProduction();
+        mvc.perform(extendNoKey(jobId))
+                .andExpect(status().isPreconditionRequired())
+                .andExpect(jsonPath("$.type", is("https://loofie.app/problems/idempotency-key-required")));
+        assertThat(extensionEvents(jobId)).isZero();
+    }
+
+    @Test
+    void anOutsiderCannotLearnAnythingAboutAJob() throws Exception {
+        UUID jobId = jobInProduction();
+        UUID missing = UUID.randomUUID();
+        String otherBrand = UUID.randomUUID().toString();
+        // Another brand: same answer as a job that does not exist, even with a stale version in the body
+        // (which would otherwise reveal the current version) or an action illegal in this state.
+        for (UUID id : new UUID[] {jobId, missing}) {
+            mvc.perform(post("/api/core/jobs/{id}/transitions", id)
+                            .header("X-Dev-Role", "BRAND_ADMIN").header("X-Dev-User-Id", UUID.randomUUID().toString())
+                            .header("X-Dev-Org-Id", otherBrand).contentType(MediaType.APPLICATION_JSON)
+                            .content("{\"action\":\"APPROVE\",\"expectedVersion\":0}"))
+                    .andExpect(status().isNotFound())
+                    .andExpect(jsonPath("$.type", is("https://loofie.app/problems/job-not-found")));
+        }
+        mvc.perform(post("/api/core/jobs/{id}/transitions", jobId)
+                        .header("X-Dev-Role", "CREATOR").header("X-Dev-User-Id", UUID.randomUUID().toString())
+                        .contentType(MediaType.APPLICATION_JSON).content("{\"action\":\"SUBMIT_DRAFT\"}"))
+                .andExpect(status().isNotFound());
+    }
+
+    @Test
     void aMalformedKeyIsRejected() throws Exception {
         UUID jobId = jobInProduction();
-        mvc.perform(extend(jobId).header("Idempotency-Key", "has spaces in it"))
+        mvc.perform(extendNoKey(jobId).header("Idempotency-Key", "has spaces in it"))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.type", is("https://loofie.app/problems/invalid-idempotency-key")));
     }
@@ -114,7 +144,8 @@ class TransitionApiHardeningTest {
         mvc.perform(extend(jobId)).andExpect(status().isOk()); // someone else acts first
 
         mvc.perform(json(post("/api/core/jobs/{id}/transitions", jobId),
-                        "{\"action\":\"OPS_EXTEND\",\"reason\":\"creator asked\",\"expectedVersion\":" + shown + "}"))
+                        "{\"action\":\"OPS_EXTEND\",\"reason\":\"creator asked\",\"expectedVersion\":" + shown + "}")
+                        .header("Idempotency-Key", UUID.randomUUID().toString()))
                 .andExpect(status().isConflict())
                 .andExpect(jsonPath("$.type", is("https://loofie.app/problems/stale-version")))
                 .andExpect(jsonPath("$.currentVersion", is((int) shown + 1)));
@@ -154,12 +185,13 @@ class TransitionApiHardeningTest {
     void theOpsNoteNeverLeavesTheService() throws Exception {
         UUID jobId = jobInProduction();
         mvc.perform(json(post("/api/core/jobs/{id}/transitions", jobId),
-                "{\"action\":\"OPS_EXTEND\",\"reason\":\"creator's phone is 98765 43210\"}")).andExpect(status().isOk());
+                "{\"action\":\"OPS_EXTEND\",\"reason\":\"creator's phone is 98765 43210\"}")
+                .header("Idempotency-Key", UUID.randomUUID().toString())).andExpect(status().isOk());
 
         String envelope = jdbc.sql("SELECT envelope::text FROM outbox WHERE message_key = ? ORDER BY seq DESC LIMIT 1")
                 .param(jobId.toString()).query(String.class).single();
         assertThat(envelope).doesNotContain("98765").contains("\"hasReason\": true");
-        String kept = jdbc.sql("SELECT reason FROM job_events WHERE job_id = ? ORDER BY job_version DESC LIMIT 1")
+        String kept = jdbc.sql("SELECT reason FROM job_events WHERE job_id = ? ORDER BY job_version DESC NULLS LAST LIMIT 1")
                 .param(jobId).query(String.class).single();
         assertThat(kept).contains("98765"); // still in the internal audit log
     }
@@ -172,7 +204,12 @@ class TransitionApiHardeningTest {
         return seeded.jobId();
     }
 
+    /** An ops extension with a fresh Idempotency-Key (required for OPS_EXTEND). */
     private MockHttpServletRequestBuilder extend(UUID jobId) {
+        return extendNoKey(jobId).header("Idempotency-Key", UUID.randomUUID().toString());
+    }
+
+    private MockHttpServletRequestBuilder extendNoKey(UUID jobId) {
         return json(post("/api/core/jobs/{id}/transitions", jobId), "{\"action\":\"OPS_EXTEND\",\"reason\":\"creator asked\"}");
     }
 

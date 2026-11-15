@@ -19,14 +19,20 @@ FROM generate_series(1, 250000) g;
 ANALYZE orders;
 INSERT INTO jobs (id, order_id, brand_org_id, status, digital_only, creator_fee_paise, free_revision_used,
                   created_at, updated_at, version)
-SELECT gen_random_uuid(), o.id, o.brand_org_id,
-       CASE WHEN r < 0.60 THEN 'CLOSED' WHEN r < 0.65 THEN 'IN_PRODUCTION' WHEN r < 0.68 THEN 'IN_REVIEW'
+SELECT gen_random_uuid(), o.id, o.brand_org_id, 'CLOSED',
+       random() < 0.3, 500000, false, o.created_at, o.created_at + random() * interval '30 days', 5
+FROM orders o CROSS JOIN generate_series(1, 4) n;
+
+-- Realistic status mix. Done as an UPDATE with a per-row random() in a subquery: a random() inside a
+-- CASE in the INSERT above was evaluated once for all rows (twice tried, every job came out CLOSED).
+UPDATE jobs SET status = CASE WHEN r < 0.60 THEN 'CLOSED' WHEN r < 0.65 THEN 'IN_PRODUCTION' WHEN r < 0.68 THEN 'IN_REVIEW'
             WHEN r < 0.71 THEN 'CREATOR_INVITED' WHEN r < 0.74 THEN 'CREATOR_ACCEPTED'
             WHEN r < 0.77 THEN 'PRODUCT_SHIPPED' WHEN r < 0.78 THEN 'DELIVERY_ISSUE' WHEN r < 0.80 THEN 'PAID'
             WHEN r < 0.82 THEN 'REPLACEMENT_NEEDED' WHEN r < 0.85 THEN 'CANCELLED' WHEN r < 0.88 THEN 'REFUNDED'
-            WHEN r < 0.90 THEN 'DISPUTED' ELSE 'PAID_OUT' END,
-       random() < 0.3, 500000, false, o.created_at, o.created_at + random() * interval '30 days', 5
-FROM orders o CROSS JOIN generate_series(1, 4) n, LATERAL (SELECT random() + 0 * n AS r) x; -- "+ 0 * n" makes it per row
+            WHEN r < 0.90 THEN 'DISPUTED' ELSE 'PAID_OUT' END
+FROM (SELECT id, random() AS r FROM jobs) x WHERE x.id = jobs.id;
+VACUUM ANALYZE jobs;
+SELECT status, count(*) FROM jobs GROUP BY 1 ORDER BY 2 DESC; -- check: about 60% CLOSED, 5% IN_PRODUCTION, ...
 
 ANALYZE jobs;
 -- Deadlines consistent with status, spread around now (some overdue)
@@ -40,6 +46,7 @@ WHERE status = 'CREATOR_ACCEPTED' AND NOT digital_only;
 UPDATE jobs SET receipt_prompt_at = now() + (random() * 6 - 3) * interval '1 day',
                 receipt_ops_check_at = now() + (random() * 8 - 3) * interval '1 day'
 WHERE status = 'PRODUCT_SHIPPED';
+UPDATE jobs SET dispute_review_due_at = now() + (random() * 4 - 2) * interval '1 day' WHERE status = 'DISPUTED';
 UPDATE jobs SET issue_response_due_at = now() + (random() * 4 - 2) * interval '1 day',
                 missing_escalate_at = now() + (random() * 14 - 7) * interval '1 day'
 WHERE status = 'DELIVERY_ISSUE';

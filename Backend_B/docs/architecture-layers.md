@@ -34,6 +34,28 @@ Cross-feature rules:
 | Ops console (F10) | `ops.api.OpsJobController` | `JobQueryService` | | `JobReadRepository` |
 | Orders (stub) | (none yet) | `OrderSubmissionService` | `Order` | `OrderRepository` |
 
+## Database migrations
+
+Flyway, forward-only (there is no undo). Deploys are rolling, so for a while **the old and the new app version
+run against the same schema**. Every migration must therefore work with both.
+
+**Expand, then contract:**
+1. **Expand** (release N): only additive changes, such as a new nullable column, a new table or a new index. The old version ignores them.
+2. **Migrate** (release N): the new code writes both shapes, and a backfill fills old rows in small batches.
+3. **Contract** (release N+1 or later, once nothing runs N-1): drop or rename the old column, add `NOT NULL`.
+
+**Rules:**
+- Never rename or drop a column, or narrow a type, in the same release that stops using it.
+- Indexes on big tables: `CREATE INDEX CONCURRENTLY` in its own migration with
+  `-- flyway:executeInTransaction=false` (a plain `CREATE INDEX` locks writes for the whole build).
+- A slow migration starts with `SET LOCAL statement_timeout = 0; SET LOCAL lock_timeout = '10s';`. The pool's
+  10 s statement timeout otherwise applies, and a short lock timeout stops it from queueing behind live traffic.
+- Rewrites of millions of rows go in batches from a job, not in one migration.
+- **If a migration fails:** PostgreSQL rolls it back (DDL is transactional), the new version does not start,
+  and old instances keep serving, because the change was expand-only. Fix forward with a new migration;
+  never edit an applied one (Flyway checksums refuse it).
+- Before a contract step: confirm no running instance still reads the old shape.
+
 ## Design template for a new feature or a deepening phase
 
 Write this before code, one section per layer:

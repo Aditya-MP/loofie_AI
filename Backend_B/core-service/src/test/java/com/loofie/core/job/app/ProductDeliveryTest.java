@@ -326,12 +326,12 @@ class ProductDeliveryTest {
     }
 
     private String lastReasonCode(UUID jobId) {
-        return jdbc.sql("SELECT reason_code FROM job_events WHERE job_id = ? ORDER BY job_version DESC LIMIT 1")
+        return jdbc.sql("SELECT reason_code FROM job_events WHERE job_id = ? ORDER BY job_version DESC NULLS LAST LIMIT 1")
                 .param(jobId).query(String.class).single();
     }
 
     private String lastPayloadField(UUID jobId, String field) {
-        return jdbc.sql("SELECT payload ->> ? FROM job_events WHERE job_id = ? ORDER BY job_version DESC LIMIT 1")
+        return jdbc.sql("SELECT payload ->> ? FROM job_events WHERE job_id = ? ORDER BY job_version DESC NULLS LAST LIMIT 1")
                 .params(field, jobId).query(String.class).single();
     }
 }

@@ -68,6 +68,17 @@ loofie:
     enabled: true
     poll-interval: 30s
     batch-size: 100
+  api:
+    # Every transition needs an Idempotency-Key when true. OPS_EXTEND always needs one.
+    # Switch on in prod once the apps send keys.
+    require-idempotency-key: false
+  queries:
+    # Ops-console reads are fenced so a slow screen can never take connections from the engine
+    # (measured: unfenced list queries failed the whole service at 50 rps). At most 13 of the 20 pooled connections.
+    list-max-concurrent: 5     # heavy list queries
+    detail-max-concurrent: 8   # single-job reads (index lookups); 5 + 8 leaves 7+ of 20 connections for the engine
+    queue-wait: 1s
+    statement-timeout: 2s
   retention:
     enabled: true
     interval: 10m

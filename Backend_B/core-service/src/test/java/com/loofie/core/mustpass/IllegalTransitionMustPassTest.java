@@ -16,6 +16,7 @@ import com.loofie.core.job.domain.Actor;
 import com.loofie.core.job.domain.ActorRole;
 import com.loofie.core.job.domain.JobAction;
 import com.loofie.core.job.domain.JobExceptions.IllegalTransitionException;
+import com.loofie.core.job.domain.JobExceptions.JobNotFoundException;
 import com.loofie.core.job.domain.JobStatus;
 import com.loofie.core.job.domain.TransitionTable;
 import com.loofie.core.support.IntegrationTest;
@@ -49,9 +50,13 @@ class IllegalTransitionMustPassTest {
                 continue;
             }
             Actor actor = actorAllowedFor(action, job);
+            // In states with no creator on the job, a creator is outside the job's scope: they get the
+            // "not found" answer before the state is even looked at. Both mean "rejected, nothing written".
+            Class<? extends RuntimeException> expected = actor.role() == ActorRole.CREATOR && !JobFixtures.hasActiveCreator(state)
+                    ? JobNotFoundException.class : IllegalTransitionException.class;
             assertThatThrownBy(() -> engine.transition(job.jobId(), action, actor, "test"))
                     .as("%s from %s", action, state)
-                    .isInstanceOf(IllegalTransitionException.class);
+                    .isInstanceOf(expected);
             attempted++;
         }
 

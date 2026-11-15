@@ -58,6 +58,9 @@ final class TimerRules {
                     List.of(Audience.BRAND, Audience.OPS)),
             new Notice("PARCEL_MISSING", JobStatus.DELIVERY_ISSUE, JobDeadline.MISSING_ESCALATE, AT_DEADLINE,
                     List.of(Audience.CREATOR, Audience.OPS)), // ops steps in; creator may withdraw
+            // F9: ops reviews a dispute within 2 working days. No automatic move: the outcome is ops' decision.
+            new Notice("DISPUTE_REVIEW_OVERDUE", JobStatus.DISPUTED, JobDeadline.DISPUTE_REVIEW, AT_DEADLINE,
+                    List.of(Audience.OPS)),
             // F5: reminders 48h and 24h before the production and review deadlines
             new Notice("PRODUCTION_DUE_48H", JobStatus.IN_PRODUCTION, JobDeadline.PRODUCTION, Duration.ofHours(48),
                     List.of(Audience.CREATOR)),

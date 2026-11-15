@@ -25,6 +25,8 @@ public final class JobDeadlines {
     public static final Duration PRODUCTION_WINDOW = Duration.ofHours(120);
     public static final Duration REVIEW_WINDOW = Duration.ofHours(120);
     public static final Duration REPLACEMENT_WINDOW = Duration.ofDays(10);
+    /** Foundation v2 F9: ops reviews a dispute within 2 working days. */
+    public static final int DISPUTE_REVIEW_WORKING_DAYS = 2;
     public static final Duration EXTENSION = Duration.ofHours(48);
 
     private JobDeadlines() {
@@ -42,6 +44,7 @@ public final class JobDeadlines {
         Instant production = null;
         Instant review = null;
         Instant replacement = null;
+        Instant disputeReview = null;
 
         switch (job.getStatus()) {
             case CREATOR_INVITED -> accept = enteredAt.plus(ACCEPT_WINDOW);
@@ -71,12 +74,14 @@ public final class JobDeadlines {
             case IN_PRODUCTION -> production = enteredAt.plus(PRODUCTION_WINDOW);
             case IN_REVIEW -> review = enteredAt.plus(REVIEW_WINDOW);
             case REPLACEMENT_NEEDED -> replacement = enteredAt.plus(REPLACEMENT_WINDOW);
+            // Ops-side clock: working days, national holidays (ops is not tied to a brand state).
+            case DISPUTED -> disputeReview = calendar.endOfWorkingDays(enteredAt, DISPUTE_REVIEW_WORKING_DAYS, null);
             default -> {
                 // no deadline in this state
             }
         }
         job.setDeadlines(new Job.DeadlineValues(accept, shipReminder, shipDue, receiptPrompt, receiptOpsCheck,
-                autoStart, issueResponse, missingEscalate, production, review, replacement));
+                autoStart, issueResponse, missingEscalate, production, review, replacement, disputeReview));
     }
 
     /**

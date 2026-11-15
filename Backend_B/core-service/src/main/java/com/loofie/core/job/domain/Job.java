@@ -96,6 +96,9 @@ public class Job {
     @Column(name = "replacement_due_at")
     private Instant replacementDueAt;
 
+    @Column(name = "dispute_review_due_at")
+    private Instant disputeReviewDueAt;
+
     @Column(name = "created_at", nullable = false, updatable = false)
     private Instant createdAt;
 
@@ -204,13 +207,14 @@ public class Job {
         this.productionDueAt = d.productionDueAt();
         this.reviewDueAt = d.reviewDueAt();
         this.replacementDueAt = d.replacementDueAt();
+        this.disputeReviewDueAt = d.disputeReviewDueAt();
     }
 
     /** Every deadline column at once; null means "no such clock running". */
     record DeadlineValues(Instant acceptDueAt, Instant shipReminderAt, Instant shipDueAt, Instant receiptPromptAt,
                           Instant receiptOpsCheckAt, Instant autoStartAt, Instant issueResponseDueAt,
                           Instant missingEscalateAt, Instant productionDueAt, Instant reviewDueAt,
-                          Instant replacementDueAt) {
+                          Instant replacementDueAt, Instant disputeReviewDueAt) {
     }
 
     public UUID getId() {
@@ -299,6 +303,10 @@ public class Job {
 
     public Instant getReviewDueAt() {
         return reviewDueAt;
+    }
+
+    public Instant getDisputeReviewDueAt() {
+        return disputeReviewDueAt;
     }
 
     public Instant getReplacementDueAt() {

@@ -1,6 +1,7 @@
 package com.loofie.core.ops.api;
 
 import static org.hamcrest.Matchers.hasSize;
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.hamcrest.Matchers.is;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
@@ -38,6 +39,8 @@ class OpsJobApiTest {
     @Autowired JobTransitionService engine;
     @Autowired MutableClock clock;
     @Autowired com.loofie.core.job.infra.JobRepository jobRepo;
+    @Autowired org.springframework.jdbc.core.simple.JdbcClient jdbc;
+    @Autowired tools.jackson.databind.json.JsonMapper json;
 
     final UUID opsUser = UUID.randomUUID();
 
@@ -75,6 +78,47 @@ class OpsJobApiTest {
                         .param("brandOrgId", otherBrand.brandOrgId().toString())
                         .param("status", "IN_REVIEW"))
                 .andExpect(jsonPath("$.total", is(0)));
+    }
+
+    /** Keyset paging walks the whole list exactly once, even when several jobs changed at the same instant. */
+    @Test
+    void cursorPagingVisitsEveryJobOnceAndTotalsAreExactBelowTheCap() throws Exception {
+        Seeded first = fixtures.jobIn(JobStatus.PAID);
+        for (int i = 0; i < 6; i++) { // same brand, same updated_at: the id breaks the tie
+            jdbc.sql("""
+                    INSERT INTO jobs (id, order_id, brand_org_id, status, digital_only, creator_fee_paise,
+                                      created_at, updated_at, version)
+                    SELECT gen_random_uuid(), order_id, brand_org_id, status, digital_only, creator_fee_paise,
+                           created_at, updated_at, 0 FROM jobs WHERE id = ?
+                    """).param(first.jobId()).update();
+        }
+
+        java.util.Set<String> seen = new java.util.HashSet<>();
+        String cursor = null;
+        int pages = 0;
+        do {
+            var request = asOps(get("/api/core/ops/jobs")).param("brandOrgId", first.brandOrgId().toString())
+                    .param("size", "3");
+            if (cursor != null) {
+                request = request.param("after", cursor);
+            }
+            String body = mvc.perform(request).andExpect(status().isOk())
+                    .andExpect(jsonPath("$.total", is(7)))
+                    .andExpect(jsonPath("$.totalCapped", is(false)))
+                    .andReturn().getResponse().getContentAsString();
+            var page = json.readTree(body);
+            page.get("items").forEach(item -> assertThat(seen.add(item.get("jobId").asString()))
+                    .as("each job appears once").isTrue());
+            cursor = page.get("nextCursor").isNull() ? null : page.get("nextCursor").asString();
+            pages++;
+        } while (cursor != null && pages < 10);
+
+        assertThat(seen).hasSize(7);
+        assertThat(pages).isEqualTo(3);
+
+        mvc.perform(asOps(get("/api/core/ops/jobs")).param("after", "garbage"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.type", is("https://loofie.app/problems/invalid-query")));
     }
 
     @Test
@@ -149,7 +193,7 @@ class OpsJobApiTest {
                         .header("X-Dev-User-Id", UUID.randomUUID().toString())
                         .header("X-Dev-Org-Id", UUID.randomUUID().toString())
                         .contentType(MediaType.APPLICATION_JSON).content("{\"action\":\"CANCEL\",\"reason\":\"x\"}"))
-                .andExpect(status().isForbidden());
+                .andExpect(status().isNotFound()); // another brand's job: indistinguishable from a missing one
     }
 
     @Test

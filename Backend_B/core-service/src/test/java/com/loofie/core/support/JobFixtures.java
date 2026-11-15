@@ -77,7 +77,8 @@ public class JobFixtures {
         return jdbc.sql("SELECT status FROM jobs WHERE id = ?").param(jobId).query(String.class).single();
     }
 
-    private static boolean hasActiveCreator(JobStatus s) {
+    /** Whether {@link #jobIn} puts an active creator on a job in this state. */
+    public static boolean hasActiveCreator(JobStatus s) {
         return switch (s) {
             case CREATOR_INVITED, CREATOR_ACCEPTED, PRODUCT_SHIPPED, DELIVERY_ISSUE, PRODUCT_RECEIVED, IN_PRODUCTION,
                  DRAFT_SUBMITTED, IN_REVIEW, REVISION_REQUESTED, APPROVED, DISPUTED, PAYOUT_PENDING,
