@@ -92,6 +92,8 @@ def yes_no(v) -> bool | None:
     if s is None:
         return None
     s = s.lower()
+    if s in ("unsure", "unknown", "not sure"):
+        return None  # "not visible / not checked": unknown, not no
     if s in _YES:
         return True
     if s in _NO:

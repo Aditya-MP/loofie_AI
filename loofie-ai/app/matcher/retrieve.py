@@ -14,15 +14,24 @@ from sqlalchemy import and_, case, false, func, not_, or_, select
 from sqlalchemy.orm import Session
 
 from app.db.models import Creator, CreatorProfile, CreatorQuality
+from app.importer import vocab
 from app.matcher.features import BriefQuery, Candidate, matcher_config
 
-HAND_CATEGORIES = {"beauty_skincare", "personal_care"}
+# The sheet's own category names count as hand labels. Out-of-scope ones (fashion, food...) only
+# from the data sheet, so a hand-labelled fashion creator is left out of a skincare brief; old
+# field data used free-text names, which don't count.
+HAND_CATEGORIES = vocab.IN_SCOPE
+LEGACY = "legacy_field_csv"
+
+
+def is_hand_label(category: str | None, data_source: str | None) -> bool:
+    return category in HAND_CATEGORIES or (category in vocab.OUT_OF_SCOPE and data_source != LEGACY)
 
 
 def to_candidate(c: Creator, p: CreatorProfile | None, q: CreatorQuality | None) -> Candidate:
     # The team's hand-entered niche wins over the model's guess. Old field data used other
     # category names, so only the sheet's own categories count as hand labels.
-    hand = c.category in HAND_CATEGORIES
+    hand = is_hand_label(c.category, c.data_source)
     return Candidate(
         creator_id=c.id,
         handle=c.handle,
@@ -31,7 +40,7 @@ def to_candidate(c: Creator, p: CreatorProfile | None, q: CreatorQuality | None)
         category=c.category if hand else (p.category if p else None),
         sub_niche=(c.sub_niche or (p.sub_niche if p else None)) if hand else (p.sub_niche if p else None),
         # Old field data mixed spoken and caption language, so only newer sources count as spoken.
-        spoken_language=c.primary_language if c.data_source != "legacy_field_csv" else None,
+        spoken_language=c.primary_language if c.data_source != LEGACY else None,
         caption_languages=(p.language_shares if p else {}) or {},
         embedding=np.asarray(p.embedding, dtype=np.float32) if p is not None and p.embedding is not None else None,
         quality_label=q.label if q else None,
@@ -47,7 +56,11 @@ def to_candidate(c: Creator, p: CreatorProfile | None, q: CreatorQuality | None)
 
 def _effective_category():
     """The team's hand label wins; otherwise the Profile Builder's guess (same rule as to_candidate)."""
-    return case((Creator.category.in_(HAND_CATEGORIES), Creator.category), else_=CreatorProfile.category)
+    hand = or_(
+        Creator.category.in_(HAND_CATEGORIES),
+        and_(Creator.category.in_(vocab.OUT_OF_SCOPE), Creator.data_source != LEGACY),
+    )
+    return case((hand, Creator.category), else_=CreatorProfile.category)
 
 
 def exclusion_rules(brief: BriefQuery, cfg: dict) -> list[tuple[str, object]]:

@@ -14,12 +14,14 @@ from sqlalchemy.orm import Session
 
 from app.db.models import Creator
 
-# Foundation v2 names, highest trust first. LEGACY_IMPORT: the first field export, partly from
-# third-party sites, so it ranks below anything a creator or the team states now.
+# Foundation v2 names, highest trust first. LEGACY_IMPORT: imported but not checked by a person (the
+# first field export, or data-sheet rows still marked TO_REVIEW), so it ranks below anything a
+# creator or the team states now.
 TRUST = {"API_VERIFIED": 3, "OPS_CHECKED": 2, "SELF_REPORTED": 1, "LEGACY_IMPORT": 0}
 SOURCE_OF = {
     "instagram_api": "API_VERIFIED",
-    "sheet": "OPS_CHECKED",  # the data team read it off the public profile
+    "sheet": "OPS_CHECKED",  # the data team read it off the public profile (VERIFIED rows)
+    "sheet_unreviewed": "LEGACY_IMPORT",  # v2 sheet rows still TO_REVIEW: collected, nobody checked yet
     "manual_profile": "SELF_REPORTED",
     "legacy_field_csv": "LEGACY_IMPORT",
 }

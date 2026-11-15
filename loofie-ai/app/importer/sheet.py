@@ -1,5 +1,10 @@
 """Load Loofie_AI_Data_Collection.xlsx, or a folder with one CSV per tab, into the database.
 
+Reads both layouts: v1 (headers in row 1, EX- example rows) and v2 (title rows, headers in row 4,
+record_status DEMO / TO_REVIEW / VERIFIED / REJECTED). DEMO and REJECTED rows are skipped; empty
+ID-only slots are skipped; TO_REVIEW rows load as unchecked data (trust LEGACY_IMPORT, so their
+numbers can never earn a "real" quality label until someone marks them VERIFIED).
+
 Bad rows are skipped and reported with their tab and row number; good rows are still loaded.
 Running the same file twice is safe: rows are matched on their key and updated, not duplicated.
 """
@@ -21,6 +26,25 @@ from app.importer.upsert import upsert
 TABS = ["Brands", "Creators", "Posts", "Brand_Creator_Links", "Comments", "Briefs"]
 ID_COLUMNS = ("brand_id", "creator_id", "post_id", "link_id", "brief_id")
 HANDLE_COLUMNS = ("instagram_handle", "creator_handle", "brand_handle")
+# Columns that alone don't make a row real (v2 pre-fills IDs and statuses in empty slots).
+SLOT_COLUMNS = {*ID_COLUMNS, "comment_id", "record_status", "answer_key_status", "review_label"}
+
+
+def header_row(rows: list[tuple]) -> int:
+    """Index of the header row: v1 has it first, v2 after a title block."""
+    for i, r in enumerate(rows[:10]):
+        cells = {str(c).strip() for c in r if c is not None}
+        if cells & {*ID_COLUMNS, "instagram_handle", "post_url", "comment_id"}:
+            return i
+    return 0
+
+
+def get(r: dict, *names):
+    """First non-empty value among column names (v2 renamed a few columns)."""
+    for n in names:
+        if r.get(n) not in (None, ""):
+            return r[n]
+    return None
 
 
 @dataclass
@@ -55,11 +79,15 @@ def read_tabs(path: Path) -> dict[str, list[tuple[int, dict]]]:
         for tab in TABS:
             if tab not in wb.sheetnames:
                 continue
-            rows = wb[tab].iter_rows(values_only=True)
-            header = [str(h).strip() if h is not None else "" for h in next(rows, ())]
+            rows = list(wb[tab].iter_rows(values_only=True))
+            if not rows:
+                tabs[tab] = []
+                continue
+            at = header_row(rows)
+            header = [str(h).strip() if h is not None else "" for h in rows[at]]
             tabs[tab] = [
                 (i, dict(zip(header, r, strict=False)))
-                for i, r in enumerate(rows, 2)
+                for i, r in enumerate(rows[at + 1 :], at + 2)
                 if any(c not in (None, "") for c in r)
             ]
     finally:
@@ -67,7 +95,22 @@ def read_tabs(path: Path) -> dict[str, list[tuple[int, dict]]]:
     return tabs
 
 
+def is_slot(row: dict) -> bool:
+    """A v2 placeholder: only its ID and status are filled in."""
+    return all(k in SLOT_COLUMNS for k, v in row.items() if v not in (None, ""))
+
+
+def status(row: dict) -> str:
+    return str(row.get("record_status") or "").strip().upper()
+
+
+def source_of(row: dict) -> str:
+    return "sheet_unreviewed" if status(row) == "TO_REVIEW" else "sheet"
+
+
 def is_example(row: dict) -> bool:
+    if status(row) == "DEMO" or any(str(row.get(c) or "").upper().startswith("DM-") for c in ID_COLUMNS):
+        return True
     if any(str(row.get(c) or "").upper().startswith("EX-") for c in ID_COLUMNS):
         return True
     if any(str(row.get(c) or "").lower().startswith("example_") for c in HANDLE_COLUMNS):
@@ -91,7 +134,10 @@ def lookup(mapping: dict, key, what: str, tab: str):
 
 
 def brand_row(r: dict) -> dict:
-    lo, hi = p.price_range(r.get("price_range_inr"))
+    if r.get("price_min_inr") is not None or r.get("price_max_inr") is not None:
+        lo, hi = p.integer(r.get("price_min_inr")), p.integer(r.get("price_max_inr"))
+    else:
+        lo, hi = p.price_range(r.get("price_range_inr"))
     return dict(
         handle=required(p.handle(r.get("instagram_handle")), "instagram_handle"),
         external_id=p.text(r.get("brand_id")),
@@ -99,14 +145,14 @@ def brand_row(r: dict) -> dict:
         website=p.url(r.get("website")),
         category=p.choice(r.get("category"), vocab.CATEGORY),
         sub_niche=p.choice(r.get("sub_niche"), vocab.SUB_NICHE),
-        what_they_sell=p.text(r.get("what_they_sell")),
+        what_they_sell=p.text(get(r, "what_they_sell", "products")),
         product_description=p.text(r.get("product_description")),
         price_min_inr=lo,
         price_max_inr=hi,
-        ad_library_link=p.url(r.get("ad_library_link")),
+        ad_library_link=p.url(get(r, "ad_library_link", "ad_library_search_link")),
         running_ads_now=p.yes_no(r.get("running_ads_now")),
         uses_creator_ads=p.yes_no(r.get("uses_creator_ads")),
-        data_source="sheet",
+        data_source=source_of(r),
         collected_on=p.a_date(r.get("collected_on")),
         collected_by=p.text(r.get("collected_by")),
     )
@@ -114,6 +160,12 @@ def brand_row(r: dict) -> dict:
 
 def creator_row(r: dict) -> dict:
     h = p.handle(r.get("instagram_handle")) or p.handle(r.get("profile_link"))
+    notes = p.text(r.get("notes")) or ""
+    # v2 notes say when "language" was read off captions: that is not the language they speak, and
+    # the matcher treats this column as spoken. The profile builder measures caption language itself.
+    spoken = None if "language from caption" in notes.lower() else r.get("primary_language")
+    reason = p.text(r.get("quality_reason"))
+    not_assessed = (reason or "").lower() == "not assessed"
     return dict(
         handle=required(h, "instagram_handle"),
         external_id=p.text(r.get("creator_id")),
@@ -127,16 +179,18 @@ def creator_row(r: dict) -> dict:
         bio_link=p.url(r.get("bio_link")),
         category=p.choice(r.get("category"), vocab.CATEGORY),
         sub_niche=p.choice(r.get("sub_niche"), vocab.SUB_NICHE),
-        primary_language=p.choice(r.get("primary_language"), vocab.LANGUAGE),
+        primary_language=p.choice(spoken, vocab.LANGUAGE),
         face_on_camera=p.yes_no(r.get("face_on_camera")),
         speaks_to_camera=p.yes_no(r.get("speaks_to_camera")),
         last_post_date=p.a_date(r.get("last_post_date")),
         posts_last_30d=p.integer(r.get("posts_last_30d")),
         public_rate_card=p.yes_no(r.get("public_rate_card")),
         rate_card_link=p.url(r.get("rate_card_link")),
-        label_quality=p.choice(r.get("quality_label"), vocab.QUALITY),
-        label_quality_reason=p.text(r.get("quality_reason")),
-        data_source="sheet",
+        # "unsure / Not assessed" means nobody looked: no label, so it can't train or score Model 3.
+        label_quality=None if not_assessed else p.choice(r.get("quality_label"), vocab.QUALITY),
+        label_quality_reason=None if not_assessed else reason,
+        notes=notes or None,
+        data_source=source_of(r),
         collected_on=p.a_date(r.get("collected_on")),
         collected_by=p.text(r.get("collected_by")),
     )
@@ -151,14 +205,16 @@ def post_row(r: dict, creators: dict[str, int]) -> dict:
         post_date=p.a_date(r.get("post_date")),
         post_type=p.choice(r.get("post_type"), vocab.POST_TYPE),
         views=p.integer(r.get("views")),
-        likes=p.integer(r.get("likes")),
-        comments_count=p.integer(r.get("comments")),
-        caption=p.text(r.get("caption")),
+        # A creator can hide like counts; the v2 collector then wrote a placeholder (3). Unknown, not 3,
+        # or the quality model would call a real creator's audience fake.
+        likes=None if "like count hidden" in str(r.get("notes") or "").lower() else p.integer(r.get("likes")),
+        comments_count=p.integer(get(r, "comments_count", "comments")),
+        caption=p.text(get(r, "caption_text", "caption")),
         paid_partnership_label=p.yes_no(r.get("paid_partnership_label")),
         ad_hashtag=p.yes_no(r.get("ad_hashtag")),
         brands_tagged=p.handles(r.get("brands_tagged")),
         product_shown=p.yes_no(r.get("product_shown")),
-        data_source="sheet",
+        data_source=source_of(r),
         collected_on=p.a_date(r.get("collected_on")),
     )
 
@@ -171,19 +227,23 @@ def link_row(r: dict, brands: dict[str, int], creators: dict[str, int]) -> dict:
         brand_id=lookup(brands, b, "brand", "Brands"),
         creator_id=lookup(creators, c, "creator", "Creators"),
         post_url=required(p.post_url(r.get("post_url")), "post_url"),
-        evidence=p.choice(r.get("evidence"), vocab.EVIDENCE),
+        evidence=p.choice(get(r, "evidence", "evidence_type"), vocab.EVIDENCE),
         post_date=p.a_date(r.get("post_date")),
         collected_on=p.a_date(r.get("collected_on")),
     )
 
 
-def comment_row(r: dict, posts: dict[str, int]) -> dict:
-    url = required(p.post_url(r.get("post_url")), "post_url")
-    no = required(p.integer(r.get("comment_no")), "comment_no")
+def comment_row(r: dict, posts: dict[str, int], post_ids: dict[str, int]) -> dict:
+    no = required(p.integer(get(r, "comment_no", "comment_number")), "comment_no")
+    url = p.post_url(r.get("post_url"))
+    if url is None and p.text(r.get("post_id")):
+        post = lookup(post_ids, p.text(r.get("post_id")), "post_id", "Posts")
+    else:
+        post = lookup(posts, required(url, "post_url"), "post", "Posts")
     if no < 1:
         raise p.ParseError(f"comment_no must be 1 or more: {no}")
     return dict(
-        post_id=lookup(posts, url, "post", "Posts"),
+        post_id=post,
         comment_no=no,
         text=required(p.text(r.get("comment_text")), "comment_text"),
         collected_on=p.a_date(r.get("collected_on")),
@@ -231,9 +291,17 @@ def load_tab(
 ) -> None:
     clean: dict[tuple, dict] = {}
     for rowno, raw in rows:
+        if is_slot(raw):
+            report.bump(tab, "empty_slot")
+            continue
+        if status(raw) == "REJECTED":
+            report.bump(tab, "skipped_rejected")
+            continue
         if not include_examples and is_example(raw):
             report.bump(tab, "skipped_example")
             continue
+        if status(raw) == "TO_REVIEW":
+            report.bump(tab, "to_review")
         try:
             rec = convert(raw)
         except p.ParseError as e:
@@ -267,13 +335,14 @@ def import_sheet(session: Session, path: Path, include_examples: bool = False) -
     creators = dict(session.execute(select(Creator.handle, Creator.id)).all())
     load("Posts", lambda r: post_row(r, creators), Post, ["post_url"])
     posts = dict(session.execute(select(Post.post_url, Post.id)).all())
+    post_ids = dict(session.execute(select(Post.external_id, Post.id).where(Post.external_id.is_not(None))).all())
     load(
         "Brand_Creator_Links",
         lambda r: link_row(r, brands, creators),
         BrandCreatorLink,
         ["brand_id", "creator_id", "post_url"],
     )
-    load("Comments", lambda r: comment_row(r, posts), Comment, ["post_id", "comment_no"])
+    load("Comments", lambda r: comment_row(r, posts, post_ids), Comment, ["post_id", "comment_no"])
     load("Briefs", brief_row, Brief, ["external_id"])
 
     session.add(ImportRun(source=str(path), counts=report.counts, errors=report.errors, warnings=report.warnings))

@@ -276,6 +276,12 @@ the brand's `video_performance` verdict (too subjective and too few yet: report 
 
 ## Change log
 
+- 2026-11-15: Data sheet v2 import: headers after a title block, `record_status` (DEMO / REJECTED
+  skipped, empty ID-only slots skipped, TO_REVIEW loads as unchecked = `LEGACY_IMPORT` trust, VERIFIED
+  = `OPS_CHECKED`), renamed columns, "unsure" = unknown. Caption-guessed language is not stored as
+  spoken language; "Not assessed" is not a quality label; hidden like counts are unknown (the v2
+  collector wrote 3, which made 20 real creators look fake). Out-of-scope categories (fashion, food,
+  fitness, technology, other) load with their label so beauty briefs leave them out.
 - 2026-11-15: Pilot log (`loofie pilot template` / `import`, OPERATIONS.md): ops' hand-filled sheet
   becomes the same events the app will send; re-import syncs. New event `deal_price` (agreed fee per
   video). The mock now computes `track_record` from the events sent to it.
