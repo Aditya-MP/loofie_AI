@@ -13,11 +13,12 @@ import com.loofie.core.common.Ids;
 import com.loofie.core.events.JobEventLog;
 import com.loofie.core.events.JobEventLog.JobEventRecord;
 import com.loofie.core.job.domain.ActorRole;
+import com.loofie.core.job.domain.Assignment;
 import com.loofie.core.job.domain.JobStatus;
+import com.loofie.core.job.infra.AssignmentRepository;
 import com.loofie.core.job.infra.JobDeadlineRepository;
 import com.loofie.core.messaging.EventEnvelope;
 import com.loofie.core.messaging.Outbox;
-import com.loofie.core.messaging.Topics;
 
 import tools.jackson.databind.json.JsonMapper;
 
@@ -40,12 +41,15 @@ public class JobNoticeService {
     }
 
     private final JobDeadlineRepository deadlines;
+    private final AssignmentRepository assignments;
     private final JobEventLog eventLog;
     private final Outbox outbox;
     private final JsonMapper json;
 
-    public JobNoticeService(JobDeadlineRepository deadlines, JobEventLog eventLog, Outbox outbox, JsonMapper json) {
+    public JobNoticeService(JobDeadlineRepository deadlines, AssignmentRepository assignments, JobEventLog eventLog,
+                            Outbox outbox, JsonMapper json) {
         this.deadlines = deadlines;
+        this.assignments = assignments;
         this.eventLog = eventLog;
         this.outbox = outbox;
         this.json = json;
@@ -61,6 +65,10 @@ public class JobNoticeService {
         Map<String, Object> payload = new LinkedHashMap<>();
         payload.put("jobId", n.jobId().toString());
         payload.put("orderId", n.orderId().toString());
+        // The creator the notice is about, if the job has one (Backend A's /ai/feedback needs it as creator_ref).
+        // One indexed lookup per notice raised; only runs when a notice is actually new.
+        payload.put("creatorId", assignments.findByJobIdAndStatus(n.jobId(), Assignment.Status.ACTIVE)
+                .map(a -> a.getCreatorId().toString()).orElse(null));
         payload.put("kind", n.kind());
         payload.put("jobStatus", n.status().name());
         payload.put("jobVersion", n.jobVersion());
@@ -75,7 +83,7 @@ public class JobNoticeService {
 
         // aggregateVersion = the job's version when the notice was raised. It is NOT unique per event (a
         // JobStateChanged has the same version); consumers order notices by dueAt.
-        outbox.enqueue(Topics.CORE_JOB, n.jobId().toString(), new EventEnvelope(eventId, DEADLINE_NOTICE, 1, now,
+        outbox.enqueue(Outbox.JOB_STREAM, n.jobId().toString(), new EventEnvelope(eventId, DEADLINE_NOTICE, 1, now,
                 EventEnvelope.PRODUCER, n.jobId(), n.jobVersion(), eventId, null, payload));
         return true;
     }

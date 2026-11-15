@@ -155,7 +155,8 @@ public class JobTransitionService {
 
         checkGuards(job, rule, details, now);
         ReasonCode reasonCode = reasonCodeFor(job, rule, details);
-        UUID assignmentId = changeAssignment(job, rule, creatorId, now);
+        Assignment assignment = changeAssignment(job, rule, creatorId, now);
+        UUID assignmentId = assignment == null ? null : assignment.getId();
         Map<String, Object> facts = applyDeliveryFacts(job, rule, actor, details, assignmentId, now);
         if (rule.action() == JobAction.REQUEST_REVISION) {
             job.markFreeRevisionUsed();
@@ -172,7 +173,8 @@ public class JobTransitionService {
         jobs.saveAndFlush(job); // optimistic lock check happens here; bumps version
         countAfterCommit(rule.action(), actor);
 
-        return recorder.recordStateChange(job, assignmentId, from, rule.action(), actor, reason, reasonCode,
+        return recorder.recordStateChange(job, assignmentId, assignment == null ? null : assignment.getCreatorId(), from,
+                rule.action(), actor, reason, reasonCode,
                 job.getDeliveryIssueType(), facts, now, correlationId, causationId);
     }
 
@@ -399,7 +401,8 @@ public class JobTransitionService {
     }
 
     /** Opens or closes the creator assignment where the transition requires it. Returns the relevant assignment id. */
-    private UUID changeAssignment(Job job, TransitionRule rule, UUID creatorId, Instant now) {
+    /** The assignment this change is about (opened, closed or unchanged), or null if the job has none. */
+    private Assignment changeAssignment(Job job, TransitionRule rule, UUID creatorId, Instant now) {
         Optional<Assignment> active = activeAssignment(job);
         switch (rule.action()) {
             case INVITE, APPROVE_SWAP -> {
@@ -411,7 +414,7 @@ public class JobTransitionService {
                 }
                 Assignment opened = Assignment.open(Ids.newId(), job.getId(), creatorId, now);
                 assignments.save(opened);
-                return opened.getId();
+                return opened;
             }
             case DECLINE, ACCEPT_TIMEOUT, PRODUCTION_EXPIRED, RESOLVE_REPLACE, RESOLVE_REFUND, CANCEL,
                  CREATOR_WITHDRAW, OPS_RELEASE_CREATOR -> {
@@ -419,10 +422,10 @@ public class JobTransitionService {
                     a.close(rule.action().name(), now);
                     assignments.save(a);
                 });
-                return active.map(Assignment::getId).orElse(null);
+                return active.orElse(null);
             }
             default -> {
-                return active.map(Assignment::getId).orElse(null);
+                return active.orElse(null);
             }
         }
     }

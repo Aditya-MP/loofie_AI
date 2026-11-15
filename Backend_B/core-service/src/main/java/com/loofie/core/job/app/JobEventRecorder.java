@@ -20,7 +20,6 @@ import com.loofie.core.job.domain.JobStatus;
 import com.loofie.core.job.domain.ReasonCode;
 import com.loofie.core.messaging.EventEnvelope;
 import com.loofie.core.messaging.Outbox;
-import com.loofie.core.messaging.Topics;
 
 import tools.jackson.databind.json.JsonMapper;
 
@@ -44,7 +43,7 @@ class JobEventRecorder {
     }
 
     @Transactional(propagation = Propagation.MANDATORY)
-    UUID recordStateChange(Job job, UUID assignmentId, JobStatus from, JobAction action, Actor actor, String reason,
+    UUID recordStateChange(Job job, UUID assignmentId, UUID creatorId, JobStatus from, JobAction action, Actor actor, String reason,
                            ReasonCode reasonCode, DeliveryIssueType issueType, Map<String, Object> facts,
                            Instant occurredAt, UUID correlationId,
                            UUID causationId) {
@@ -55,6 +54,8 @@ class JobEventRecorder {
         payload.put("orderId", job.getOrderId().toString());
         payload.put("jobId", job.getId().toString());
         payload.put("assignmentId", assignmentId == null ? null : assignmentId.toString());
+        // Our creator id (an internal id, not personal data). Backend A's /ai/feedback needs it as creator_ref.
+        payload.put("creatorId", creatorId == null ? null : creatorId.toString());
         payload.put("action", action.name());
         payload.put("fromState", from.name());
         payload.put("toState", job.getStatus().name());
@@ -80,7 +81,7 @@ class JobEventRecorder {
 
         EventEnvelope envelope = new EventEnvelope(eventId, JOB_STATE_CHANGED, 1, occurredAt, EventEnvelope.PRODUCER,
                 job.getId(), job.getVersion(), correlationId, causationId, payload);
-        outbox.enqueue(Topics.CORE_JOB, job.getId().toString(), envelope);
+        outbox.enqueue(Outbox.JOB_STREAM, job.getId().toString(), envelope);
         return eventId;
     }
 }

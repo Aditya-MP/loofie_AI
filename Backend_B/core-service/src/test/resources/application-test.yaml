@@ -1,30 +1,21 @@
 # Tests run against the local core_db but in their own schema, so dev data is never touched.
 # The schema is wiped and re-migrated at the start of every test run (see TestSupportConfig).
-# Kafka is an embedded broker started by @IntegrationTest, not the WSL one.
+# Backend A is a fake HTTP server started by TestSupportConfig (FakeAiService), not the real one.
 spring:
   datasource:
     url: jdbc:postgresql://localhost:5432/core_db?currentSchema=core_test
   flyway:
     schemas: core_test
     clean-disabled: false
-  kafka:
-    bootstrap-servers: ${spring.embedded.kafka.brokers}
-    producer:
-      properties:
-        max.block.ms: 3000          # fail fast on unknown topics in relay failure tests
-        delivery.timeout.ms: 5000
-        request.timeout.ms: 2000
 
 loofie:
   outbox:
     relay:
       enabled: false                # tests call OutboxRelay.publishBatch() directly
       send-timeout: 5s
+  ai-feedback:
+    base-url: ""                    # the real sender stays unconfigured; tests send to FakeAiService
   timers:
     enabled: false                  # tests call DeadlineWorker.runOnce() directly
   retention:
     enabled: false                  # tests call RetentionJob.runOnce() directly
-  kafka:
-    retry:
-      initial-interval: 50ms
-      multiplier: 1.0

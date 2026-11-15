@@ -29,6 +29,7 @@ public class OutboxMonitor {
     private final AtomicLong backlog = new AtomicLong();
     private final AtomicLong failing = new AtomicLong();
     private final AtomicLong oldestAgeSeconds = new AtomicLong();
+    private final AtomicLong parked = new AtomicLong();
 
     public OutboxMonitor(JdbcClient jdbc, Clock clock, MeterRegistry meters) {
         this.jdbc = jdbc;
@@ -39,6 +40,9 @@ public class OutboxMonitor {
                 .description("Unpublished outbox rows that have failed at least once").register(meters);
         Gauge.builder("loofie.outbox.oldest.age.seconds", oldestAgeSeconds, AtomicLong::get)
                 .description("Age of the oldest unpublished outbox row").baseUnit("seconds").register(meters);
+        // Alert on > 0: a parked row is an event the receiver refused for good (a mapping or contract bug).
+        Gauge.builder("loofie.outbox.parked", parked, AtomicLong::get)
+                .description("Outbox rows the receiver rejected, waiting for a fix and requeue").register(meters);
     }
 
     @Scheduled(fixedDelayString = "${loofie.outbox.monitor-interval:15s}")
@@ -46,9 +50,10 @@ public class OutboxMonitor {
         try {
             var stats = jdbc.sql("""
                     SELECT count(*) AS backlog, count(*) FILTER (WHERE attempts > 0) AS failing, min(created_at) AS oldest
-                    FROM outbox WHERE published_at IS NULL
+                    FROM outbox WHERE published_at IS NULL AND parked_at IS NULL
                     """)
                     .query().singleRow();
+            parked.set(jdbc.sql("SELECT count(*) FROM outbox WHERE parked_at IS NOT NULL").query(Long.class).single());
             backlog.set(((Number) stats.get("backlog")).longValue());
             failing.set(((Number) stats.get("failing")).longValue());
             Object oldest = stats.get("oldest");
@@ -65,6 +70,10 @@ public class OutboxMonitor {
 
     long oldestAgeSeconds() {
         return oldestAgeSeconds.get();
+    }
+
+    long parked() {
+        return parked.get();
     }
 
     private static OffsetDateTime toOffset(Object value) {

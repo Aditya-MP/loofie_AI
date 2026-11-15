@@ -101,7 +101,7 @@ request then waits 5s and gets a 503. One slow screen must never take down the e
 |---|---|---|
 | R1 | **No isolation between slow reads and the engine** (proven above). | Fix the slow queries (section 11). Then make read-only list queries use a **separate, small connection pool** (and later a read replica), so a slow screen can only slow itself. |
 | R2 | Each instance holds up to 20 connections. PostgreSQL allows 100: above 4 instances the database refuses connections. | PgBouncer (transaction mode) in front of PostgreSQL. All Phase 1 code is pooler-safe (leases use a table, not session locks). Hosting task. |
-| R3 | Relay and timer throughput with a real broker is not measured. Timer: about 7 ms per job, so ~140 jobs/s on one leader. | Measure the relay with Kafka running. 140 jobs/s is ~12M a day: enough. |
+| R3 | Relay and timer throughput. Timer: about 7 ms per job, so ~140 jobs/s on one leader. | 140 jobs/s is ~12M a day: enough. Relay (now HTTP, Kafka removed 2026-11-15): measured in `docs/features/kafka-removal.md`. |
 | R4 | Database failover: in-flight transactions fail and give 503 + `Retry-After`; Hikari reconnects; the idempotency key makes the client's retry safe. Timers and relay retry next run. | Correct by design, **not yet tested**: add a test that stops PostgreSQL mid-load. |
 | R5 | Deploy during a run: graceful shutdown waits up to 25s for scheduled batches, then releases leases. Each job move is one transaction, so a cut run leaves nothing half-done. | Correct by design, **not yet tested**: kill test. |
 
@@ -130,7 +130,7 @@ optimistic locking on every aggregate, all times `timestamptz` in UTC.
 | Worker crashes mid-batch | One transaction per job; notices are idempotent (primary key); outbox is at-least-once. | Not tested by a kill |
 | Two users change one job | Optimistic lock: one wins, the other gets 409 `concurrent-update`. | Tested |
 | Timeout after commit | Client retries with the same key and gets the stored answer. | Tested |
-| Kafka down | Outbox stores events, relay backs off, nothing lost, users unaffected. | Partly (missing topic, not a dead broker) |
+| Backend A down (was: Kafka down) | Outbox stores events, relay stops the run and backs off, nothing lost, users unaffected. A row Backend A refuses for good is parked and alerted on, and does not block the job. | Tested (connection refused, 503, 401, 422) |
 | Deploy while timers run | Graceful shutdown + leases. | Not tested |
 | Attacker | Wrong role, brand or creator: refused (tested). No real auth yet (S1). Another brand's job confirms it exists (S5). | Partly |
 | Migration fails | PostgreSQL rolls back the failed migration; the new version does not start; old instances keep running if the migration was expand-only. | Policy only |
@@ -146,7 +146,7 @@ notices, backoff; layer rules; append-only log.
 **Missing:**
 1. A load test in CI with an agreed threshold (today it is a manual script).
 2. Database down mid-request, and recovery.
-3. Kafka broker fully down (only a missing topic is tested).
+3. ~~Kafka broker fully down~~ Kafka removed; Backend A unreachable is tested (`OutboxRelayTest`).
 4. Killing the app mid-batch, then restart.
 5. That the `prod` profile never activates the dev header login.
 6. A brand member trying every brand-admin-only action (only APPROVE is tested).
@@ -195,7 +195,7 @@ All 11 plan items. Migration `V6__dispute_clock_and_overdue_index.sql`. 129 test
 | 6 | Dispute review clock: 2 working days, `DISPUTE_REVIEW_OVERDUE` to ops, never moves the job | `JobDeadlines`, `TimerRules` |
 | 7 | **Scope checked first**: another brand or a non-assigned creator gets the same 404 as a missing job, before state, version or rules are revealed. `OPS_EXTEND` without a deadline: 422. | `JobTransitionService` |
 | 8 | `Idempotency-Key` required for `OPS_EXTEND` (428 without); `loofie.api.require-idempotency-key` switches it on for every transition (off until the apps send keys) | `JobTransitionController` |
-| 9 | Failure tests: row locked past `lock_timeout` (503 + Retry-After, nothing written, the same key succeeds later); Kafka unreachable (run stops fast, nothing lost or marked sent, backoff); fresh worker after a restart; `prod` and no-profile never use the dev login; brand member refused every admin-only action | `DatabaseContentionTest`, `BrokerDownTest`, `DeadlineWorkerTest`, `ProductionAuthTest`, `BrandRoleMatrixTest` |
+| 9 | Failure tests: row locked past `lock_timeout` (503 + Retry-After, nothing written, the same key succeeds later); receiver unreachable (run stops fast, nothing lost or marked sent, backoff; was Kafka, now Backend A); fresh worker after a restart; `prod` and no-profile never use the dev login; brand member refused every admin-only action | `DatabaseContentionTest`, `OutboxRelayTest` (was `BrokerDownTest`), `DeadlineWorkerTest`, `ProductionAuthTest`, `BrandRoleMatrixTest` |
 | 10 | Load test gate (exit code: p95 <= 300 ms and 0 failed) | `scripts/perf/LoadTest.java` |
 | 11 | Migration policy (expand, then contract) | `docs/architecture-layers.md` |
 
@@ -237,7 +237,7 @@ users, plus managed PostgreSQL with enough memory to hold the hot indexes.
 | Security: **authentication** | **Not verified: F1 does not exist** |
 | Validation and error handling (400/404/409/422/428/503/500 with requestId) | Done, tested |
 | Concurrency (races, 20 parallel retries, optimistic lock, leases) | Done, tested |
-| Failure and recovery (DB contention, broker down, restart) | Done in tests. **A real database failover and a real process kill are not verified** (needs hosting). |
+| Failure and recovery (DB contention, Backend A down, restart) | Done in tests. **A real database failover and a real process kill are not verified** (needs hosting). |
 | Performance against targets | **Engine: met** (p95 5 ms at 500 rps, laptop). **On production hosting: not verified.** |
 | Automated tests of business behaviour | 129 tests |
 | Logging and monitoring | Metrics, JSON logs, request ids. **Alert rules not set up** (needs a monitoring tool). |

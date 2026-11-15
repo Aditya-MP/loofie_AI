@@ -52,21 +52,38 @@ Aditya will update `docs/API.md` with exact shapes when deployed. Build the forw
 ## What this changes in Backend B
 
 1. `job_events` stays in core_db as the operational source of truth.
-2. The `core.events.v1` Kafka forward is dropped. An outbox-driven HTTP forwarder sends `job_state_changed` and
-   `job_outcome` to `/ai/feedback`, so a Backend A outage never blocks a transition and calls are retried.
+2. The `core.events.v1` Kafka forward is dropped (and since 2026-11-15 Kafka itself). The outbox sends
+   `job_state_changed` and `job_timer_fired` to `/ai/feedback` (built; `job_outcome` with F7/F8), so a Backend A
+   outage never blocks a transition and calls are retried. See "How Backend B sends events" below.
 3. Backend B now also owns accounts/auth (F1, non-AI part; Shreya guides the design), briefs (F2), shortlists (F3) and rebook checkout (F11).
    Jobs need a `brief_ref`, and `job_outcome` needs revision count, dispute/replacement flags and the brand's rating.
 
-## Rules for any service reading Backend B's Kafka events
+## How Backend B sends events (since 2026-11-15: HTTP, no Kafka)
 
-- **At-least-once.** The same event can arrive twice (for example after a crash between the Kafka ack and the
-  database update). De-duplicate on `eventId`.
-- **Order per job.** A job's events (key = job id) go out in the order they were written, even across topics. Still,
-  ignore a `JobStateChanged` whose `aggregateVersion` is lower than one already handled for that job.
-- **`JobDeadlineNotice`** carries the job version from when it was raised, so its `aggregateVersion` is not unique.
-  Order notices by `payload.dueAt`.
-- **No free text.** Since 2026-11-14 the ops note (`reason`) is no longer in the payload; `hasReason` says whether one
-  exists. Reason codes (`reasonCode`, `faultParty`) are the fields to use.
+Kafka is removed: nothing read it. Every job event is saved in the outbox in the same transaction as the change,
+then sent to `POST /ai/feedback` with Core's `X-API-Key` (env `AI_FEEDBACK_API_KEY`, URL `AI_FEEDBACK_URL`).
+
+| Core event | `event_type` | Payload |
+|---|---|---|
+| Job state change with a creator | `job_state_changed` | `creator_ref`, `job_id`, `from`, `to`, `action`; when set: `reasonCode` + `faultParty`, `issue_type`, `shipmentAttempt`, `deliverySource`, `deliveredAt`, `olderShipmentReceived` |
+| Timer notice (`TimerFired`) | `job_timer_fired` | `creator_ref`, `job_id`, `kind`, `audience`, `due_at` |
+| Either, with no creator (order submitted, payment confirmed) | not sent | Backend A requires a creator |
+
+- **At-least-once, safe retries.** `event_id` = `job_events.event_id`. A retry gets `duplicate: true`; a `409` is
+  counted as "Backend A has it". `X-Request-ID` = the same event id, so both logs line up.
+- **Order per job.** A job's events go one after another (the next only after the previous got 2xx). Different jobs
+  in parallel, **at most 32 requests open at once** (config `loofie.outbox.relay.max-in-flight`).
+- **Backend A down / 5xx / 429 / 401:** retried with backoff 1 s → 60 s; nothing lost. Down = connection refused.
+- **400 / 404 / 422:** the row is parked (not retried, alert) and the job's later events continue. After a fix on
+  either side it is requeued with one SQL statement.
+- **Never sent:** the ops note, the acting user's id, order and assignment ids, money, contact details.
+- **`occurred_at`** is UTC with `Z`.
+- **Checked against your mock** (`app/mock.py`, branch `366bd24`): every event type above accepted, every resend a
+  duplicate, a wrong key refused with 401. Re-run any time: `AI_CONTRACT_URL=... AI_CONTRACT_KEY=... ./mvnw test
+  -Dtest=BackendAContractTest`.
+
+**Questions for Aditya:** how many `/ai/feedback` requests per second the server takes (Core sends up to 32 at once, ~1,100 events/s if each takes 20 ms; lower `max-in-flight` if that is too many);
+the production URL; Core's key (privately). `job_outcome` comes with F7/F8 (it needs revisions and rating).
 
 ## Local development
 
@@ -76,7 +93,7 @@ Leave PostgreSQL 14 running if Aditya's service is run locally.
 ## Changes on 2026-11-15 (F5 hardening)
 
 - **Timers fired are logged.** Each reminder or alert is now a `TimerFired` row in `job_events` (same id as its
-  `JobDeadlineNotice` Kafka event, `job_version` empty because it is not a state change). Forward these to
+  `JobDeadlineNotice` outbox event, `job_version` empty because it is not a state change). Forward these to
   `/ai/feedback` too: they show, for example, which brands review only after the 24h reminder.
 - **New alert:** `DISPUTE_REVIEW_OVERDUE` (to ops) when a dispute is not reviewed within 2 working days.
 - **Ops job list response** (for whoever builds the ops console): `total` is capped at 10,000 with

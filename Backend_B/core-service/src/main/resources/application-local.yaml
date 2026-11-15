@@ -3,5 +3,8 @@ spring:
     url: jdbc:postgresql://localhost:5432/core_db
     username: core_app
     password: ${CORE_DB_PASSWORD:core_local}
-  kafka:
-    bootstrap-servers: localhost:9092
+
+loofie:
+  ai-feedback:
+    # Backend A on this machine (`uv run loofie serve` or `uv run loofie mock`). Set AI_FEEDBACK_API_KEY to send.
+    base-url: ${AI_FEEDBACK_URL:http://localhost:8100}

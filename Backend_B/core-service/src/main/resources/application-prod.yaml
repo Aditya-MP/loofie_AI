@@ -7,8 +7,6 @@ spring:
     password: ${CORE_DB_PASSWORD}
     hikari:
       maximum-pool-size: ${CORE_DB_POOL_SIZE:20}
-  kafka:
-    bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS}
 
 # JSON logs (Elastic Common Schema) so a log platform can search them; every line carries requestId.
 logging:
@@ -21,3 +19,6 @@ logging:
 management:
   server:
     port: ${MANAGEMENT_PORT:8091}       # metrics and probes on a separate port, never exposed publicly
+
+# Backend A. AI_FEEDBACK_URL and AI_FEEDBACK_API_KEY are optional on purpose: without them events wait in the
+# outbox (alert: loofie.outbox.oldest.age.seconds) and are sent once they are set. Nothing is lost.

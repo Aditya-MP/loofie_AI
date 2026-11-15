@@ -2,7 +2,6 @@ package com.loofie.core.housekeeping;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-import java.time.Duration;
 import java.time.OffsetDateTime;
 import java.time.ZoneOffset;
 import java.util.UUID;
@@ -29,9 +28,9 @@ class RetentionJobTest {
 
         UUID oldPublished = outbox(now.minusDays(8), now.minusDays(8));
         UUID recentPublished = outbox(now.minusDays(1), now.minusDays(1));
-        UUID oldUnpublished = outbox(now.minusDays(30), null); // never delete what Kafka has not got
-        UUID oldInbox = inbox(now.minus(Duration.ofDays(31)));
-        UUID recentInbox = inbox(now.minusDays(1));
+        UUID oldUnpublished = outbox(now.minusDays(30), null); // never delete what Backend A has not got
+        UUID oldParked = parked(now.minusDays(31));
+        UUID recentParked = parked(now.minusDays(2)); // kept for investigation and requeue
         String oldKey = key(now.minusHours(25));
         String recentKey = key(now.minusHours(1));
 
@@ -40,8 +39,8 @@ class RetentionJobTest {
         assertThat(exists("SELECT count(*) FROM outbox WHERE id = ?", oldPublished)).isFalse();
         assertThat(exists("SELECT count(*) FROM outbox WHERE id = ?", recentPublished)).isTrue();
         assertThat(exists("SELECT count(*) FROM outbox WHERE id = ?", oldUnpublished)).isTrue();
-        assertThat(exists("SELECT count(*) FROM processed_events WHERE event_id = ?", oldInbox)).isFalse();
-        assertThat(exists("SELECT count(*) FROM processed_events WHERE event_id = ?", recentInbox)).isTrue();
+        assertThat(exists("SELECT count(*) FROM outbox WHERE id = ?", oldParked)).isFalse();
+        assertThat(exists("SELECT count(*) FROM outbox WHERE id = ?", recentParked)).isTrue();
         assertThat(exists("SELECT count(*) FROM idempotency_keys WHERE idem_key = ?", oldKey)).isFalse();
         assertThat(exists("SELECT count(*) FROM idempotency_keys WHERE idem_key = ?", recentKey)).isTrue();
 
@@ -58,10 +57,12 @@ class RetentionJobTest {
         return id;
     }
 
-    private UUID inbox(OffsetDateTime processedAt) {
+    private UUID parked(OffsetDateTime parkedAt) {
         UUID id = Ids.newId();
-        jdbc.sql("INSERT INTO processed_events (consumer, event_id, processed_at) VALUES ('retention-test', ?, ?)")
-                .params(id, processedAt).update();
+        jdbc.sql("""
+                INSERT INTO outbox (id, topic, message_key, event_type, envelope, created_at, parked_at, last_error)
+                VALUES (?, 'retention.test', ?, 'TestEvent', '{}'::jsonb, ?, ?, 'Rejected: HTTP 422')
+                """).params(id, "retention-" + id, parkedAt, parkedAt).update();
         return id;
     }
 

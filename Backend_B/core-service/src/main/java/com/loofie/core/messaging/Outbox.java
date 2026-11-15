@@ -12,10 +12,14 @@ import tools.jackson.databind.json.JsonMapper;
 
 /**
  * Transactional outbox. {@link #enqueue} must run inside the caller's business transaction, so
- * the event is stored if and only if the state change commits. A relay publishes rows to Kafka.
+ * the event is stored if and only if the state change commits. {@link OutboxRelay} sends the rows on
+ * (today: to Backend A over HTTP).
  */
 @Repository
 public class Outbox {
+
+    /** The stream every job event goes to (kept from the Kafka topic name; the column is {@code topic}). */
+    public static final String JOB_STREAM = "core.job.v1";
 
     private final JdbcClient jdbc;
     private final JsonMapper json;

@@ -181,7 +181,7 @@ The first 300 requests after start-up had p95 279 ms (cold start), the same patt
 | Abuse: duplicate tracking, endless reships | **Open** (items 3, 5 wait for decisions) |
 | Concurrency: reship vs received | Done (attempt recorded), tested |
 | Performance | Met: p95 12 ms at 300 rps |
-| Failure scenarios | Covered by the F5 engine tests (locks, retries, broker down, restart) |
+| Failure scenarios | Covered by the F5 engine tests (locks, retries, Backend A down, restart) |
 | Damage found after receipt, fault choice | **Open** (items 7, 8 wait for decisions) |
 
 ## 15. Known limits and decisions needed

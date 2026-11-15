@@ -21,12 +21,12 @@ class ArchitectureTest {
             .should().callMethod(Job.class, "moveTo", JobStatus.class, java.time.Instant.class)
             .because("all job state changes go through JobTransitionService.transition()");
 
-    /** The domain must not know about web, security, Kafka or the database layer. */
+    /** The domain must not know about web, security, HTTP clients or the database layer. */
     @ArchTest
     static final ArchRule domainIsFrameworkFree = noClasses()
             .that().resideInAPackage("..domain..")
             .should().dependOnClassesThat().resideInAnyPackage(
-                    "org.springframework.web..", "org.springframework.security..", "org.springframework.kafka..",
+                    "org.springframework.web..", "org.springframework.security..", "java.net.http..",
                     "org.springframework.jdbc..", "..infra..", "..api..")
             .because("domain code takes an explicit Actor and stays independent of adapters");
 

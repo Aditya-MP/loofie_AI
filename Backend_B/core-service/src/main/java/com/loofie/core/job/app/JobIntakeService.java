@@ -52,7 +52,7 @@ public class JobIntakeService {
         for (NewJob n : newJobs) {
             Job job = Job.forNewOrder(Ids.newId(), orderId, brandOrgId, n.digitalOnly(), n.creatorFeePaise(), now);
             jobs.saveAndFlush(job);
-            recorder.recordStateChange(job, null, JobStatus.DRAFT_BRIEF, JobAction.SUBMIT_ORDER, actor, null, null, null, null, now,
+            recorder.recordStateChange(job, null, null, JobStatus.DRAFT_BRIEF, JobAction.SUBMIT_ORDER, actor, null, null, null, null, now,
                     correlationId, null);
             ids.add(job.getId());
         }

@@ -14,7 +14,7 @@ api  ──►  app  ──►  domain
 |---|---|---|---|
 | **api** | `<feature>.api`, `ops.api` | Map HTTP to a use case: parse, validate, call one app service, return its result | Touch the database or check permissions **(enforced: no infra, no JDBC)** |
 | **app** | `<feature>.app`, `job.timer` | Use cases: transaction boundary, permission checks, call domain rules, save, record events | Write SQL **(enforced)** |
-| **domain** | `<feature>.domain` | Business rules as plain Java: states, transitions, deadlines, working days | Know about Spring web, Kafka, JDBC, infra or api **(enforced)** |
+| **domain** | `<feature>.domain` | Business rules as plain Java: states, transitions, deadlines, working days | Know about Spring web, HTTP clients, JDBC, infra or api **(enforced)** |
 | **infra** | `<feature>.infra` | Repositories and SQL; the only place that knows table and column names | Depend on app, api or timer **(enforced)** |
 | **read** | `job.read` | Read-model records (what the ops console shows) | Contain logic |
 

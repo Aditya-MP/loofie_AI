@@ -20,8 +20,8 @@ import com.loofie.core.common.LeaderLease;
 /**
  * Deletes rows that have done their job, so tables stay small:
  * <ul>
- *   <li>published outbox rows (Kafka has them; kept {@code outbox} long for debugging),</li>
- *   <li>inbox de-duplication rows (kept far longer than any redelivery can happen),</li>
+ *   <li>delivered outbox rows (the receiver has them; kept {@code outbox} long for debugging),</li>
+ *   <li>parked outbox rows (rejected by the receiver; kept {@code outboxParked} for investigation and requeue),</li>
  *   <li>idempotency keys (clients retry within minutes, never after a day).</li>
  * </ul>
  * Deletes go in small batches so they never lock a table for long. {@code job_events} is the audit
@@ -32,19 +32,19 @@ import com.loofie.core.common.LeaderLease;
 public class RetentionJob {
 
     @ConfigurationProperties("loofie.retention")
-    public record RetentionProperties(boolean enabled, Duration interval, Duration outbox, Duration inbox,
+    public record RetentionProperties(boolean enabled, Duration interval, Duration outbox, Duration outboxParked,
                                       Duration idempotencyKeys, int batchSize) {
         public RetentionProperties {
             interval = interval == null ? Duration.ofMinutes(10) : interval;
             outbox = outbox == null ? Duration.ofDays(7) : outbox;
-            inbox = inbox == null ? Duration.ofDays(30) : inbox;
+            outboxParked = outboxParked == null ? Duration.ofDays(30) : outboxParked;
             idempotencyKeys = idempotencyKeys == null ? Duration.ofHours(24) : idempotencyKeys;
             batchSize = batchSize <= 0 ? 5000 : batchSize;
         }
     }
 
     /** What one run deleted. */
-    public record Result(long outbox, long inbox, long idempotencyKeys) {
+    public record Result(long outbox, long parked, long idempotencyKeys) {
     }
 
     private static final Logger log = LoggerFactory.getLogger(RetentionJob.class);
@@ -67,18 +67,18 @@ public class RetentionJob {
                 DELETE FROM outbox WHERE id IN (
                     SELECT id FROM outbox WHERE published_at IS NOT NULL AND published_at < :before LIMIT :limit)
                 """, now.minus(props.outbox()));
-        long inbox = deleteInBatches("""
-                DELETE FROM processed_events WHERE (consumer, event_id) IN (
-                    SELECT consumer, event_id FROM processed_events WHERE processed_at < :before LIMIT :limit)
-                """, now.minus(props.inbox()));
+        long parked = deleteInBatches("""
+                DELETE FROM outbox WHERE id IN (
+                    SELECT id FROM outbox WHERE parked_at IS NOT NULL AND parked_at < :before LIMIT :limit)
+                """, now.minus(props.outboxParked()));
         long keys = deleteInBatches("""
                 DELETE FROM idempotency_keys WHERE (scope, idem_key) IN (
                     SELECT scope, idem_key FROM idempotency_keys WHERE created_at < :before LIMIT :limit)
                 """, now.minus(props.idempotencyKeys()));
-        if (outbox + inbox + keys > 0) {
-            log.info("Retention: deleted {} outbox, {} inbox, {} idempotency rows", outbox, inbox, keys);
+        if (outbox + parked + keys > 0) {
+            log.info("Retention: deleted {} outbox, {} parked outbox, {} idempotency rows", outbox, parked, keys);
         }
-        return new Result(outbox, inbox, keys);
+        return new Result(outbox, parked, keys);
     }
 
     private long deleteInBatches(String sql, Instant before) {

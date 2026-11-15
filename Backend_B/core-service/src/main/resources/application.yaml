@@ -41,29 +41,21 @@ spring:
     #   SET LOCAL statement_timeout = 0; SET LOCAL lock_timeout = '10s';
     # SET LOCAL ends with the migration's transaction, so the pooled connection keeps its safety nets.
     # (Do not use spring.flyway.init-sqls for this: it would leave a pooled connection with no timeout.)
-  kafka:
-    producer:
-      acks: all
-      properties:
-        enable.idempotence: true
-        linger.ms: 5
-        max.block.ms: 5000          # fail fast when the broker is unreachable (default 60s)
-        request.timeout.ms: 5000
-        delivery.timeout.ms: 9000   # must stay below loofie.outbox.relay.send-timeout
-    consumer:
-      group-id: core-service
-      auto-offset-reset: earliest
-      properties:
-        isolation.level: read_committed
-
 loofie:
   outbox:
     relay:
       enabled: true
       poll-interval: 500ms
-      batch-size: 100
+      batch-size: 200           # with max-in-flight 32: measured 1,145 events/s at 20 ms per request (100: 959)
       send-timeout: 10s
+      max-in-flight: 32         # requests open at once to Backend A (FastAPI runs sync handlers on 40 threads)
     monitor-interval: 15s
+  # Backend A POST /ai/feedback. Empty url or key = not configured here: the relay waits, rows are sent once it is.
+  ai-feedback:
+    base-url: ${AI_FEEDBACK_URL:}
+    api-key: ${AI_FEEDBACK_API_KEY:}
+    connect-timeout: 2s
+    request-timeout: 5s         # below send-timeout
   timers:
     enabled: true
     poll-interval: 30s
@@ -83,13 +75,8 @@ loofie:
     enabled: true
     interval: 10m
     outbox: 7d
-    inbox: 30d
+    outbox-parked: 30d
     idempotency-keys: 24h
-  kafka:
-    retry:
-      initial-interval: 1s
-      multiplier: 2.0
-      max-attempts: 5
 
 management:
   endpoints:

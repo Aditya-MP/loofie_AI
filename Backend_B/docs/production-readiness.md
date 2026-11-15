@@ -3,6 +3,10 @@
 Written 2026-11-14 after a full read of every file in `core-service`. For each feature: what it does,
 what breaks in production, how established systems solve it, and what we do. Ranked by damage.
 
+> **2026-11-15: Kafka removed.** Nothing read it. The outbox now goes to Backend A's `/ai/feedback` over HTTP
+> with the same guarantees (no transaction while sending, per-job order, backoff, stop when unreachable).
+> Section 2 below is kept as the record of what was found and fixed; see `docs/features/kafka-removal.md`.
+
 **Load assumption.** "1 lakh requests" is taken as **per day**: about 1-2 requests a second on
 average, 30-50 at peak. One instance handles that. We still design for **at least 2 instances**
 (so a crash or a deploy is not an outage) and for growth to roughly 100x without a rewrite.

@@ -7,11 +7,10 @@ import java.lang.annotation.Target;
 
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.context.annotation.Import;
-import org.springframework.kafka.test.context.EmbeddedKafka;
 import org.springframework.test.context.ActiveProfiles;
 
 /**
- * Boots the full app against PostgreSQL (schema core_test), an embedded Kafka broker and a
+ * Boots the full app against PostgreSQL (schema core_test), a fake Backend A ({@link FakeAiService}) and a
  * controllable clock. All integration tests share this one Spring context.
  */
 @Target(ElementType.TYPE)
@@ -19,8 +18,5 @@ import org.springframework.test.context.ActiveProfiles;
 @SpringBootTest
 @ActiveProfiles({"local", "test"})
 @Import(TestSupportConfig.class)
-@EmbeddedKafka(partitions = 3,
-        topics = {"core.job.v1", "core.job.v1.DLT", "test.inbox.v1", "test.inbox.v1.DLT"},
-        brokerProperties = {"auto.create.topics.enable=false"})
 public @interface IntegrationTest {
 }

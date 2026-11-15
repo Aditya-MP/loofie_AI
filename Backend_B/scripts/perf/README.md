@@ -8,6 +8,8 @@ Measure before optimising. These load a realistic data set and measure the hot q
 | `explain.sql` | `EXPLAIN ANALYZE` of every hot query: engine, timers, relay, ops list, job detail, retention. |
 | `LoadTest.java` | Open-loop HTTP load (fixed request rate, so a slow server shows up as latency). Mix: job detail, job list, transitions. Exits 1 unless p95 <= 300 ms and 0 failed (the gate). |
 | `F6LoadTest.java` | F6 actions under load: brands mark jobs shipped, then creators confirm receipt with a photo. Same gate. |
+| `FakeAiServer.java` | Stand-in for Backend A's `/ai/feedback`: answers 200 after a fixed delay, prints requests/s and the most open at once. |
+| `relay-backlog.sql` | 60,000 waiting job events (20,000 jobs x 3) for measuring how fast the outbox relay drains. |
 
 ```bash
 PSQL="/c/Program Files/PostgreSQL/18/bin/psql.exe"
@@ -42,3 +44,18 @@ PGPASSWORD=core_local "$PSQL" -h localhost -U core_app -d core_db -At -F, -c "SE
   WHERE j.status = 'CREATOR_ACCEPTED' AND NOT j.digital_only ORDER BY random() LIMIT 6000" > f6jobs.txt
 java scripts/perf/F6LoadTest.java <rps> <jobsPerPhase> f6jobs.txt
 ```
+
+Outbox relay throughput (fake Backend A at 20 ms per request; only the relay runs):
+
+```bash
+java scripts/perf/FakeAiServer.java 8100 20 &
+PGPASSWORD=core_local "$PSQL" -h localhost -U core_app -d core_db -f scripts/perf/relay-backlog.sql
+PGPASSWORD=core_local "$PSQL" -h localhost -U core_app -d core_db -c "DELETE FROM core_test.scheduler_leases" # after a hard kill
+AI_FEEDBACK_URL=http://127.0.0.1:8100 AI_FEEDBACK_API_KEY=perf java -jar core-service/target/core-service-0.0.1-SNAPSHOT.jar \
+  --spring.profiles.active=local "--spring.datasource.url=jdbc:postgresql://localhost:5432/core_db?currentSchema=core_test" \
+  --spring.flyway.schemas=core_test --loofie.timers.enabled=false --loofie.retention.enabled=false
+# watch: SELECT count(*) FROM core_test.outbox WHERE published_at IS NULL AND parked_at IS NULL;
+```
+
+Measured 2026-11-15: 1,145 events/s with the defaults (32 in flight, batch 200). Throughput = in-flight / latency.
+Warm the app up (a short low-rate run) before a gated load test: the first seconds after boot are slow.
