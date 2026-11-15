@@ -31,6 +31,10 @@ FEEDBACK_TYPES: dict[str, set[str]] = {
     "video_performance": {CREATOR, "job_id", "result"},  # brand's verdict ~30 days after approval
     "rating": {CREATOR, "stars"},
     "rebooked": {CREATOR},
+    # A reminder or alert went out (core-service TimerFired: SHIP_REMINDER, SHIP_LATE, RECEIPT_PROMPT,
+    # DISPUTE_REVIEW_OVERDUE...). Shows who acts only after a nudge; kind stays open so new notices
+    # don't need an AI release.
+    "job_timer_fired": {CREATOR, "job_id", "kind"},
 }
 # Dispute and drop-out codes with their fixed fault party (docs/DECISIONS.md section 5; the same
 # list as core-service ReasonCode.java). The reliability score counts only CREATOR codes, so a
@@ -41,6 +45,7 @@ REASON_FAULT: dict[str, str] = {
     "CREATOR_WITHDREW": "CREATOR",
     "BRAND_LATE_SHIP": "BRAND",
     "WRONG_ITEM_SENT": "BRAND",
+    "DEFECTIVE_PRODUCT": "BRAND",  # outer box fine, product broken/leaking/expired: the brand's packing or stock
     "COURIER_LOST": "COURIER",
     "DAMAGED_IN_TRANSIT": "COURIER",
     "OTHER": "NONE",

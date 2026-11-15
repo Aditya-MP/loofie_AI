@@ -18,6 +18,6 @@
     }
   },
   "response": {
-    "detail": "unknown event_type 'job_rating'; allowed: ['brief_confirmed', 'brief_field_edited', 'job_outcome', 'job_state_changed', 'niche_override', 'ops_added_creator', 'ops_removed_creator', 'quality_override', 'rating', 'rebooked', 'shortlist_maybe', 'shortlist_pick', 'shortlist_reject', 'shortlist_shown', 'video_performance']"
+    "detail": "unknown event_type 'job_rating'; allowed: ['brief_confirmed', 'brief_field_edited', 'job_outcome', 'job_state_changed', 'job_timer_fired', 'niche_override', 'ops_added_creator', 'ops_removed_creator', 'quality_override', 'rating', 'rebooked', 'shortlist_maybe', 'shortlist_pick', 'shortlist_reject', 'shortlist_shown', 'video_performance']"
   }
 }

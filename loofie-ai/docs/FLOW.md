@@ -65,6 +65,7 @@ The backend owns these steps. Its job states are in core-service `JobStatus`: `P
 | Dispute or drop-out | `OPS_RELEASE_CREATOR`, `CREATOR_WITHDRAW`, timers... | same, + `reasonCode` and its `faultParty` (must match, see DECISIONS.md) | 19 | ✅ backend · ❌ sender |
 | Video draft uploaded | F7 upload, format checks, watermark | *planned: F7 draft checker gets a signed video URL* | | ❌ both |
 | Job closes | `PAID_OUT` → `CLOSED` | `job_outcome`: `on_time`, `revisions`, `disputed`, `replaced` | 20 | ✅ backend · ❌ sender |
+| A reminder or alert fires | timer worker writes a `TimerFired` row | `job_timer_fired` with `kind` (`SHIP_REMINDER`, `SHIP_LATE`...) | 28 | ✅ backend · ❌ sender |
 | Ad rights code saved | F13 | none | | ❌ backend |
 
 Retries are safe: send each event with its own `event_id` (core-service uses the

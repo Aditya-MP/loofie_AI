@@ -8,6 +8,8 @@ Re-run after any change to app/api/schemas.py; tests/test_contract.py fails unti
 """
 
 import json
+import random
+import re
 import sys
 import uuid
 from datetime import date, timedelta
@@ -53,7 +55,8 @@ def creator(handle, ref, followers, language, captions, days=2, city="Bengaluru"
         "posts": [
             {
                 "post_url": f"https://www.instagram.com/reel/{handle.replace('.', '')}{i}/",
-                "post_date": str(AS_OF - timedelta(days=days + 4 * i)),
+                # Relative to the real today: activity stats ("posted 2 days ago") stay the same every run.
+                "post_date": str(date.today() - timedelta(days=days + 4 * i)),
                 "post_type": "reel",
                 "views": int(followers * 0.3) + 37 * i,
                 "likes": int(followers * 0.03) + 5 * i,
@@ -75,6 +78,7 @@ MAKEUP = ["Everyday makeup look under 10 minutes #makeup", "Kajal that lasts all
 
 
 def main() -> int:
+    fixed_uuids()
     s = get_settings()
     cfg = Config(str(ROOT / "alembic.ini"))
     cfg.attributes["url"] = s.test_database_url
@@ -469,13 +473,36 @@ def main() -> int:
             expect=422,
         )
 
+        call(
+            "A timer fired: the brand got the shipping reminder (core-service TimerFired)",
+            6,
+            "POST",
+            "/ai/feedback",
+            {
+                "event_type": "job_timer_fired",
+                "actor_type": "system",
+                "subject_type": "job",
+                "subject_id": "job-44",
+                "event_id": eid(28),
+                "occurred_at": "2026-11-13T10:00:00+05:30",
+                "payload": {
+                    "creator_ref": "cr-ananya",
+                    "job_id": "job-44",
+                    "kind": "SHIP_REMINDER",
+                    "audience": ["BRAND"],
+                    "due_at": "2026-11-14T18:00:00+05:30",
+                },
+            },
+            note="Send every TimerFired row. `kind` is core-service's notice name (SHIP_REMINDER, SHIP_LATE, ...).",
+        )
+
     app.dependency_overrides.clear()
     session.close()
     engine.dispose()
 
     OUT.mkdir(parents=True, exist_ok=True)
-    for old in OUT.glob("*.json"):
-        old.unlink()
+    keep: set[str] = set()
+    changed = 0
     for ex in examples:
         slug = ex["call"].split()[1].split("?")[0].strip("/").replace("/", "_").replace("ai_", "", 1)
         if slug == "feedback":
@@ -485,9 +512,32 @@ def main() -> int:
         elif ex.get("response", {}).get("duplicate"):
             slug += "_retry"
         name = f"{ex['id']:02d}_{slug}.json"
-        (OUT / name).write_text(json.dumps(ex, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
-    print(f"wrote {len(examples)} examples to {OUT.relative_to(ROOT)}")
+        new = json.dumps(ex, indent=2, ensure_ascii=False) + "\n"
+        path = OUT / name
+        keep.add(name)
+        # Only today's date and the login link's signed state differ between runs: if nothing else
+        # did, keep the old file so a diff shows real contract changes only.
+        if path.exists() and volatile_free(path.read_text(encoding="utf-8")) == volatile_free(new):
+            continue
+        path.write_text(new, encoding="utf-8")
+        changed += 1
+    for old in OUT.glob("*.json"):
+        if old.name not in keep:
+            old.unlink()
+            changed += 1
+    print(f"{len(examples)} examples in {OUT.relative_to(ROOT)}: {changed} changed")
     return 0
+
+
+def volatile_free(text_: str) -> str:
+    text_ = re.sub(r"\d{4}-\d{2}-\d{2}(T[0-9:.]+(Z|[+-]\d{2}:\d{2})?)?", "DATE", text_)
+    return re.sub(r"state=[^&\"]+", "state=STATE", text_)
+
+
+def fixed_uuids():
+    """Same ids on every run (event ids, suggestion ids), so examples don't churn."""
+    rng = random.Random(20261114)
+    uuid.uuid4 = lambda: uuid.UUID(int=rng.getrandbits(128), version=4)
 
 
 if __name__ == "__main__":

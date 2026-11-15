@@ -1,0 +1,29 @@
+{
+  "id": 28,
+  "title": "A timer fired: the brand got the shipping reminder (core-service TimerFired)",
+  "scene": 6,
+  "call": "POST /ai/feedback",
+  "status": 200,
+  "note": "Send every TimerFired row. `kind` is core-service's notice name (SHIP_REMINDER, SHIP_LATE, ...).",
+  "request": {
+    "event_type": "job_timer_fired",
+    "actor_type": "system",
+    "subject_type": "job",
+    "subject_id": "job-44",
+    "event_id": "baaa06fa-4902-59a5-8609-3f3710cf58d8",
+    "occurred_at": "2026-11-13T10:00:00+05:30",
+    "payload": {
+      "creator_ref": "cr-ananya",
+      "job_id": "job-44",
+      "kind": "SHIP_REMINDER",
+      "audience": [
+        "BRAND"
+      ],
+      "due_at": "2026-11-14T18:00:00+05:30"
+    }
+  },
+  "response": {
+    "event_id": "baaa06fa-4902-59a5-8609-3f3710cf58d8",
+    "duplicate": false
+  }
+}

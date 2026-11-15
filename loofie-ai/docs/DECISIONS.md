@@ -45,7 +45,7 @@ Events the backend sends: `brief_field_edited`, `brief_confirmed`, `shortlist_sh
 `shortlist_pick` / `maybe` / `reject` (with reason), `ops_added_creator`, `ops_removed_creator`,
 `quality_override`, `niche_override`, `job_state_changed` (every job status change),
 `job_outcome` (when a job closes or a creator is replaced), `video_performance`, `rating`,
-`rebooked`. Field rules are in [API.md](API.md).
+`rebooked`, `job_timer_fired` (every TimerFired row). Field rules are in [API.md](API.md).
 
 ## 3. Creator verification: Instagram Login, not screenshots
 
@@ -112,9 +112,14 @@ Rules:
 | **Which clocks use working days** | **Brand-side clocks** (3-day shipping, 5-day video review before auto-approval) count working days: brands are offices. **The creator's shooting clock** stays **120 calendar hours**: creators often shoot on Sundays. |
 | **Brand ships late, creator drops out** | First offer a **free replacement creator** (full value kept). If the brand wants money back: **the creator's amount in cash + the Loofie fee as credit** for its next booking. Loofie keeps the revenue, the brand doesn't feel penalised, and it has a reason to book again. The creator's reliability is not affected (`BRAND_LATE_SHIP`). **[CONFIRM]** GST treatment of the credit with the CA. |
 | **"Shipped" needs proof** | The brand can't click "Shipped" without a **courier name and tracking number**. That's what settles every later "not received" dispute. |
+| **Courier list** | A **table ops can edit** (like holidays), not hard-coded: Delhivery, Blue Dart, DTDC, Ecom Express, Xpressbees, Shadowfax, India Post, Ekart, Shiprocket (aggregator: its AWB is fine), **Local delivery** (Porter / Rapido / own staff, for brands in the creator's city: no tracking number, a **handover photo** instead), and **Other** (courier name + tracking link both required, so ops can still check it). Each row stores a tracking-link pattern, so ops opens tracking in one click and a tracking service can plug in later. Top "Other" names each month get their own row. |
+| **Duplicate tracking number** | Compare after cleaning (uppercase, no spaces or dashes). **Same brand, same creator:** allowed (one parcel for two jobs). **Same brand, different creator:** flag to ops, don't block (usually a copy-paste mistake). **Different brand:** block with "This tracking number is already used. Check it or contact support" (a typo or fraud; one parcel can't go to two brands' creators). |
 | **Product clock** | The 5-day (120-hour) shooting clock starts when the creator taps **"Received"** with a photo of the product. Digital-only briefs (no product) skip the clock. |
 | **Creator doesn't tap anything** | The clock starts by itself **only when the courier shows "Delivered"** and the creator hasn't reported a problem within 24 hours. Without courier proof it never starts by itself: the creator is reminded, then ops checks. A slow courier to a small town never makes the creator late. |
 | **Creator's three buttons** | **Received** (clock starts) · **Not received** (clock stays stopped, brand asked for tracking) · **Damaged / wrong item** (clock stays stopped, brand asked to reship). |
+| **Damage found after "Received"** | Allowed **once per job, within 24 hours** of tapping Received (a leaking pump or a broken seal often shows only when the box is opened properly). Needs a photo or a short video. The job goes back to `DELIVERY_ISSUE`, **the clock stops**, and the time already used is not lost: if the brand reships, the 120 hours start again when the new product is received; if ops decides it's usable, the clock resumes with the hours that were left. After 24 hours: no self-serve report; the creator raises it with ops, and the clock keeps running unless ops pauses it. |
+| **Reships** | **1 reship** goes through normally. The 2nd delivery problem on the same job goes to **ops only** (ops reships or releases the creator). Each reship adds about a week for the creator, and a second problem usually means a packing or address issue a person should look at. |
+| **Who decides damage fault** | Ops never picks a fault party directly: **ops picks the reason code and the fault follows from the table below**, so they can't contradict each other. Guide for ops: outer box crushed or wet in the receipt photo → `DAMAGED_IN_TRANSIT` (COURIER); outer box fine but the product is broken, leaking, expired or badly packed → `DEFECTIVE_PRODUCT` (BRAND); wrong product or shade → `WRONG_ITEM_SENT` (BRAND); can't tell → `OTHER` (NONE). Brand-fault damage: the brand reships at its own cost. |
 | **Job state for problems** | One state, `DELIVERY_ISSUE`, with `issue_type`: `NOT_RECEIVED` / `DAMAGED` / `WRONG_ITEM`. The clock is stopped while a job is in it. |
 | **Reason codes** | Disputes and drop-outs carry a **reason code, never free text**, in `job_state_changed` as `reasonCode`, with its fixed **fault party** as `faultParty` (table below; field names match core-service). Ops notes stay in the backend log only (free text can hold personal details). New codes: add them here first. If `OTHER` is above ~10% in a month, add a code. |
 | **Who sets `FALSE_CLAIM`** | **Ops only**, never the system: it accuses a creator of lying. |
@@ -126,6 +131,7 @@ Rules:
 | `CREATOR_WITHDREW` | CREATOR | yes |
 | `BRAND_LATE_SHIP` | BRAND | no |
 | `WRONG_ITEM_SENT` | BRAND | no |
+| `DEFECTIVE_PRODUCT` | BRAND | no |
 | `COURIER_LOST` | COURIER | no |
 | `DAMAGED_IN_TRANSIT` | COURIER | no |
 | `OTHER` | NONE | no |
@@ -157,6 +163,24 @@ The fee rule for **Loofie's own failure** (creator ghosts, no replacement): the 
 slot back **including** Loofie's fee. Keeping the fee when Loofie didn't deliver would make
 brands feel cheated.
 
+### Who approves money going out (refunds and cancellations)
+
+Two steps, **request → approve**, and the money moves only after the approval. Nothing is paid
+out when the request is made, and an approved request can't be edited (a change means a new request).
+
+| Case | Who may approve |
+|---|---|
+| Any refund or cancellation **after a creator has accepted** (someone loses money or work) | `OPS_LEAD`, and **not the person who made the request** |
+| Refund of a slot **no creator has accepted yet** (full refund, nobody else affected), up to ₹10,000 | One `OPS_LEAD` may request and approve it |
+| Any refund **above ₹25,000** in one request, or more than 3 refunds to one brand in 30 days | Two people: an `OPS_LEAD` plus the founder |
+
+- **Pilot reality:** if there's only one ops person, the founder is the second approver. Keep it;
+  it takes a minute on a phone and stops the most common loss: a mistaken or social-engineered
+  refund ("the brand called and asked").
+- Every request carries a **reason code** and shows the brand's refund history to the approver.
+- **Daily refund summary** to the founder: count, total, who requested, who approved.
+- The ₹10,000 / ₹25,000 limits are pilot numbers: review them after the first 30 orders.
+
 ## 7. Status
 
 | | State |
@@ -178,6 +202,9 @@ policy (needed for Meta App Review), one hour with a CA on refunds and TDS.
 
 ## Change log
 
+- 2026-11-15: Courier table (+ local delivery, Other), duplicate tracking rules, 1 reship then
+  ops, damage report within 24 h of receipt, ops picks codes not fault parties
+  (`DEFECTIVE_PRODUCT` added), refund approvals (request → approve, four-eyes), `job_timer_fired`.
 - 2026-11-14: State holidays, working days only for brand-side clocks, fault party per reason
   code (+ `OTHER`, ops-only `FALSE_CLAIM`), late-ship refund as cash + fee credit.
 - 2026-11-14: Working days Mon–Sat minus a holiday table, DELIVERY_ISSUE state with issue_type,

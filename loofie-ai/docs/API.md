@@ -204,6 +204,7 @@ Response:
 | `video_performance` | `creator`, `job_id`, `result`: `winner` / `average` / `loser` |
 | `rating` | `creator`, `stars` |
 | `rebooked` | `creator` |
+| `job_timer_fired` | `creator`, `job_id`, `kind` (core-service notice name: `SHIP_REMINDER`, `SHIP_LATE`, `RECEIPT_PROMPT`, `DISPUTE_REVIEW_OVERDUE`...; new names need no AI change) (+ `audience`, `due_at`) |
 
 **Send `job_state_changed` on every job status change** (invited, accepted, declined, product
 received, draft submitted, revision requested, approved, auto-approved, disputed, replaced...), and
