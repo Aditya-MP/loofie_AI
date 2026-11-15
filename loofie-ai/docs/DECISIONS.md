@@ -195,13 +195,52 @@ out when the request is made, and an approved request can't be edited (a change 
 | Rebook nudge | Planned; needs real campaign results |
 | Automatic retraining | After real feedback exists |
 | Real data test | Waiting for the creator sheet |
-| Public server with HTTPS | Not set up; Instagram Login needs it |
+| Flow map, contract examples, mock server | Built, tested (docs/FLOW.md, contracts/examples, `loofie mock`) |
+| Ready / Interested labels in the matcher, creator-side events | Built, tested (section 8) |
+| Public server with HTTPS | Pilot on the dev PC behind a quick tunnel (address changes on restart); fixed address pending a domain |
 
 Outside the code: company registration, current account, GST, brand and creator terms, privacy
 policy (needed for Meta App Review), one hour with a CA on refunds and TDS.
 
+## 8. The creator side: Ready, Interested, Suggested
+
+Creators don't browse campaigns or pitch brands: that floods brands, needs an inventory of live
+briefs we won't have for months, and pushes both sides to deal directly. Instead each side does at
+most **one tap**, and the brand rarely waits for a "yes".
+
+**The creator (Ananya)**
+- **Creator card, once:** her rate per video (that's the price, no haggling in v1), niches and
+  languages (from Instagram + a check), **products she won't do** (e.g. hair dye, fairness creams),
+  and **videos per week** she can take.
+- **Monday, one tap:** "Available this week?" Yes makes her **Ready** until next Monday; she can
+  switch it off any time.
+- **A brief fits her, one tap:** "I'm in" makes her **Interested** in that brief; "Pass" asks for a
+  reason code (busy, rate too low, product not for me, deadline too short, other).
+- She only hears about briefs the matcher says fit her (`/ai/match`, top 30): a makeup creator in
+  Delhi never sees a Kannada sunscreen brief. At most 5 "I'm in" a day.
+
+**The brand (Priya):** one shortlist, every creator labelled:
+- ⚡ **Ready** / ✋ **Interested**: picking books them at once.
+- ⭐ **Suggested**: fits, hasn't answered; picking sends an invite (24 h to accept).
+- The matcher ranks all three in one list. Ready / Interested get a small boost (+0.04 / +0.03 on a
+  0–1 score): enough to win a near-tie, never enough to beat a clearly better fit.
+
+**Rules**
+- Ready requires all three, checked by the backend: yes this week, capacity left, brief within her
+  rules (rate ≤ budget, product not on her no-list).
+- Booked through Ready / Interested and then backing out counts as `CREATOR_WITHDREW` (CREATOR):
+  saying yes has to mean yes.
+- No contact details either way; everything stays inside Loofie.
+- **Not in v1:** auto-yes (booked by rule without any tap) until reliability data exists; a
+  "browse all briefs" page until about 20+ briefs are open at once; price negotiation.
+- **Pilot, by hand:** ops sends the Monday message and the "fits you" notice on WhatsApp and marks
+  Ready / Interested on the shortlist.
+
 ## Change log
 
+- 2026-11-15: Creator side (section 8): creator card, Monday availability, one-tap "I'm in" /
+  "Pass", Ready / Interested / Suggested labels and boost in the matcher (matcher-v3),
+  `creator_availability` and `brief_interest` events.
 - 2026-11-15: Courier table (+ local delivery, Other), duplicate tracking rules, 1 reship then
   ops, damage report within 24 h of receipt, ops picks codes not fault parties
   (`DEFECTIVE_PRODUCT` added), refund approvals (request → approve, four-eyes), `job_timer_fired`.

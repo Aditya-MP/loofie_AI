@@ -286,6 +286,10 @@ def get_creator(handle: str, session: SessionDep):
 def match(body: MatchIn, request: Request, session: SessionDep):
     exclude = [clean_handle(h) for h in body.exclude_handles]
     ids = list(session.scalars(select(Creator.id).where(Creator.handle.in_(exclude)))) if exclude else []
+
+    def ids_of(refs: list[str]) -> set[int]:  # unknown refs are ignored: they just aren't labelled
+        return set(session.scalars(select(Creator.id).where(Creator.external_id.in_(refs)))) if refs else set()
+
     brief = BriefQuery(
         text=body.text,
         category=body.category,
@@ -298,6 +302,8 @@ def match(body: MatchIn, request: Request, session: SessionDep):
         exclude_creator_ids=ids,
         top_k=body.top_k,
         brand_handle=clean_handle(body.brand_handle) if body.brand_handle else None,
+        ready_creator_ids=ids_of(body.ready_creator_refs),
+        interested_creator_ids=ids_of(body.interested_creator_refs),
     )
     results, left_out = run_match(session, brief, request.app.state.embedder)
     refs = (
@@ -321,6 +327,7 @@ def match(body: MatchIn, request: Request, session: SessionDep):
             activity=r.activity,
             rank_before_rerank=r.rank_before_rerank,
             rerank_note=r.rerank_note,
+            availability=r.availability,
             estimated_rate_inr={"low": r.estimated_rate_inr[0], "high": r.estimated_rate_inr[1]}
             if r.estimated_rate_inr
             else None,

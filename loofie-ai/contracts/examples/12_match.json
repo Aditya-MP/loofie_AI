@@ -4,6 +4,7 @@
   "scene": 4,
   "call": "POST /ai/match",
   "status": 200,
+  "note": "availability: ready / interested book at once on pick; suggested sends an invite.",
   "request": {
     "text": "Lightweight gel sunscreen for oily skin, no white cast",
     "category": "beauty_skincare",
@@ -14,18 +15,24 @@
     "budget_per_creator_inr": 6000,
     "top_k": 5,
     "brief_ref": "brief-1042",
-    "brand_handle": "dewdrop.skin"
+    "brand_handle": "dewdrop.skin",
+    "ready_creator_refs": [
+      "cr-ananya"
+    ],
+    "interested_creator_refs": [
+      "cr-riya"
+    ]
   },
   "response": {
-    "version": "matcher-v2",
+    "version": "matcher-v3",
     "suggestion_id": "2d1a9567-4819-472a-b00e-fca2ce8a1eb0",
     "results": [
       {
         "rank": 1,
         "handle": "ananya.glows",
         "creator_ref": "cr-ananya",
-        "score": 0.88,
-        "why": "skincare creator · content close to the brief · speaks Kannada · based in Bengaluru · median 3.8k views · est. ₹3,000–₹7,000 fits budget · quality not yet verified",
+        "score": 0.92,
+        "why": "skincare creator · content close to the brief · speaks Kannada · based in Bengaluru · median 3.8k views · est. ₹3,000–₹7,000 fits budget · quality not yet verified · ready this week",
         "parts": {
           "similarity": 1.0,
           "niche": 0.6,
@@ -42,7 +49,8 @@
         "quality_label": "unsure",
         "activity": "active",
         "rank_before_rerank": 1,
-        "rerank_note": null
+        "rerank_note": null,
+        "availability": "ready"
       },
       {
         "rank": 2,
@@ -66,14 +74,15 @@
         "quality_label": "unsure",
         "activity": "active",
         "rank_before_rerank": 2,
-        "rerank_note": null
+        "rerank_note": null,
+        "availability": "suggested"
       },
       {
         "rank": 3,
         "handle": "riya.routines",
         "creator_ref": "cr-riya",
-        "score": 0.6907,
-        "why": "skincare creator · content close to the brief · speaks English · based in Bengaluru · median 2.9k views · est. ₹1,500–₹4,000 fits budget · quality not yet verified",
+        "score": 0.7207,
+        "why": "skincare creator · content close to the brief · speaks English · based in Bengaluru · median 2.9k views · est. ₹1,500–₹4,000 fits budget · quality not yet verified · said I'm in",
         "parts": {
           "similarity": 0.777,
           "niche": 0.6,
@@ -90,7 +99,8 @@
         "quality_label": "unsure",
         "activity": "active",
         "rank_before_rerank": 3,
-        "rerank_note": null
+        "rerank_note": null,
+        "availability": "interested"
       },
       {
         "rank": 4,
@@ -114,7 +124,8 @@
         "quality_label": "unsure",
         "activity": "active",
         "rank_before_rerank": 4,
-        "rerank_note": null
+        "rerank_note": null,
+        "availability": "suggested"
       }
     ],
     "left_out": {

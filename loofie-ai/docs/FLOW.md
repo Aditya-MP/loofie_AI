@@ -51,6 +51,25 @@ What the backend must know:
 `rerank_note` on a result says why a business rule moved that creator (competitor post, near
 duplicate, the slot for a NEW creator): show it to ops, not to the brand.
 
+## Scene 4b: the creator side (Ready / Interested / Suggested)
+
+Rules: DECISIONS.md section 8. Creators never browse or pitch: they answer at most one tap per week
+and one tap per brief, and only see briefs that fit them.
+
+| Step | Who | Backend | AI call | # | Status |
+|---|---|---|---|---|---|
+| Fills her creator card once (rate, niches, languages, products she won't do, videos per week) | Creator | saves the card; rate and rules are hers | `POST /ai/creators/profile` | 01 | ✅ AI · ❌ screen |
+| Monday: "Available this week?" Yes / No | Creator | saves it; Ready expires next Monday | `creator_availability` | 29 | ❌ backend |
+| A brief is confirmed: who hears about it | System | match with `top_k` 30, notify those creators ("fits you: ₹5,000, due 5 Dec") | `POST /ai/match` | 12 | ✅ AI · ❌ notice |
+| "I'm in" / "Pass" (one tap, reason code on pass) | Creator | saves it; at most 5 "I'm in" a day | `brief_interest` | 30, 31 | ❌ backend |
+| Brand's shortlist | Brand | sends `ready_creator_refs` (yes this week + capacity + brief within her rules) and `interested_creator_refs` | `POST /ai/match` → `availability` on each result | 12 | ✅ AI · ❌ backend |
+| Brand picks a Ready / Interested creator | Brand | **booked at once** (no invite step); capacity goes down by 1 | `shortlist_pick` | 14 | ❌ backend |
+| Brand picks a Suggested creator | Brand | invite, 24 h to accept (the old flow) | `shortlist_pick` | 14 | ❌ backend |
+| Booked creator backs out | Creator | replacement rules (DECISIONS.md section 5) | `job_state_changed` + `CREATOR_WITHDREW` | 19 | ✅ AI rules |
+
+Pilot without the app: ops sends the Monday message and the "fits you" notice on WhatsApp and marks
+Ready / Interested on the shortlist by hand.
+
 ## Scenes 5-10: payment and the job (F4-F9, F13)
 
 The backend owns these steps. Its job states are in core-service `JobStatus`: `PAID`,

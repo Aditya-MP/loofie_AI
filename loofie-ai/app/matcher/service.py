@@ -8,7 +8,7 @@ from sqlalchemy.orm import Session
 from app.db.models import Brand
 from app.matcher.features import BriefQuery, matcher_config
 from app.matcher.ranker import MatchResult, rank
-from app.matcher.rerank import rerank
+from app.matcher.rerank import apply_availability, rerank
 from app.matcher.retrieve import retrieve
 
 
@@ -31,5 +31,6 @@ def match(session: Session, brief: BriefQuery, embedder) -> tuple[list[MatchResu
 
     candidates, left_out = retrieve(session, brief, query_vec, cfg=cfg)
     ranked, rank_out = rank(brief, candidates, query_vec, cfg, keep_all=True)
+    ranked = apply_availability(brief, ranked, cfg)
     results = rerank(brief, ranked, {c.creator_id: c for c in candidates}, cfg)
     return results, left_out + rank_out

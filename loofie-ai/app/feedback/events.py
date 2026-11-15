@@ -35,6 +35,10 @@ FEEDBACK_TYPES: dict[str, set[str]] = {
     # DISPUTE_REVIEW_OVERDUE...). Shows who acts only after a nudge; kind stays open so new notices
     # don't need an AI release.
     "job_timer_fired": {CREATOR, "job_id", "kind"},
+    # Creator side (Ready / Interested / Suggested): the weekly "available?" answer, and the one-tap
+    # answer to a "this brief fits you" notice. What creators say yes/no to teaches the matcher.
+    "creator_availability": {CREATOR, "available"},
+    "brief_interest": {CREATOR, "answer"},
 }
 # Dispute and drop-out codes with their fixed fault party (docs/DECISIONS.md section 5; the same
 # list as core-service ReasonCode.java). The reliability score counts only CREATOR codes, so a
@@ -54,6 +58,12 @@ REASON_FAULT: dict[str, str] = {
 PAYLOAD_CHOICES: dict[str, dict[str, set]] = {
     "video_performance": {"result": {"winner", "average", "loser"}},
     "job_outcome": {"on_time": {True, False}},
+    "creator_availability": {"available": {True, False}},
+    # pass_reason: why a creator said no; a code, never free text.
+    "brief_interest": {
+        "answer": {"in", "pass"},
+        "pass_reason": {"BUSY", "RATE_TOO_LOW", "PRODUCT_NOT_FOR_ME", "DEADLINE_TOO_SHORT", "OTHER"},
+    },
     "job_state_changed": {
         "reasonCode": set(REASON_FAULT),
         "faultParty": set(REASON_FAULT.values()),

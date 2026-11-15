@@ -1,0 +1,25 @@
+{
+  "id": 29,
+  "title": "Creator answered the Monday check: available this week",
+  "scene": "4b",
+  "call": "POST /ai/feedback",
+  "status": 200,
+  "request": {
+    "event_type": "creator_availability",
+    "actor_type": "creator",
+    "occurred_at": "2026-11-10T09:15:00+05:30",
+    "actor_id": "cr-ananya",
+    "subject_type": "creator",
+    "subject_id": "cr-ananya",
+    "event_id": "e0326277-5d5c-5faa-be1c-eb08b7c783d3",
+    "payload": {
+      "creator_ref": "cr-ananya",
+      "available": true,
+      "capacity_per_week": 2
+    }
+  },
+  "response": {
+    "event_id": "e0326277-5d5c-5faa-be1c-eb08b7c783d3",
+    "duplicate": false
+  }
+}

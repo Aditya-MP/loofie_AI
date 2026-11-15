@@ -167,6 +167,14 @@ Response:
 - Show `why` on the creator card. Label `estimated_rate_inr` as an estimate, never as a price.
 - **Keep `suggestion_id`** and send it with every feedback event about this shortlist.
 - Suspicious and inactive creators are never returned.
+- **Ready / Interested** (DECISIONS.md section 8): send `ready_creator_refs` (said yes this week,
+  have capacity, and this brief is within their rules; **you** check capacity and rules) and
+  `interested_creator_refs` (tapped "I'm in" on this brief). Each result then carries
+  `availability`: `ready` / `interested` (picking books at once) or `suggested` (picking sends an
+  invite). They get a small boost (`ready` +0.04, `interested` +0.03): it breaks near-ties, it
+  never lifts a weak fit over a clearly better one. Unknown refs are ignored.
+- **Who gets the "this brief fits you" notice:** call `/ai/match` for the brief with `top_k` 30 and
+  notify those creators. No separate endpoint: the same filters decide who can see a brief.
 
 ## `POST /ai/feedback`
 
@@ -205,6 +213,8 @@ Response:
 | `rating` | `creator`, `stars` |
 | `rebooked` | `creator` |
 | `job_timer_fired` | `creator`, `job_id`, `kind` (core-service notice name: `SHIP_REMINDER`, `SHIP_LATE`, `RECEIPT_PROMPT`, `DISPUTE_REVIEW_OVERDUE`...; new names need no AI change) (+ `audience`, `due_at`) |
+| `creator_availability` | `creator`, `available` (true/false) (+ `capacity_per_week`) |
+| `brief_interest` | `creator`, `answer`: `in` / `pass` (+ `pass_reason`: `BUSY`, `RATE_TOO_LOW`, `PRODUCT_NOT_FOR_ME`, `DEADLINE_TOO_SHORT`, `OTHER`) |
 
 **Send `job_state_changed` on every job status change** (invited, accepted, declined, product
 received, draft submitted, revision requested, approved, auto-approved, disputed, replaced...), and

@@ -235,7 +235,10 @@ def main() -> int:
                 "top_k": 5,
                 "brief_ref": "brief-1042",
                 "brand_handle": "dewdrop.skin",
+                "ready_creator_refs": ["cr-ananya"],
+                "interested_creator_refs": ["cr-riya"],
             },
+            note="availability: ready / interested book at once on pick; suggested sends an invite.",
         )
         sid = m["suggestion_id"]
         shortlist = dict(subject_type="shortlist", subject_id="brief-1042", suggestion_id=sid)
@@ -494,6 +497,55 @@ def main() -> int:
                 },
             },
             note="Send every TimerFired row. `kind` is core-service's notice name (SHIP_REMINDER, SHIP_LATE, ...).",
+        )
+
+        # Creator side (Scene 4b): the Monday "available this week?" tap and the one-tap brief answer.
+        by_creator = dict(actor_type="creator", occurred_at="2026-11-10T09:15:00+05:30")
+        call(
+            "Creator answered the Monday check: available this week",
+            "4b",
+            "POST",
+            "/ai/feedback",
+            {
+                "event_type": "creator_availability",
+                **by_creator,
+                "actor_id": "cr-ananya",
+                "subject_type": "creator",
+                "subject_id": "cr-ananya",
+                "event_id": eid(29),
+                "payload": {"creator_ref": "cr-ananya", "available": True, "capacity_per_week": 2},
+            },
+        )
+        call(
+            'Creator tapped "I\'m in" on a brief that fits her',
+            "4b",
+            "POST",
+            "/ai/feedback",
+            {
+                "event_type": "brief_interest",
+                **by_creator,
+                "actor_id": "cr-riya",
+                "subject_type": "brief",
+                "subject_id": "brief-1042",
+                "event_id": eid(30),
+                "payload": {"creator_ref": "cr-riya", "answer": "in"},
+            },
+        )
+        call(
+            "Creator passed on a brief, with a reason code",
+            "4b",
+            "POST",
+            "/ai/feedback",
+            {
+                "event_type": "brief_interest",
+                **by_creator,
+                "actor_id": "cr-meera",
+                "subject_type": "brief",
+                "subject_id": "brief-1042",
+                "event_id": eid(31),
+                "payload": {"creator_ref": "cr-meera", "answer": "pass", "pass_reason": "RATE_TOO_LOW"},
+            },
+            note="pass_reason: BUSY, RATE_TOO_LOW, PRODUCT_NOT_FOR_ME, DEADLINE_TOO_SHORT, OTHER. Never free text.",
         )
 
     app.dependency_overrides.clear()

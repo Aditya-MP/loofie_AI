@@ -115,3 +115,35 @@ def test_short_pool_returns_what_there_is():
 
 def test_unit_vectors_are_what_the_duplicate_rule_expects():
     assert abs(float(vec(1, 0.01) @ vec(1, 0)) - 1) < 1e-3 and np.isclose(np.linalg.norm(vec(3, 4)), 1)
+
+
+# ------------------------------------------------------------------ Ready / Interested / Suggested
+
+
+def _ranked(*scores):
+    from app.matcher.ranker import MatchResult
+
+    return [
+        MatchResult(
+            creator_id=i, handle=f"c{i}", score=s, why="fits", parts={}, estimated_rate_inr=None, rank_before_rerank=i
+        )
+        for i, s in enumerate(scores, 1)
+    ]
+
+
+def test_ready_creator_wins_a_near_tie_and_is_labelled():
+    from app.matcher.rerank import apply_availability
+
+    brief = BriefQuery(text="x", ready_creator_ids={2}, interested_creator_ids={3})
+    out = apply_availability(brief, _ranked(0.80, 0.78, 0.60), CFG)
+    assert [(r.creator_id, r.availability) for r in out] == [(2, "ready"), (1, "suggested"), (3, "interested")]
+    assert out[0].rank_before_rerank == 2  # the fit-only position is kept for learning
+    assert out[0].why.endswith("ready this week")
+
+
+def test_availability_never_beats_a_clearly_better_fit():
+    from app.matcher.rerank import apply_availability
+
+    brief = BriefQuery(text="x", ready_creator_ids={2}, interested_creator_ids={3})
+    out = apply_availability(brief, _ranked(0.85, 0.75, 0.70), CFG)
+    assert [r.creator_id for r in out] == [1, 2, 3]

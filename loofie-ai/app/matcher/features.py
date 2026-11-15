@@ -26,6 +26,10 @@ class BriefQuery:
     brand_handle: str | None = None
     # Same-niche brands: a creator who just did a paid post for one of them is a risk for this brand.
     competitor_handles: list[str] = field(default_factory=list)
+    # Ready: said yes this week, has capacity, brief is within their rules (the backend checks that).
+    # Interested: tapped "I'm in" on this brief. Both book on pick; both get a small boost.
+    ready_creator_ids: set[int] = field(default_factory=set)
+    interested_creator_ids: set[int] = field(default_factory=set)
 
 
 @dataclass

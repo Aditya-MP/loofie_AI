@@ -367,3 +367,52 @@ def test_named_keys_rotation_and_caller_in_log(client, monkeypatch, caplog):
     assert client.post("/ai/feedback", headers={"X-API-Key": KEY}, json=job_event()).status_code == 401
     callers = [json.loads(r.message)["caller"] for r in caplog.records if r.message.startswith("{")]
     assert callers[-4:] == ["backend", "backend", "ops", None]
+
+
+def test_match_labels_ready_and_interested_creators(client):
+    seed(client)
+    r = client.post(
+        "/ai/match",
+        headers=H,
+        json={
+            "text": "sunscreen",
+            "category": "beauty_skincare",
+            "ready_creator_refs": ["be-anu"],
+            "interested_creator_refs": ["be-sara", "be-nobody"],  # unknown refs are ignored
+        },
+    ).json()
+    labels = {i["handle"]: i["availability"] for i in r["results"]}
+    assert labels == {"anu": "ready", "sara": "interested"}
+
+
+def test_creator_side_feedback_events(client):
+    base = {"actor_type": "creator", "actor_id": "be-anu", "subject_type": "creator", "subject_id": "be-anu"}
+    ok = client.post(
+        "/ai/feedback",
+        headers=H,
+        json={**base, "event_type": "creator_availability", "payload": {"creator_ref": "be-anu", "available": True}},
+    )
+    assert ok.status_code == 200
+    passed = {**base, "event_type": "brief_interest", "subject_type": "brief", "subject_id": "br-1"}
+    assert (
+        client.post(
+            "/ai/feedback",
+            headers=H,
+            json={**passed, "payload": {"creator_ref": "be-anu", "answer": "pass", "pass_reason": "BUSY"}},
+        ).status_code
+        == 200
+    )
+    assert (
+        client.post(
+            "/ai/feedback", headers=H, json={**passed, "payload": {"creator_ref": "be-anu", "answer": "maybe"}}
+        ).status_code
+        == 422
+    )
+    assert (
+        client.post(
+            "/ai/feedback",
+            headers=H,
+            json={**passed, "payload": {"creator_ref": "be-anu", "answer": "pass", "pass_reason": "too far"}},
+        ).status_code
+        == 422
+    )

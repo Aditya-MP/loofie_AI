@@ -1,7 +1,7 @@
 # Model 2 (Matcher) settings. Weights are hand-set starting values; the learning step replaces
 # them with weights learned from brand picks and rejects. Bump `version` on any change.
 
-version = "matcher-v2"
+version = "matcher-v3"
 top_k = 10
 
 # Stage 1: how many candidates the database hands to the ranker (nearest by text, after hard filters).
@@ -19,6 +19,13 @@ explore_slots = 1
 explore_min_share = 0.8
 # A recent paid post for a same-niche brand moves the creator below everyone without one.
 demote_competitor_conflict = true
+
+# Ready / Interested creators (docs/DECISIONS.md, "Ready, Interested, Suggested"): picking them
+# books at once, so they get a small boost. Kept small on purpose: it beats an equally good fit,
+# never a clearly better one (scores run 0..1).
+[availability]
+ready_boost = 0.04
+interested_boost = 0.03
 
 # Each part scores 0..1; the final score is the weighted sum. Weights should add up to 1.
 [weights]

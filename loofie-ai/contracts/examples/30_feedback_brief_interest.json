@@ -1,0 +1,24 @@
+{
+  "id": 30,
+  "title": "Creator tapped \"I'm in\" on a brief that fits her",
+  "scene": "4b",
+  "call": "POST /ai/feedback",
+  "status": 200,
+  "request": {
+    "event_type": "brief_interest",
+    "actor_type": "creator",
+    "occurred_at": "2026-11-10T09:15:00+05:30",
+    "actor_id": "cr-riya",
+    "subject_type": "brief",
+    "subject_id": "brief-1042",
+    "event_id": "21728f94-ae5f-59d0-95ac-a3832868ed57",
+    "payload": {
+      "creator_ref": "cr-riya",
+      "answer": "in"
+    }
+  },
+  "response": {
+    "event_id": "21728f94-ae5f-59d0-95ac-a3832868ed57",
+    "duplicate": false
+  }
+}

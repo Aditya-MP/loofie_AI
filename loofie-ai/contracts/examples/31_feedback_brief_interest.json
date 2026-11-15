@@ -1,0 +1,26 @@
+{
+  "id": 31,
+  "title": "Creator passed on a brief, with a reason code",
+  "scene": "4b",
+  "call": "POST /ai/feedback",
+  "status": 200,
+  "note": "pass_reason: BUSY, RATE_TOO_LOW, PRODUCT_NOT_FOR_ME, DEADLINE_TOO_SHORT, OTHER. Never free text.",
+  "request": {
+    "event_type": "brief_interest",
+    "actor_type": "creator",
+    "occurred_at": "2026-11-10T09:15:00+05:30",
+    "actor_id": "cr-meera",
+    "subject_type": "brief",
+    "subject_id": "brief-1042",
+    "event_id": "4b3297c9-0717-521a-a715-f547e9d33f30",
+    "payload": {
+      "creator_ref": "cr-meera",
+      "answer": "pass",
+      "pass_reason": "RATE_TOO_LOW"
+    }
+  },
+  "response": {
+    "event_id": "4b3297c9-0717-521a-a715-f547e9d33f30",
+    "duplicate": false
+  }
+}

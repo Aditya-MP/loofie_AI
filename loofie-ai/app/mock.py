@@ -155,7 +155,14 @@ def match(body: MatchIn, request: Request, x_api_key: Key = ""):
     require_key(x_api_key)
     out = state(request).example("POST /ai/match")
     excluded = {clean_handle(h) for h in body.exclude_handles}
-    results = [r for r in out["results"] if r["handle"] not in excluded][: body.top_k]
+    results = [r for r in out["results"] if r["handle"] not in excluded]
+    ready, interested = set(body.ready_creator_refs), set(body.interested_creator_refs)
+    for r in results:  # same labels and the same boost rule as the real matcher, on example scores
+        r["availability"] = (
+            "ready" if r["creator_ref"] in ready else "interested" if r["creator_ref"] in interested else "suggested"
+        )
+        r["score"] = round(r["score"] + {"ready": 0.04, "interested": 0.03}.get(r["availability"], 0), 4)
+    results = sorted(results, key=lambda r: -r["score"])[: body.top_k]
     for i, r in enumerate(results, 1):
         r["rank"] = i
     out.update(results=results, suggestion_id=str(uuid.uuid4()))

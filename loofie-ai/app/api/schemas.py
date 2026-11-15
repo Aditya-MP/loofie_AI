@@ -112,6 +112,12 @@ class MatchIn(BaseModel):
     brand_handle: str | None = Field(
         None, description="The brand's Instagram handle; enables the competitor-conflict rule"
     )
+    ready_creator_refs: list[str] = Field(
+        [],
+        max_length=500,
+        description="Said yes this week, have capacity, and this brief is within their rules (you check that)",
+    )
+    interested_creator_refs: list[str] = Field([], max_length=500, description='Tapped "I\'m in" on this brief')
 
 
 class MatchItem(BaseModel):
@@ -130,6 +136,9 @@ class MatchItem(BaseModel):
         None, description="Position the ranker alone gave; differs when a business rule moved it"
     )
     rerank_note: str | None = Field(None, description="Why a business rule moved this creator (show to ops)")
+    availability: Literal["ready", "interested", "suggested"] = Field(
+        "suggested", description="ready / interested: picking books at once. suggested: picking sends an invite"
+    )
 
 
 class MatchOut(BaseModel):

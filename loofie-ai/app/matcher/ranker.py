@@ -33,6 +33,7 @@ class MatchResult:
     activity: str | None = None
     rank_before_rerank: int | None = None  # the ranker's own position, so feedback can tell the two apart
     rerank_note: str | None = None  # why a business rule moved this creator
+    availability: str = "suggested"  # ready | interested | suggested (picking a suggested one sends an invite)
 
 
 def _views(v: float | None) -> str | None:

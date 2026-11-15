@@ -41,6 +41,24 @@ def _diverse(items: list[MatchResult], pool: dict[int, Candidate], k: int, rc: d
     return picked
 
 
+def apply_availability(brief: BriefQuery, ranked: list[MatchResult], cfg: dict) -> list[MatchResult]:
+    """Ready / Interested creators book on pick, so they get a small boost: enough to beat an
+    equally good fit, never enough to lift a weak fit over a strong one. rank_before_rerank keeps
+    the fit-only position, so the learning step can tell fit and availability apart."""
+    ac = cfg["availability"]
+    for r in ranked:
+        if r.creator_id in brief.ready_creator_ids:
+            r.availability, boost, note = "ready", ac["ready_boost"], "ready this week"
+        elif r.creator_id in brief.interested_creator_ids:
+            r.availability, boost, note = "interested", ac["interested_boost"], "said I'm in"
+        else:
+            continue
+        r.score = round(r.score + boost, 4)
+        r.why = f"{r.why} · {note}" if r.why else note
+    ranked.sort(key=lambda r: (-r.score, r.rank_before_rerank or 0))
+    return ranked
+
+
 def rerank(
     brief: BriefQuery, ranked: list[MatchResult], pool: dict[int, Candidate], cfg: dict | None = None
 ) -> list[MatchResult]:
