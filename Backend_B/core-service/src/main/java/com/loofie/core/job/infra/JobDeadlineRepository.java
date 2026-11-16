@@ -99,6 +99,19 @@ public class JobDeadlineRepository {
                 .update() == 1;
     }
 
+    /**
+     * Running working-day clocks (brand shipping, ops dispute review) that end after {@code instant}. Deadlines are
+     * cleared on every state change, so a set column is a running clock. Two partial-index range counts.
+     */
+    public long countWorkingDayClocksEndingAfter(Instant instant) {
+        return jdbc.sql("""
+                SELECT (SELECT count(*) FROM jobs WHERE ship_due_at > :t)
+                     + (SELECT count(*) FROM jobs WHERE dispute_review_due_at > :t)
+                """)
+                .param("t", utc(instant))
+                .query(Long.class).single();
+    }
+
     private static OffsetDateTime utc(Instant instant) {
         return OffsetDateTime.ofInstant(instant, ZoneOffset.UTC);
     }

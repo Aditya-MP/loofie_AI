@@ -11,6 +11,8 @@ public enum ReasonCode {
     CREATOR_WITHDREW(FaultParty.CREATOR),
     BRAND_LATE_SHIP(FaultParty.BRAND),
     WRONG_ITEM_SENT(FaultParty.BRAND),
+    /** Outer box fine, product broken, leaking, expired or badly packed inside (DECISIONS.md section 5). */
+    DEFECTIVE_PRODUCT(FaultParty.BRAND),
     COURIER_LOST(FaultParty.COURIER),
     DAMAGED_IN_TRANSIT(FaultParty.COURIER),
     OTHER(FaultParty.NONE);

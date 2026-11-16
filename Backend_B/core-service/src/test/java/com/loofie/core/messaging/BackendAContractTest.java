@@ -93,6 +93,25 @@ class BackendAContractTest {
         engine.transition(c.jobId(), JobAction.CANCEL, ops, "brand withdrew, call Priya on 98765 43210");
         jobs.add(c.jobId());
 
+        // F6 round 2: damage found after receipt (clock paused), then ops releases with DEFECTIVE_PRODUCT.
+        Seeded d = shipped();
+        engine.transition(TransitionCommand.of(d.jobId(), JobAction.CONFIRM_RECEIVED, Actor.creator(d.creatorId()), null)
+                .with(TransitionDetails.photo(JobFixtures.photoKey())));
+        engine.transition(TransitionCommand.of(d.jobId(), JobAction.REPORT_DELIVERY_ISSUE, Actor.creator(d.creatorId()),
+                null).with(TransitionDetails.damageAfterReceipt("damage/" + UUID.randomUUID() + ".jpg")));
+        engine.transition(TransitionCommand.of(d.jobId(), JobAction.OPS_RELEASE_CREATOR, ops, "seal broken inside")
+                .with(TransitionDetails.reason(ReasonCode.DEFECTIVE_PRODUCT)));
+        jobs.add(d.jobId());
+
+        // ... and one that ops finds usable: production resumes with the time left.
+        Seeded e = shipped();
+        engine.transition(TransitionCommand.of(e.jobId(), JobAction.CONFIRM_RECEIVED, Actor.creator(e.creatorId()), null)
+                .with(TransitionDetails.photo(JobFixtures.photoKey())));
+        engine.transition(TransitionCommand.of(e.jobId(), JobAction.REPORT_DELIVERY_ISSUE, Actor.creator(e.creatorId()),
+                null).with(TransitionDetails.damageAfterReceipt("damage/" + UUID.randomUUID() + ".mp4")));
+        engine.transition(TransitionCommand.of(e.jobId(), JobAction.OPS_RESUME_PRODUCTION, ops, "usable"));
+        jobs.add(e.jobId());
+
         EventSender real = new AiFeedbackSender(new AiFeedbackProperties(System.getenv("AI_CONTRACT_URL"),
                 System.getenv().getOrDefault("AI_CONTRACT_KEY", "contract-check"), Duration.ofSeconds(2),
                 Duration.ofSeconds(10)), mapper, json);
@@ -104,7 +123,7 @@ class BackendAContractTest {
                 .query((rs, n) -> new Message(rs.getObject("id", UUID.class), rs.getString("topic"),
                         rs.getString("message_key"), rs.getString("event_type"), rs.getString("envelope")))
                 .list();
-        assertThat(rows).hasSizeGreaterThanOrEqualTo(7);
+        assertThat(rows).hasSizeGreaterThanOrEqualTo(13);
 
         int sent = 0;
         for (Message m : rows) {
@@ -115,7 +134,7 @@ class BackendAContractTest {
                 assertThat(real.send(m).get()).as("a resend is a duplicate, not a conflict").isEqualTo(Delivery.DELIVERED);
             }
         }
-        assertThat(sent).as("the timer notice and every state change with a creator").isGreaterThanOrEqualTo(7);
+        assertThat(sent).as("the timer notice and every state change with a creator").isGreaterThanOrEqualTo(13);
     }
 
     private Seeded shipped() {

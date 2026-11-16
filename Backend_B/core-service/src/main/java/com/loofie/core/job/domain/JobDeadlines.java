@@ -20,6 +20,8 @@ public final class JobDeadlines {
     public static final Duration RECEIPT_PROMPT_AFTER = Duration.ofHours(72);
     public static final Duration RECEIPT_OPS_CHECK_AFTER = Duration.ofHours(96);
     public static final Duration AUTO_START_AFTER_DELIVERED = Duration.ofHours(24);
+    /** Damage found after "Received" can be self-reported this long after tapping Received (once per job). */
+    public static final Duration LATE_DAMAGE_WINDOW = Duration.ofHours(24);
     public static final Duration ISSUE_RESPONSE_WINDOW = Duration.ofHours(48);
     public static final Duration MISSING_AFTER_FIRST_SHIPPED = Duration.ofDays(7);
     public static final Duration PRODUCTION_WINDOW = Duration.ofHours(120);
@@ -68,10 +70,18 @@ public final class JobDeadlines {
             case DELIVERY_ISSUE -> {
                 Instant reported = job.getDeliveryIssueAt() != null ? job.getDeliveryIssueAt() : enteredAt;
                 issueResponse = reported.plus(ISSUE_RESPONSE_WINDOW);
-                Instant first = job.getFirstShippedAt() != null ? job.getFirstShippedAt() : enteredAt;
-                missingEscalate = first.plus(MISSING_AFTER_FIRST_SHIPPED);
+                // Damage found after receipt (clock paused): the product arrived, so no "missing parcel" rule.
+                if (job.getProductionPausedSeconds() == null) {
+                    Instant first = job.getFirstShippedAt() != null ? job.getFirstShippedAt() : enteredAt;
+                    missingEscalate = first.plus(MISSING_AFTER_FIRST_SHIPPED);
+                }
             }
-            case IN_PRODUCTION -> production = enteredAt.plus(PRODUCTION_WINDOW);
+            case IN_PRODUCTION -> {
+                // Back from a paused damage report (usable after all, or a false claim): the time that was left.
+                // Otherwise (a new receipt, including after a reship): the full window.
+                java.time.Duration left = job.takePausedProduction();
+                production = enteredAt.plus(left != null ? left : PRODUCTION_WINDOW);
+            }
             case IN_REVIEW -> review = enteredAt.plus(REVIEW_WINDOW);
             case REPLACEMENT_NEEDED -> replacement = enteredAt.plus(REPLACEMENT_WINDOW);
             // Ops-side clock: working days, national holidays (ops is not tied to a brand state).

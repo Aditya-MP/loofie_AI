@@ -54,7 +54,9 @@ class JobTransitionController {
                              @Size(max = 64) String courier, @Size(max = 64) String trackingNumber,
                              @Size(max = 512) String photoRef, DeliveryIssueType issueType, ReasonCode reasonCode,
                              @PositiveOrZero Long expectedVersion, Instant deliveredAt, DeliverySource deliverySource,
-                             @Positive Integer shipmentAttempt) {
+                             @Positive Integer shipmentAttempt, @Size(max = 32) String courierCode,
+                             @Size(max = 300) String trackingLink, @Size(max = 512) String handoverPhotoRef,
+                             @Size(max = 512) String evidenceRef) {
     }
 
     private final JobTransitionService engine;
@@ -79,7 +81,8 @@ class JobTransitionController {
                                                 Actor actor,
                                                 @RequestHeader(name = Idempotency.HEADER, required = false) String key) {
         TransitionDetails details = new TransitionDetails(body.courier(), body.trackingNumber(), body.photoRef(),
-                body.issueType(), body.reasonCode(), body.deliveredAt(), body.deliverySource(), body.shipmentAttempt());
+                body.issueType(), body.reasonCode(), body.deliveredAt(), body.deliverySource(), body.shipmentAttempt(),
+                body.courierCode(), body.trackingLink(), body.handoverPhotoRef(), body.evidenceRef());
         TransitionCommand cmd = new TransitionCommand(jobId, body.action(), actor, body.reason(), body.creatorId(),
                 RequestIdFilter.current(), details, body.expectedVersion());
         if (key == null) {

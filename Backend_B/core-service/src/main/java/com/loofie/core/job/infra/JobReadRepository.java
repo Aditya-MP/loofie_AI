@@ -19,6 +19,7 @@ import java.util.stream.Collectors;
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.stereotype.Repository;
 
+import com.loofie.core.job.domain.Courier;
 import com.loofie.core.job.read.JobViews.AssignmentView;
 import com.loofie.core.job.read.JobViews.EventView;
 import com.loofie.core.job.read.JobViews.Cursor;
@@ -37,7 +38,7 @@ public class JobReadRepository {
     private static final String SELECT = """
             SELECT j.id, j.order_id, j.brand_org_id, j.status, j.digital_only, j.creator_fee_paise,
                    j.free_revision_used, j.updated_at, j.version, a.creator_id AS active_creator_id,
-                   j.delivery_issue_type, %s
+                   j.delivery_issue_type, j.production_paused_seconds, %s
             FROM jobs j
             LEFT JOIN assignments a ON a.job_id = j.id AND a.status = 'ACTIVE'
             """.formatted(DEADLINE_COLUMNS.stream().map(c -> "j." + c).collect(Collectors.joining(", ")));
@@ -54,7 +55,8 @@ public class JobReadRepository {
     /** One job row as stored, with its deadlines keyed by column name (only non-null ones). */
     public record JobRow(UUID id, UUID orderId, UUID brandOrgId, JobStatus status, boolean digitalOnly,
                          long creatorFeePaise, boolean freeRevisionUsed, Instant updatedAt, long version,
-                         UUID activeCreatorId, String deliveryIssueType, Map<String, Instant> deadlines) {
+                         UUID activeCreatorId, String deliveryIssueType, Long productionPausedSeconds,
+                         Map<String, Instant> deadlines) {
     }
 
     private final JdbcClient jdbc;
@@ -117,16 +119,27 @@ public class JobReadRepository {
 
     public List<ShipmentView> shipments(UUID jobId) {
         return jdbc.sql("""
-                SELECT attempt, courier, tracking_number, shipped_at, courier_delivered_at, courier_delivered_source,
-                       courier_delivered_recorded_at, received_at,
-                       receipt_photo_ref IS NOT NULL AS has_photo
-                FROM shipments WHERE job_id = :id ORDER BY attempt
+                SELECT s.attempt, s.courier, s.tracking_number, s.shipped_at, s.courier_delivered_at,
+                       s.courier_delivered_source, s.courier_delivered_recorded_at, s.received_at,
+                       s.receipt_photo_ref IS NOT NULL AS has_photo, s.courier_code, s.tracking_url,
+                       c.tracking_url_pattern, s.handover_photo_ref IS NOT NULL AS has_handover, s.tracking_reuse,
+                       s.damage_reported_at, s.damage_evidence_ref IS NOT NULL AS has_damage_evidence
+                FROM shipments s LEFT JOIN couriers c ON c.code = s.courier_code
+                WHERE s.job_id = :id ORDER BY s.attempt
                 """)
                 .param("id", jobId)
-                .query((rs, n) -> new ShipmentView(rs.getInt("attempt"), rs.getString("courier"),
-                        rs.getString("tracking_number"), instant(rs, "shipped_at"), instant(rs, "courier_delivered_at"),
-                        rs.getString("courier_delivered_source"), instant(rs, "courier_delivered_recorded_at"),
-                        instant(rs, "received_at"), rs.getBoolean("has_photo")))
+                .query((rs, n) -> {
+                    String number = rs.getString("tracking_number");
+                    String link = rs.getString("tracking_url") != null ? rs.getString("tracking_url")
+                            : new Courier(rs.getString("courier_code"), "", Courier.Kind.TRACKED,
+                                    rs.getString("tracking_url_pattern"), true, 0).trackingLink(number);
+                    return new ShipmentView(rs.getInt("attempt"), rs.getString("courier"), number,
+                            instant(rs, "shipped_at"), instant(rs, "courier_delivered_at"),
+                            rs.getString("courier_delivered_source"), instant(rs, "courier_delivered_recorded_at"),
+                            instant(rs, "received_at"), rs.getBoolean("has_photo"), rs.getString("courier_code"), link,
+                            rs.getBoolean("has_handover"), rs.getString("tracking_reuse"),
+                            instant(rs, "damage_reported_at"), rs.getBoolean("has_damage_evidence"));
+                })
                 .list();
     }
 
@@ -188,7 +201,7 @@ public class JobReadRepository {
                 rs.getObject("brand_org_id", UUID.class), JobStatus.valueOf(rs.getString("status")),
                 rs.getBoolean("digital_only"), rs.getLong("creator_fee_paise"), rs.getBoolean("free_revision_used"),
                 instant(rs, "updated_at"), rs.getLong("version"), rs.getObject("active_creator_id", UUID.class),
-                rs.getString("delivery_issue_type"), deadlines);
+                rs.getString("delivery_issue_type"), rs.getObject("production_paused_seconds", Long.class), deadlines);
     }
 
     private static Instant instant(ResultSet rs, String column) throws SQLException {

@@ -117,7 +117,8 @@ public class JobQueryService {
             List<Deadline> deadlines = row.deadlines().entrySet().stream()
                     .map(e -> deadline(e.getKey(), e.getValue(), now))
                     .toList();
-            return new JobDetail(summary(row, now), row.freeRevisionUsed(), row.deliveryIssueType(), deadlines,
+            return new JobDetail(summary(row, now), row.freeRevisionUsed(), row.deliveryIssueType(),
+                    row.productionPausedSeconds(), deadlines,
                     repo.assignments(jobId), repo.shipments(jobId), repo.events(jobId));
         });
     }

@@ -11,6 +11,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import java.time.Duration;
+import java.util.List;
 import java.util.UUID;
 
 import org.junit.jupiter.api.Test;
@@ -222,7 +223,52 @@ class OpsJobApiTest {
     }
 
     @Test
+    void everyNonOpsRoleIsRefusedOnEveryHolidayEndpoint() throws Exception {
+        String body = "{\"date\":\"2028-06-01\",\"name\":\"x\"}";
+        // SYSTEM cannot log in over HTTP at all (401); the others are known users without the OPS role (403).
+        for (String role : List.of("BRAND_ADMIN", "BRAND_MEMBER", "CREATOR", "SYSTEM")) {
+            for (MockHttpServletRequestBuilder request : List.of(
+                    get("/api/core/ops/holidays").param("year", "2027"),
+                    get("/api/core/ops/holidays/changes").param("year", "2027"),
+                    put("/api/core/ops/holidays").contentType(MediaType.APPLICATION_JSON).content(body),
+                    delete("/api/core/ops/holidays/2027-01-26"))) {
+                mvc.perform(request.header("X-Dev-Role", role)
+                                .header("X-Dev-User-Id", UUID.randomUUID().toString())
+                                .header("X-Dev-Org-Id", UUID.randomUUID().toString()))
+                        .andExpect(status().is(role.equals("SYSTEM") ? 401 : 403));
+            }
+        }
+        mvc.perform(asOps(get("/api/core/ops/holidays")).param("year", "2027"))
+                .andExpect(jsonPath("$[?(@.name == 'Republic Day')]", hasSize(1))); // nothing was deleted
+    }
+
+    @Test
+    void aHolidayEditSaysWhatItDidAndATypoInTheStateIsRefused() throws Exception {
+        mvc.perform(asOps(put("/api/core/ops/holidays")).contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"date\":\"2028-10-20\",\"stateCode\":\"WBB\",\"name\":\"Durga Puja\"}"))
+                .andExpect(status().isUnprocessableContent())
+                .andExpect(jsonPath("$.type", is("https://loofie.app/problems/invalid-state-code")));
+
+        mvc.perform(asOps(put("/api/core/ops/holidays")).contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"date\":\"2028-10-20\",\"stateCode\":\"IN-WB\",\"name\":\"Durga Puja\"}"))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.outcome", is("CREATED")))
+                .andExpect(jsonPath("$.stateCode", is("WB")))
+                .andExpect(jsonPath("$.stateHolidaysInUse", is(false)))
+                .andExpect(jsonPath("$.runningClocksNotChanged").isNumber());
+
+        mvc.perform(asOps(get("/api/core/ops/holidays/changes")).param("year", "2028"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$[?(@.stateCode == 'WB' && @.action == 'INSERT')]", hasSize(1)));
+        mvc.perform(asOps(get("/api/core/ops/holidays")).param("year", "99999"))
+                .andExpect(status().isBadRequest());
+        mvc.perform(asOps(delete("/api/core/ops/holidays/2028-10-20")).param("stateCode", "WB"))
+                .andExpect(status().isNoContent());
+    }
+
+    @Test
     void shippingThroughTheApiNeedsTrackingAndShowsInTheDetail() throws Exception {
+        String tracking = JobFixtures.trackingNumber();
         Seeded job = fixtures.jobIn(JobStatus.CREATOR_ACCEPTED);
         UUID brandUser = UUID.randomUUID();
 
@@ -238,7 +284,7 @@ class OpsJobApiTest {
                         .header("X-Dev-User-Id", brandUser.toString())
                         .header("X-Dev-Org-Id", job.brandOrgId().toString())
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"action\":\"MARK_SHIPPED\",\"courier\":\"Delhivery\",\"trackingNumber\":\"DL42\"}"))
+                        .content("{\"action\":\"MARK_SHIPPED\",\"courier\":\"Delhivery\",\"trackingNumber\":\"" + tracking + "\"}"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.to", is("PRODUCT_SHIPPED")));
 
@@ -254,7 +300,7 @@ class OpsJobApiTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.deliveryIssueType", is("DAMAGED")))
                 .andExpect(jsonPath("$.shipments", hasSize(1)))
-                .andExpect(jsonPath("$.shipments[0].trackingNumber", is("DL42")))
+                .andExpect(jsonPath("$.shipments[0].trackingNumber", is(tracking)))
                 .andExpect(jsonPath("$.deadlines[0].name", is("issue_response_due_at")));
     }
 

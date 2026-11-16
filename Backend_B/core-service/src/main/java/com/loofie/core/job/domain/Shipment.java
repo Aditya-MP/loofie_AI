@@ -33,7 +33,7 @@ public class Shipment {
     @Column(nullable = false, updatable = false, length = 64)
     private String courier;
 
-    @Column(name = "tracking_number", nullable = false, updatable = false, length = 64)
+    @Column(name = "tracking_number", updatable = false, length = 64) // null only for local delivery (handover photo)
     private String trackingNumber;
 
     @Column(name = "shipped_at", nullable = false, updatable = false)
@@ -61,6 +61,27 @@ public class Shipment {
     @Column(name = "receipt_photo_ref", length = 512)
     private String receiptPhotoRef;
 
+    @Column(name = "courier_code", updatable = false, length = 32)
+    private String courierCode;
+
+    @Column(name = "tracking_url", updatable = false, length = 300)
+    private String trackingUrl;
+
+    @Column(name = "handover_photo_ref", updatable = false, length = 512)
+    private String handoverPhotoRef;
+
+    @Column(name = "tracking_norm", updatable = false, length = 64)
+    private String trackingNorm;
+
+    @Column(name = "tracking_reuse", updatable = false, length = 32)
+    private String trackingReuse;
+
+    @Column(name = "damage_reported_at")
+    private Instant damageReportedAt;
+
+    @Column(name = "damage_evidence_ref", length = 512)
+    private String damageEvidenceRef;
+
     @Version
     private Long version;
 
@@ -70,16 +91,66 @@ public class Shipment {
 
     public static Shipment create(UUID id, UUID jobId, UUID assignmentId, int attempt, String courier,
                                   String trackingNumber, Instant shippedAt, UUID shippedBy) {
+        return create(id, jobId, assignmentId, attempt, new Parcel(null, courier, trackingNumber, null, null, null),
+                shippedAt, shippedBy);
+    }
+
+    /**
+     * What the brand entered when shipping, already checked by the engine against the courier's kind.
+     *
+     * @param trackingReuse null, or "SAME_BRAND_OTHER_CREATOR" when the number is on another creator's job too
+     */
+    public record Parcel(String courierCode, String courierName, String trackingNumber, String trackingUrl,
+                         String handoverPhotoRef, String trackingReuse) {
+    }
+
+    public static Shipment create(UUID id, UUID jobId, UUID assignmentId, int attempt, Parcel parcel, Instant shippedAt,
+                                  UUID shippedBy) {
         Shipment s = new Shipment();
         s.id = Objects.requireNonNull(id);
         s.jobId = Objects.requireNonNull(jobId);
         s.assignmentId = Objects.requireNonNull(assignmentId);
         s.attempt = attempt;
-        s.courier = requireText(courier, "courier");
-        s.trackingNumber = requireText(trackingNumber, "trackingNumber");
+        s.courierCode = parcel.courierCode();
+        s.courier = requireText(parcel.courierName(), "courier");
+        s.trackingNumber = parcel.trackingNumber() == null ? null : requireText(parcel.trackingNumber(), "trackingNumber");
+        s.trackingNorm = Courier.normaliseTrackingNumber(s.trackingNumber);
+        s.trackingUrl = parcel.trackingUrl();
+        s.handoverPhotoRef = parcel.handoverPhotoRef();
+        s.trackingReuse = parcel.trackingReuse();
+        if (s.trackingNumber == null && s.handoverPhotoRef == null) {
+            throw new IllegalArgumentException("A shipment needs a tracking number or a handover photo");
+        }
+        if (s.handoverPhotoRef != null && !isHandoverPhotoKey(s.handoverPhotoRef)) {
+            throw new IllegalArgumentException("Not a handover photo key: " + s.handoverPhotoRef);
+        }
         s.shippedAt = Objects.requireNonNull(shippedAt);
         s.shippedBy = Objects.requireNonNull(shippedBy);
         return s;
+    }
+
+    /** Damage found after receipt: when, and the photo or video that shows it. */
+    public void markDamageReported(Instant at, String evidenceRef) {
+        if (evidenceRef != null && !isDamageEvidenceKey(evidenceRef)) {
+            throw new IllegalArgumentException("Not a damage evidence key: " + evidenceRef);
+        }
+        this.damageReportedAt = Objects.requireNonNull(at);
+        this.damageEvidenceRef = evidenceRef;
+    }
+
+    // Same patterns as the CHECK constraints (V10). Storage keys we issue only, never URLs or free text.
+    private static final String UUID_RE = "[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}";
+    public static final java.util.regex.Pattern HANDOVER_PHOTO_KEY = java.util.regex.Pattern.compile(
+            "^handovers/" + UUID_RE + "\\.(jpg|jpeg|png|heic|webp)$");
+    public static final java.util.regex.Pattern DAMAGE_EVIDENCE_KEY = java.util.regex.Pattern.compile(
+            "^damage/" + UUID_RE + "\\.(jpg|jpeg|png|heic|webp|mp4|mov)$");
+
+    public static boolean isHandoverPhotoKey(String value) {
+        return value != null && HANDOVER_PHOTO_KEY.matcher(value).matches();
+    }
+
+    public static boolean isDamageEvidenceKey(String value) {
+        return value != null && DAMAGE_EVIDENCE_KEY.matcher(value).matches();
     }
 
     /**
@@ -111,6 +182,10 @@ public class Shipment {
 
     public static boolean isReceiptPhotoKey(String value) {
         return value != null && RECEIPT_PHOTO_KEY.matcher(value).matches();
+    }
+
+    public Instant getDamageReportedAt() {
+        return damageReportedAt;
     }
 
     public boolean isReceived() {

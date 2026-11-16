@@ -1,6 +1,8 @@
 # Product decisions (answers to Backend B's open questions)
 
-Answered by Aditya on 2026-11-14. The founder has not confirmed these yet. Points marked **Open** still need an answer.
+Source of truth: `loofie-ai/docs/DECISIONS.md` on `backend-a` (read at `e682442`, 2026-11-16). This file is Backend
+B's copy plus what each answer means for core-service. Answered by Aditya on 2026-11-14 and 2026-11-16.
+**Founder sign-off:** still to be confirmed (see "Open" at the end).
 
 ## Ownership
 
@@ -8,99 +10,133 @@ Answered by Aditya on 2026-11-14. The founder has not confirmed these yet. Point
 |---|---|
 | App signup/login (phone OTP, accounts, brand teams, roles) | Backend B. Shreya will guide the auth design. |
 | Instagram Login | Backend A (done) |
-| Payments, invoices, refunds, payouts, TDS, PAN/bank | Backend B (finance-service). The AI service never touches money, PAN or bank details. |
+| Payments, invoices, refunds, payouts, TDS, PAN/bank | Backend B (finance). The AI service never touches money, PAN or bank details. |
 | Briefs, shortlists, rebook (screens' APIs, storage, checkout) | Backend B |
 | Brief reader, matcher, quality score, rebook nudge | Backend A |
 
 ## Events
 
 - `job_events` (Backend B) is the source of truth for operations. Backend A's `events` table is the AI's learning log.
-- Send to `/ai/feedback` with an `event_id`: `job_state_changed`, `job_outcome`, shortlist picks/rejects, and brief edits.
+- Sent to `/ai/feedback` over HTTP from the outbox (built 2026-11-15): `job_state_changed`, `job_timer_fired`.
+  Still to send: `job_outcome` (with `revisions`, `replaced`), `rating` (with `job_id`), shortlist and brief events.
+- **Latest reason code per job wins** in the AI's track record: when ops corrects a code, send the corrected one.
+
+## Working days and clocks
+
+- Monday to Saturday, minus an ops-editable holiday table with a state column (blank = national). Built.
+- **Brand-side clocks count working days:** shipping (3 working days, reminder after 2) and **video review
+  (5 working days before auto-approval)**. Ops dispute review: 2 working days. Built except video review (still
+  120 calendar hours, see Open 1).
+- **Creator-side clocks stay calendar hours:** 120-hour shooting clock.
+- The shipping clock uses the **brand's pickup state** (needs F1 brand profile; national only until then).
 
 ## Product delivery (F6)
 
-Source: `loofie-ai/docs/DECISIONS.md` section 5 (commit `b50390b`), plus Aditya's follow-up on 2026-11-14.
-
 **Shipping**
-- The brand must ship within **3 working days** of the creator accepting, with a reminder after 2.
-  If it misses that, the job is marked late and the creator may drop out with no penalty.
-- "Shipped" requires a **courier name and tracking number**. Foundation v2 says these are optional, so this is a change.
+- Ship within **3 working days** of acceptance, reminder after 2; missed → late, the creator may drop out with no
+  penalty (`BRAND_LATE_SHIP`). Built.
+- "Shipped" requires a courier and a tracking number. Built (free text today; see the courier table below).
 
-**Working days**
-- Monday to Saturday, skipping holidays from a table that ops can edit.
-- Each holiday has a **state** column; blank means a national holiday. The shipping clock uses the brand's **pickup state**.
-- Brand-side clocks count working days: **shipping** and **video review**.
-- Creator-side clocks stay in **calendar hours**: the 120-hour shooting clock (creators often shoot on Sundays).
+**Courier table (2026-11-16, built)** — an ops-editable table, not an enum. Each row has a **tracking-link pattern** so
+ops opens tracking in one click. Rows: Delhivery, Blue Dart, DTDC, Ecom Express, Xpressbees, Shadowfax, India Post,
+Ekart, Shiprocket (its AWB is fine).
+- **Local delivery** (Porter / Rapido / brand's own staff): **no tracking number; a handover photo is required.**
+- **Other:** courier name **and** tracking link both required (plus the tracking number, as for every shipment).
+- Top "Other" names each month get their own row.
 
-**The creator's three buttons**
-- **Received**, with a photo: the 120-hour clock starts.
-- **Not received**: the job moves to `DELIVERY_ISSUE` (type `NOT_RECEIVED`), the clock stays stopped, and the brand is asked for tracking.
-- **Damaged / wrong item**: the job moves to `DELIVERY_ISSUE` (type `DAMAGED` / `WRONG_ITEM`), the clock stays stopped, and the brand is asked to reship.
+**Duplicate tracking number (2026-11-16, built)** — compare after uppercasing and removing spaces and dashes.
 
-**Auto-start**
-- The clock starts by itself only when the courier shows **"Delivered"** and the creator reports no problem within 24 hours.
-- Without courier proof it never starts by itself: the creator is reminded, then ops checks.
-- In the pilot, ops marks "Delivered" by hand. A tracking service comes at about 50 jobs a month.
-
-**Missing parcel**
-- The brand has 48 hours to show tracking or reship at its own cost.
-- If the parcel is still missing **7 days after "Shipped"**, ops steps in. The creator may withdraw with no penalty, and the slot is replaced or refunded.
-- **False "not received":** courier "Delivered" (plus the delivery OTP where the courier uses one) is the proof. **Only ops** may set `FALSE_CLAIM`.
-
-**Reason codes.** Disputes and drop-outs carry a code, never free text. Each code has a fault party:
-
-| Code | Fault |
+| Same number already used by | Result |
 |---|---|
-| `FALSE_CLAIM` (ops only), `CREATOR_UNRESPONSIVE`, `CREATOR_WITHDREW` | CREATOR |
-| `BRAND_LATE_SHIP`, `WRONG_ITEM_SENT` | BRAND |
-| `COURIER_LOST`, `DAMAGED_IN_TRANSIT` | COURIER |
-| `OTHER` | NONE |
+| Same brand, same creator | Allowed (one parcel, two jobs) |
+| Same brand, different creator | Allowed, **flagged to ops** |
+| Different brand | **Blocked**: "This tracking number is already used. Check it or contact support." |
 
-The reliability score counts only CREATOR-fault codes. If `OTHER` goes above about 10% in a month, add a new code. Ops notes stay in the backend log only.
+**Reships (2026-11-16, built)** — **1 reship** goes through normally. The **2nd delivery problem on a job goes to ops
+only** (ops reships or releases the creator).
 
-**Brand ships late and the creator drops out:** a free replacement creator is offered first. If the brand wants a refund, the creator's amount comes back in cash and the Loofie fee as **credit** for its next booking. GST on the credit needs the CA.
+**The creator's three buttons** — Received (with photo, clock starts) · Not received · Damaged / wrong item (both:
+`DELIVERY_ISSUE`, clock stopped). Built.
 
-**Built (core-service, migration V3).** Until the open points below are answered, these defaults apply:
-- The review clock stays **120 calendar hours**. The 48h tracking window and the 7-day missing rule are **calendar** time.
-- Shipping deadlines skip **national** holidays only, because the brand pickup state is not known yet. The holiday table already has the state column.
-- The holiday table is seeded only with fixed-date national holidays (26 Jan, 15 Aug, 2 Oct, for 2026–27). **Ops must add Diwali, Holi and state holidays**, because their dates change every year.
-- The receipt photo is a reference string until F7 upload exists.
-- Default reason code when a creator withdraws: brand late → `BRAND_LATE_SHIP`; after `NOT_RECEIVED` → `COURIER_LOST`; after `DAMAGED` → `DAMAGED_IN_TRANSIT`; after `WRONG_ITEM` → `WRONG_ITEM_SENT`. Ops can pick another code with `OPS_RELEASE_CREATOR`.
-- Timer worker (`core-service` `timer` package, every 30s): moves jobs on when a deadline passes (accept timeout, auto-start after courier "Delivered", production expired, auto-approve, replacement expired → refund) and sends reminders and alerts once each as `JobDeadlineNotice` events. **Nobody delivers those notices yet:** a notification service (email / WhatsApp) still has to be built and must read them.
+**Damage found after "Received" (2026-11-16, built)**
+- Allowed **once per job, within 24 hours** of tapping Received, with a **photo or short video**.
+- The job goes back to `DELIVERY_ISSUE` and **the clock stops**.
+- If the brand reships: the 120 hours **restart** when the new product is received.
+- If ops decides the product is usable: the clock **resumes with the hours that were left**.
+- After 24 hours: no self-serve report; the creator goes through ops, and the clock keeps running unless ops pauses it.
 
-**Open**
-- **Founder sign-off:** Foundation v2 says production and review windows are both "120 calendar hours", and that the clock auto-starts 24 hours after the 3-day receipt reminder. The new rules change both (review in working days; auto-start only on courier "Delivered").
-- **Review clock length:** "5 working days"? And which state's holidays apply: the brand's?
-- **Units:** are the 48 hours (brand shows tracking) and the 7 days (missing parcel) calendar or working time?
-- **Fee credit vs "no cashback wallet in v1"** (product brief section 5): a fee credit is a stored balance. Who confirms that's allowed?
-- The brand's **pickup state** needs a brand pickup address (F1 brand profile, not built yet).
+**Auto-start** — only on courier "Delivered" with no problem reported in 24 hours. Built.
 
-## 48-hour production extension (F9)
+**Missing parcel** — brand has 48 hours to show tracking or reship; still missing 7 days after "Shipped" → ops,
+creator may withdraw with no penalty. **[CONFIRM]** the 7 days against real shipments. Built (calendar time).
 
-- The system grants it automatically, **once**, if the creator asks before the production deadline.
-- Any later extension is granted by ops only.
+**Who decides damage fault (2026-11-16)** — ops picks the **reason code**; the fault party always follows from the
+code, never chosen separately (built that way). Guide for ops: outer box crushed or wet → `DAMAGED_IN_TRANSIT`;
+outer box fine but product broken, leaking or expired → `DEFECTIVE_PRODUCT`; wrong product or shade →
+`WRONG_ITEM_SENT`; can't tell → `OTHER`. Brand-fault damage: the brand reships at its own cost.
 
-## Closing a job
+**Reason codes**
 
-- The job closes right after the creator is paid (`PAYOUT_COMPLETED` → `CLOSED`).
-- The brand's rating stays open for 7 days and does not block closing.
-- Send `job_outcome` on close, and send the rating separately when it arrives.
+| Code | Fault | Counts against creator? |
+|---|---|---|
+| `FALSE_CLAIM` (ops only), `CREATOR_UNRESPONSIVE`, `CREATOR_WITHDREW` | CREATOR | yes |
+| `BRAND_LATE_SHIP`, `WRONG_ITEM_SENT`, **`DEFECTIVE_PRODUCT` (new 2026-11-16)** | BRAND | no |
+| `COURIER_LOST`, `DAMAGED_IN_TRANSIT` | COURIER | no |
+| `OTHER` | NONE | no |
+
+If `OTHER` goes above about 10% in a month, add a code. Ops notes stay in the backend log only.
+
+**Brand ships late and the creator drops out** — free replacement first; if the brand wants money back: the
+creator's amount in cash + the Loofie fee as credit for its next booking. **[CONFIRM]** GST with the CA.
+
+## Extension (F9)
+
+- One automatic 48-hour extension if the creator asks before the deadline; any further extension is ops only. Built.
+
+## Approving a video and closing a job
+
+- Only BRAND_ADMIN approves (it releases payment). Team members can view, comment and request revisions.
+- Brand silent on a draft: auto-approved after **5 working days**.
+- The job closes after the creator is paid; the rating stays open 7 days and never blocks closing.
 
 ## Brand cancels after paying (per creator slot)
 
 | When | Refund to brand | Creator |
 |---|---|---|
 | Before the creator accepts | Full | — |
-| After accept, before the product ships | Refund minus the Loofie fee (if the brand shipped *late* and the creator dropped out: free replacement, or creator amount in cash + fee as credit; see F6) | **Open:** does the creator get anything? |
-| After the product is received, or the shoot has started | No refund for that slot | 50% kill fee |
+| After accept, before the product ships | Refund minus the Loofie fee | Open 4 |
+| After the product is received, or the shoot has started | No refund | 50% kill fee |
 
-- Exact numbers will be confirmed in the brand terms. Finance and tax treatment need the CA.
-- **Open:** the product is shipped but not yet received. Which row applies?
-- **Open:** does the brand cancel self-serve (BRAND_ADMIN), or by asking ops?
+Loofie's own failure (creator ghosts, no replacement): the slot is refunded **including** the fee.
+**[CONFIRM]** the numbers in the brand terms and with the CA.
 
-## Approvals
+## Refund and cancellation approvals (2026-11-16, answers F5 S3)
 
-- Only BRAND_ADMIN can approve, because approval releases payment.
-- BRAND_MEMBER can view, comment and request revisions.
-- An "approver" role may come later.
-- **Open:** may a BRAND_MEMBER request a *paid* revision (25%), since that charges the brand?
+Money moves **only after approval**, in two steps: **request → approve**. Nothing is paid at request time.
+
+| Case | Who approves |
+|---|---|
+| Any refund or cancellation **after a creator has accepted** | An **`OPS_LEAD`**, and **not the person who requested it** |
+| Refund of a slot **no creator has accepted yet**, up to ₹10,000 | One `OPS_LEAD` may request and approve |
+| A refund **above ₹25,000**, or **more than 3 refunds to one brand in 30 days** | An `OPS_LEAD` **plus the founder** |
+
+- An approved request **cannot be edited**; a change is a new request.
+- Every request carries a **reason code**, and the approver sees the brand's refund history.
+- **Daily refund summary** to the founder: count, total, who requested, who approved.
+- Pilot: with one ops person, the founder is the second approver. Limits are pilot numbers, reviewed after 30 orders.
+
+## Open
+
+1. **Founder sign-off.** Foundation v2 (row 12) says the review window is 120 **calendar** hours and the clock
+   auto-starts after the receipt reminder; DECISIONS.md says 5 **working** days and auto-start only on courier
+   "Delivered". Who is "the founder" in the approval table, and do they sign these off?
+2. **Units:** the 48 hours (brand shows tracking) and the 7 days (missing parcel): calendar or working time?
+   (Built as calendar time.)
+3. **Fee credit:** Aditya's message calls it "a manual one-time discount"; DECISIONS.md still says "credit for its
+   next booking" and the product brief says "no cashback wallet in v1". Which is it, and where is it recorded?
+4. **Cancel after accept, before shipping:** does the creator get anything? And the product **shipped but not
+   received**: which row applies? Does the brand cancel self-serve or through ops? (Not in DECISIONS.md.)
+5. **Refund reason codes:** "every request needs a reason code" — which list? The job codes above, or a refund list?
+6. **A paid revision (25%) by a BRAND_MEMBER:** allowed? ("Team members can request revisions" does not say.)
+7. **Backend A server:** capacity of `/ai/feedback`, a fixed production URL (today a quick tunnel whose address
+   changes on restart), and Core's API key.

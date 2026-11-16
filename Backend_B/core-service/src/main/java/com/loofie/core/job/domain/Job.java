@@ -99,6 +99,14 @@ public class Job {
     @Column(name = "dispute_review_due_at")
     private Instant disputeReviewDueAt;
 
+    /** Production time left when the clock was stopped by a damage report after receipt; null = not paused. */
+    @Column(name = "production_paused_seconds")
+    private Long productionPausedSeconds;
+
+    /** The creator's one self-serve damage report after receipt has been used. */
+    @Column(name = "late_damage_reported", nullable = false)
+    private boolean lateDamageReported;
+
     @Column(name = "created_at", nullable = false, updatable = false)
     private Instant createdAt;
 
@@ -186,12 +194,49 @@ public class Job {
         deliveryIssueAt = null;
     }
 
-    /** A new creator is put on the job: fresh shipment, and their own one free extension. */
+    /**
+     * Damage found after receipt: stops the production clock and keeps the time that was left, so "the product is
+     * usable after all" resumes where it stopped. Only the transition engine calls this.
+     */
+    public void pauseProduction(Instant now) {
+        if (productionDueAt == null) {
+            throw new IllegalStateException("Job " + id + " has no running production clock to pause");
+        }
+        productionPausedSeconds = Math.max(0, java.time.Duration.between(now, productionDueAt).toSeconds());
+    }
+
+    /** A reship means a fresh 120 hours on the new receipt: the paused time is dropped. */
+    public void dropPausedProduction() {
+        productionPausedSeconds = null;
+    }
+
+    /** The time left when the clock was paused, and forgets it (used once, by {@link JobDeadlines}). */
+    java.time.Duration takePausedProduction() {
+        Long left = productionPausedSeconds;
+        productionPausedSeconds = null;
+        return left == null ? null : java.time.Duration.ofSeconds(left);
+    }
+
+    public Long getProductionPausedSeconds() {
+        return productionPausedSeconds;
+    }
+
+    public void markLateDamageReported() {
+        lateDamageReported = true;
+    }
+
+    public boolean isLateDamageReported() {
+        return lateDamageReported;
+    }
+
+    /** A new creator is put on the job: fresh shipment, and their own one free extension and damage report. */
     public void resetForNewCreator() {
         creatorExtensionUsed = false;
         firstShippedAt = null;
         lastShippedAt = null;
         courierDeliveredAt = null;
+        productionPausedSeconds = null;
+        lateDamageReported = false;
         clearDeliveryIssue();
     }
 

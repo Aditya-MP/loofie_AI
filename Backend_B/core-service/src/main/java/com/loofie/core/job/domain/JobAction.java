@@ -17,6 +17,8 @@ public enum JobAction {
     AUTO_START_PRODUCTION,
     RESHIP,
     RESOLVE_FALSE_CLAIM,
+    /** Ops: the product reported damaged after receipt is usable; production resumes with the time that was left. */
+    OPS_RESUME_PRODUCTION,
     CREATOR_WITHDRAW,
     OPS_RELEASE_CREATOR,
     START_PRODUCTION,

@@ -21,6 +21,9 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 import com.loofie.core.calendar.app.HolidayAdminService;
+import com.loofie.core.calendar.app.HolidayAdminService.EditResult;
+import com.loofie.core.calendar.domain.HolidayChange;
+import com.loofie.core.calendar.domain.HolidayChange.Outcome;
 import com.loofie.core.calendar.domain.Holiday;
 import com.loofie.core.job.domain.Actor;
 
@@ -34,7 +37,7 @@ import com.loofie.core.job.domain.Actor;
 class OpsHolidayController {
 
     record HolidayRequest(@NotNull LocalDate date,
-                          @Pattern(regexp = "^[A-Za-z]{0,8}$") String stateCode,
+                          @Pattern(regexp = "^[A-Za-z-]{0,8}$") String stateCode, // checked against the list in the app layer
                           @NotBlank @Size(max = 100) String name) {
     }
 
@@ -49,10 +52,18 @@ class OpsHolidayController {
         return holidays.list(actor, year);
     }
 
+    /** Who changed which holiday and when, for holidays in that year (audit: "was it a holiday when...?"). */
+    @GetMapping("/changes")
+    List<HolidayChange> changes(Actor actor, @RequestParam int year) {
+        return holidays.changes(actor, year);
+    }
+
+    /** 201 when new, 200 otherwise. The body says what changed and which running deadlines it does not move. */
     @PutMapping
-    ResponseEntity<Void> upsert(Actor actor, @Valid @RequestBody HolidayRequest body) {
-        boolean created = holidays.upsert(actor, body.date(), body.stateCode(), body.name());
-        return ResponseEntity.status(created ? HttpStatus.CREATED : HttpStatus.OK).build();
+    ResponseEntity<EditResult> upsert(Actor actor, @Valid @RequestBody HolidayRequest body) {
+        EditResult result = holidays.upsert(actor, body.date(), body.stateCode(), body.name());
+        return ResponseEntity.status(result.outcome() == Outcome.CREATED ? HttpStatus.CREATED : HttpStatus.OK)
+                .body(result);
     }
 
     @DeleteMapping("/{date}")

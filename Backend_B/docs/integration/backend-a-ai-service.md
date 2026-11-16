@@ -110,3 +110,16 @@ Leave PostgreSQL 14 running if Aditya's service is run locally.
 - `CONFIRM_RECEIVED` may send `shipmentAttempt` (which parcel arrived). Event payloads now carry
   `shipmentAttempt`, plus `deliverySource`/`deliveredAt` on courier delivery and `olderShipmentReceived: true`
   when the first parcel turned up after a reship (ops should stop or recall the reship).
+
+## Changes on 2026-11-16 (F6 round 2: your DECISIONS.md section 5 answers)
+
+- **`DEFECTIVE_PRODUCT`** (BRAND) is a reason code now; ops picks it and `faultParty` always follows from the code.
+- **Damage found after "Received"**: a new `job_state_changed` **`IN_PRODUCTION` → `DELIVERY_ISSUE`** with
+  `issue_type: DAMAGED` and **`afterReceipt: true`** (creator once within 24 h with evidence, or ops). The production
+  clock is paused. It ends one of three ways: `RESHIP` (the 120 h restart on the new receipt), the new action
+  **`OPS_RESUME_PRODUCTION`** (`DELIVERY_ISSUE` → `IN_PRODUCTION`, "usable", the time left resumes), or
+  `OPS_RELEASE_CREATOR` with a code. A creator whose damage claim is resolved as `FALSE_CLAIM` resumes with the time
+  that was left, not a fresh 120 h.
+- **Reships:** the brand reships once; further reships are by ops (`actor_type: ops` on that `RESHIP`).
+- All of it checked against your mock at `e682442`: 15 events (incl. the above), every one accepted, every resend
+  a duplicate.

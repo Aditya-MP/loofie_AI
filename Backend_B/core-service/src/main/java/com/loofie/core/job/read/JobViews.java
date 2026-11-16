@@ -45,13 +45,20 @@ public final class JobViews {
     }
 
     /** One shipment attempt (F6). A reship adds another. */
+    /**
+     * @param trackingLink   one click for ops: the courier's pattern with the number, or the "Other" link; null if none
+     * @param trackingReuse  "SAME_BRAND_OTHER_CREATOR" when the number is on another creator's job of this brand: check it
+     */
     public record ShipmentView(int attempt, String courier, String trackingNumber, Instant shippedAt,
                                Instant courierDeliveredAt, String courierDeliveredSource,
-                               Instant courierDeliveredRecordedAt, Instant receivedAt, boolean hasReceiptPhoto) {
+                               Instant courierDeliveredRecordedAt, Instant receivedAt, boolean hasReceiptPhoto,
+                               String courierCode, String trackingLink, boolean hasHandoverPhoto, String trackingReuse,
+                               Instant damageReportedAt, boolean hasDamageEvidence) {
     }
 
-    public record JobDetail(JobSummary job, boolean freeRevisionUsed, String deliveryIssueType, List<Deadline> deadlines,
-                            List<AssignmentView> assignments, List<ShipmentView> shipments, List<EventView> timeline) {
+    /** @param productionPausedSeconds production time left while a damage report after receipt has the clock stopped */
+    public record JobDetail(JobSummary job, boolean freeRevisionUsed, String deliveryIssueType,
+                            Long productionPausedSeconds, List<Deadline> deadlines, List<AssignmentView> assignments, List<ShipmentView> shipments, List<EventView> timeline) {
     }
 
     /**

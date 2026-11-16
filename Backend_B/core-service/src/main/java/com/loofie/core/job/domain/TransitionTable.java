@@ -55,12 +55,16 @@ public final class TransitionTable {
         addThen(PRODUCT_SHIPPED, AUTO_START_PRODUCTION, PRODUCT_RECEIVED, START_PRODUCTION, SYSTEM);
         add(PRODUCT_SHIPPED, OPS_RELEASE_CREATOR, REPLACEMENT_NEEDED, OPS);
         // Resolving a delivery issue (production clock stays stopped while here)
-        add(DELIVERY_ISSUE, RESHIP, PRODUCT_SHIPPED, BRAND_ADMIN, BRAND_MEMBER); // at the brand's cost, new tracking
+        // At the brand's cost, new tracking. The brand reships once; after that only ops (DECISIONS.md section 5).
+        add(DELIVERY_ISSUE, RESHIP, PRODUCT_SHIPPED, BRAND_ADMIN, BRAND_MEMBER, OPS);
         addThen(DELIVERY_ISSUE, CONFIRM_RECEIVED, PRODUCT_RECEIVED, START_PRODUCTION, CREATOR); // it turned up after all
         addThen(DELIVERY_ISSUE, RESOLVE_FALSE_CLAIM, PRODUCT_RECEIVED, START_PRODUCTION, OPS); // courier proof beats the claim
         add(DELIVERY_ISSUE, CREATOR_WITHDRAW, REPLACEMENT_NEEDED, CREATOR); // only 7 days after the first "Shipped"
         add(DELIVERY_ISSUE, OPS_RELEASE_CREATOR, REPLACEMENT_NEEDED, OPS);
         add(PRODUCT_RECEIVED, START_PRODUCTION, IN_PRODUCTION, SYSTEM);
+        // Damage found after "Received": creator once within 24h with evidence, ops any time. The clock pauses.
+        add(IN_PRODUCTION, REPORT_DELIVERY_ISSUE, DELIVERY_ISSUE, CREATOR, OPS);
+        add(DELIVERY_ISSUE, OPS_RESUME_PRODUCTION, IN_PRODUCTION, OPS); // "usable after all": the time left resumes
 
         // Production and review (F7)
         add(IN_PRODUCTION, SUBMIT_DRAFT, DRAFT_SUBMITTED, CREATOR);

@@ -10,8 +10,8 @@ public record Holiday(LocalDate date, String stateCode, String name) {
 
     public static final String NATIONAL = "";
 
-    /** State codes are stored upper-case; null or blank means national. */
+    /** Null or blank means national; otherwise a validated upper-case state code (see {@link StateCodes}). */
     public static String normaliseState(String stateCode) {
-        return stateCode == null || stateCode.isBlank() ? NATIONAL : stateCode.trim().toUpperCase();
+        return StateCodes.normalise(stateCode);
     }
 }

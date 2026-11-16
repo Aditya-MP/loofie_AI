@@ -20,6 +20,7 @@ import com.loofie.core.common.Ids;
 import com.loofie.core.job.domain.Actor;
 import com.loofie.core.job.domain.ActorRole;
 import com.loofie.core.job.domain.Assignment;
+import com.loofie.core.job.domain.Courier;
 import com.loofie.core.job.domain.DeliverySource;
 import com.loofie.core.job.domain.Job;
 import com.loofie.core.job.domain.JobAction;
@@ -36,6 +37,8 @@ import com.loofie.core.job.domain.TransitionRule;
 import com.loofie.core.job.domain.TransitionTable;
 import com.loofie.core.job.domain.WorkingCalendar;
 import com.loofie.core.job.infra.AssignmentRepository;
+import com.loofie.core.job.infra.CourierRepository;
+import com.loofie.core.job.infra.TrackingNumberRepository;
 import com.loofie.core.job.infra.JobRepository;
 import com.loofie.core.job.infra.ShipmentRepository;
 
@@ -57,9 +60,14 @@ public class JobTransitionService {
     private final WorkingCalendar calendar;
     private final Clock clock;
     private final MeterRegistry meters;
+    private final CourierRepository couriers;
+    private final TrackingNumberRepository trackingNumbers;
 
     public JobTransitionService(JobRepository jobs, AssignmentRepository assignments, ShipmentRepository shipments,
-                                JobEventRecorder recorder, WorkingCalendar calendar, Clock clock, MeterRegistry meters) {
+                                JobEventRecorder recorder, WorkingCalendar calendar, Clock clock, MeterRegistry meters,
+                                CourierRepository couriers, TrackingNumberRepository trackingNumbers) {
+        this.couriers = couriers;
+        this.trackingNumbers = trackingNumbers;
         this.jobs = jobs;
         this.assignments = assignments;
         this.shipments = shipments;
@@ -231,8 +239,11 @@ public class JobTransitionService {
                 if (job.isDigitalOnly()) {
                     throw new TransitionGuardException("Digital-only job has no product to ship");
                 }
-                if (isBlank(details.courier()) || isBlank(details.trackingNumber())) {
-                    throw new TransitionGuardException("Shipping needs the courier name and tracking number");
+                // Courier, tracking number / handover photo / link and duplicate numbers: see parcel().
+            }
+            case OPS_RESUME_PRODUCTION -> {
+                if (job.getProductionPausedSeconds() == null) {
+                    throw new TransitionGuardException("Production was not paused by a damage report; nothing to resume");
                 }
             }
             case CONFIRM_RECEIVED -> {
@@ -317,11 +328,23 @@ public class JobTransitionService {
         switch (rule.action()) {
             case INVITE, APPROVE_SWAP -> job.resetForNewCreator(); // fresh shipment and their own extension
             case MARK_SHIPPED, RESHIP -> {
-                int attempt = (int) shipments.countByJobId(job.getId()) + 1;
-                shipments.save(Shipment.create(Ids.newId(), job.getId(), assignmentId, attempt, details.courier(),
-                        details.trackingNumber(), now, actor.userId()));
+                int before = (int) shipments.countByJobId(job.getId());
+                // One reship goes through normally; a second delivery problem is for ops (DECISIONS.md section 5).
+                if (rule.action() == JobAction.RESHIP && actor.role() != ActorRole.OPS && before >= MAX_BRAND_SHIPMENTS) {
+                    throw new TransitionGuardException("This job has already been reshipped once; ops handles a "
+                            + "second delivery problem (reship or replace the creator)");
+                }
+                int attempt = before + 1;
+                Shipment.Parcel parcel = parcel(job, details, assignmentId);
+                shipments.save(Shipment.create(Ids.newId(), job.getId(), assignmentId, attempt, parcel, now,
+                        actor.userId()));
                 job.recordShipped(now);
+                job.dropPausedProduction(); // a new product: the 120 hours restart on its receipt
                 facts.put("shipmentAttempt", attempt);
+                facts.put("courierCode", parcel.courierCode());
+                if (parcel.trackingReuse() != null) {
+                    facts.put("trackingReused", parcel.trackingReuse()); // ops checks it (usually a copy-paste slip)
+                }
             }
             case COURIER_DELIVERED -> {
                 Shipment latest = latestShipment(job);
@@ -344,13 +367,153 @@ public class JobTransitionService {
                     facts.put("olderShipmentReceived", true);
                 }
             }
-            case REPORT_DELIVERY_ISSUE -> job.recordDeliveryIssue(details.issueType(), now);
+            case REPORT_DELIVERY_ISSUE -> {
+                if (job.getStatus() == JobStatus.IN_PRODUCTION) {
+                    damageAfterReceipt(job, actor, details, now, facts);
+                }
+                job.recordDeliveryIssue(details.issueType(), now);
+            }
             case RESOLVE_FALSE_CLAIM -> job.clearDeliveryIssue();
+            case OPS_RESUME_PRODUCTION -> {
+                facts.put("resumedSeconds", job.getProductionPausedSeconds());
+                job.clearDeliveryIssue(); // JobDeadlines gives back the time that was left
+            }
             default -> {
                 // nothing to record
             }
         }
         return facts;
+    }
+
+    /** The first shipment plus one reship; after that only ops reships. */
+    static final int MAX_BRAND_SHIPMENTS = 2;
+    private static final int MAX_COURIER_NAME = 64;
+    private static final int MAX_TRACKING_LINK = 300;
+
+    /**
+     * What was shipped, checked against the courier table: TRACKED needs a number, LOCAL a handover photo, OTHER a
+     * name and an https link. A number is checked against other jobs (duplicate rules, DECISIONS.md section 5).
+     */
+    private Shipment.Parcel parcel(Job job, TransitionDetails d, UUID assignmentId) {
+        Courier courier = courier(d);
+        String number = isBlank(d.trackingNumber()) ? null : d.trackingNumber().trim();
+        String name = courier.name();
+        String link = null;
+        String handover = null;
+        switch (courier.kind()) {
+            case TRACKED -> {
+                if (number == null) {
+                    throw new TransitionGuardException("Shipping with " + courier.name() + " needs the tracking number");
+                }
+            }
+            case LOCAL -> {
+                if (!Shipment.isHandoverPhotoKey(d.handoverPhotoRef())) {
+                    throw new TransitionGuardException("Local delivery has no tracking number, so it needs a handover "
+                            + "photo (handovers/<id>.jpg, .jpeg, .png, .heic or .webp)");
+                }
+                handover = d.handoverPhotoRef();
+                if (!isBlank(d.courier())) {
+                    name = d.courier().trim(); // e.g. "Porter"
+                }
+            }
+            case OTHER -> {
+                // "Shipped" always needs a number (DECISIONS.md section 5); "Other" adds its name and a link on top.
+                if (number == null) {
+                    throw new TransitionGuardException("Shipping needs the tracking number");
+                }
+                if (isBlank(d.courier())) {
+                    throw new TransitionGuardException("For a courier that is not in the list, give its name");
+                }
+                link = d.trackingLink() == null ? null : d.trackingLink().trim();
+                if (link == null || !link.startsWith("https://") || link.length() > MAX_TRACKING_LINK
+                        || link.chars().anyMatch(Character::isWhitespace)) {
+                    throw new TransitionGuardException("For a courier that is not in the list, give its tracking link "
+                            + "(https://...), so ops can check the parcel");
+                }
+                name = d.courier().trim();
+            }
+        }
+        if (name.length() > MAX_COURIER_NAME) {
+            throw new TransitionGuardException("The courier name is too long (at most " + MAX_COURIER_NAME + " characters)");
+        }
+        String reuse = number == null ? null : trackingReuse(job, number, assignmentId);
+        return new Shipment.Parcel(courier.code(), name, number, link, handover, reuse);
+    }
+
+    /** The chosen courier; clients that still send only a name are matched by name. */
+    private Courier courier(TransitionDetails d) {
+        if (!isBlank(d.courierCode())) {
+            return couriers.find(d.courierCode().trim().toUpperCase()).filter(Courier::active)
+                    .orElseThrow(() -> new TransitionGuardException("Unknown courier " + d.courierCode()
+                            + "; pick one from the list, or OTHER with its name and tracking link"));
+        }
+        if (!isBlank(d.courier())) {
+            return couriers.findByName(d.courier()).orElseThrow(() -> new TransitionGuardException(
+                    "Courier \"" + d.courier().trim() + "\" is not in the list; pick one, or OTHER with its name and "
+                            + "tracking link"));
+        }
+        throw new TransitionGuardException("Shipping needs a courier");
+    }
+
+    /**
+     * Duplicate tracking numbers, compared normalised: another brand's job → blocked; the same brand but another
+     * creator → allowed and flagged; the same brand and creator (one parcel, two jobs) → allowed. Under a lock on the
+     * number, so two brands entering it at the same moment cannot both pass.
+     */
+    private String trackingReuse(Job job, String number, UUID assignmentId) {
+        String normalised = Courier.normaliseTrackingNumber(number);
+        trackingNumbers.lock(normalised);
+        UUID creator = assignments.findById(assignmentId).map(Assignment::getCreatorId).orElse(null);
+        String reuse = null;
+        for (TrackingNumberRepository.Use use : trackingNumbers.uses(normalised)) {
+            if (use.jobId().equals(job.getId())) {
+                continue; // this job's own earlier attempt
+            }
+            if (!use.brandOrgId().equals(job.getBrandOrgId())) {
+                throw new TransitionGuardException("This tracking number is already used. Check it or contact support.");
+            }
+            if (!use.creatorId().equals(creator)) {
+                reuse = "SAME_BRAND_OTHER_CREATOR";
+            }
+        }
+        return reuse;
+    }
+
+    /**
+     * Damage found after "Received" (DECISIONS.md section 5): the creator once per job, within 24 hours of tapping
+     * Received, with a photo or video; ops at any time. The production clock stops and keeps the time left.
+     */
+    private void damageAfterReceipt(Job job, Actor actor, TransitionDetails details, Instant now,
+                                    Map<String, Object> facts) {
+        Shipment received = shipments.findByJobIdOrderByAttempt(job.getId()).stream()
+                .filter(Shipment::isReceived)
+                .max(java.util.Comparator.comparing(Shipment::getReceivedAt))
+                .orElse(null);
+        if (actor.role() == ActorRole.CREATOR) {
+            if (details.issueType() != com.loofie.core.job.domain.DeliveryIssueType.DAMAGED) {
+                throw new TransitionGuardException("After receipt only damage can be reported here; ask ops");
+            }
+            if (job.isLateDamageReported()) {
+                throw new TransitionGuardException("Damage after receipt can be reported once per job; ask ops");
+            }
+            if (received == null || now.isAfter(received.getReceivedAt().plus(JobDeadlines.LATE_DAMAGE_WINDOW))) {
+                throw new TransitionGuardException("Damage can be reported within 24 hours of tapping Received; "
+                        + "after that, ask ops");
+            }
+            if (!Shipment.isDamageEvidenceKey(details.evidenceRef())) {
+                throw new TransitionGuardException("Reporting damage needs a photo or short video of it "
+                        + "(damage/<id>.jpg, .jpeg, .png, .heic, .webp, .mp4 or .mov)");
+            }
+            job.markLateDamageReported();
+        } else if (details.evidenceRef() != null && !Shipment.isDamageEvidenceKey(details.evidenceRef())) {
+            throw new TransitionGuardException("The evidence must be an uploaded photo or video key (damage/<id>...)");
+        }
+        if (received != null) {
+            received.markDamageReported(now, details.evidenceRef());
+        }
+        job.pauseProduction(now);
+        facts.put("afterReceipt", true);
+        facts.put("pausedSeconds", job.getProductionPausedSeconds());
     }
 
     /** Ops must say what the "Delivered" fact is based on; only the tracking integration (SYSTEM) may say TRACKING_API. */

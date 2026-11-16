@@ -327,7 +327,7 @@ class DeadlineWorkerTest {
         Seeded seeded = fixtures.jobIn(JobStatus.CREATOR_ACCEPTED);
         engine.transition(TransitionCommand.of(seeded.jobId(), JobAction.MARK_SHIPPED,
                         Actor.brandAdmin(UUID.randomUUID(), seeded.brandOrgId()), null)
-                .with(TransitionDetails.shipment("Delhivery", "DL555")));
+                .with(TransitionDetails.shipment("Delhivery", JobFixtures.trackingNumber())));
         return seeded.jobId();
     }
 

@@ -98,12 +98,13 @@ class ProductDeliveryTest {
         assertThatThrownBy(() -> engine.transition(jobId, JobAction.MARK_SHIPPED, brand, null))
                 .isInstanceOf(TransitionGuardException.class);
 
-        ship(jobId, "Delhivery", "DL1234567890");
+        String tracking = JobFixtures.trackingNumber();
+        ship(jobId, "Delhivery", tracking);
 
         Shipment s = shipments.findTopByJobIdOrderByAttemptDesc(jobId).orElseThrow();
         assertThat(s.getAttempt()).isEqualTo(1);
         assertThat(s.getCourier()).isEqualTo("Delhivery");
-        assertThat(s.getTrackingNumber()).isEqualTo("DL1234567890");
+        assertThat(s.getTrackingNumber()).isEqualTo(tracking);
         assertThat(job(jobId).getShipDueAt()).isNull();
         assertThat(job(jobId).getReceiptPromptAt()).isEqualTo(clock.instant().plus(JobDeadlines.RECEIPT_PROMPT_AFTER));
     }
@@ -158,7 +159,7 @@ class ProductDeliveryTest {
 
         clock.advance(Duration.ofDays(1));
         TransitionResult r = engine.transition(TransitionCommand.of(jobId, JobAction.RESHIP, brand, null)
-                .with(TransitionDetails.shipment("Blue Dart", "BD998877")));
+                .with(TransitionDetails.shipment("Blue Dart", JobFixtures.trackingNumber())));
 
         assertThat(r.to()).isEqualTo(JobStatus.PRODUCT_SHIPPED);
         assertThat(shipments.findByJobIdOrderByAttempt(jobId)).extracting(Shipment::getCourier)
@@ -361,7 +362,7 @@ class ProductDeliveryTest {
         UUID jobId = shippedJob();
         report(jobId, DeliveryIssueType.NOT_RECEIVED);
         engine.transition(TransitionCommand.of(jobId, JobAction.RESHIP, brand, null)
-                .with(TransitionDetails.shipment("Blue Dart", "BD99887766")));
+                .with(TransitionDetails.shipment("Blue Dart", JobFixtures.trackingNumber())));
 
         assertThatThrownBy(() -> engine.transition(TransitionCommand.of(jobId, JobAction.CONFIRM_RECEIVED, creator, null)
                 .with(TransitionDetails.received(JobFixtures.photoKey(), 3))))
@@ -388,7 +389,7 @@ class ProductDeliveryTest {
     private UUID shippedJob() {
         UUID jobId = acceptedJob();
         clock.advance(Duration.ofDays(1));
-        ship(jobId, "Delhivery", "DL1234567890");
+        ship(jobId, "Delhivery", JobFixtures.trackingNumber());
         return jobId;
     }
 

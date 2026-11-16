@@ -59,6 +59,7 @@ public class AiFeedbackMapper {
         putIfPresent(out, "deliverySource", p.get("deliverySource"));
         putIfPresent(out, "deliveredAt", p.get("deliveredAt"));
         putIfPresent(out, "olderShipmentReceived", p.get("olderShipmentReceived"));
+        putIfPresent(out, "afterReceipt", p.get("afterReceipt")); // damage found after "Received"
         return out;
     }
 

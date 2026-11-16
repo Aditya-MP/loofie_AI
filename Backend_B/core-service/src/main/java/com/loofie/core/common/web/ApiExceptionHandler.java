@@ -17,6 +17,7 @@ import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 import org.springframework.web.servlet.mvc.method.annotation.ResponseEntityExceptionHandler;
 
+import com.loofie.core.calendar.domain.StateCodes.InvalidStateCodeException;
 import com.loofie.core.common.Ids;
 import com.loofie.core.common.ServiceBusyException;
 import com.loofie.core.job.domain.JobExceptions.ActorNotAllowedException;
@@ -118,6 +119,11 @@ class ApiExceptionHandler extends ResponseEntityExceptionHandler {
     @ExceptionHandler(InvalidQueryException.class)
     ProblemDetail invalidQuery(InvalidQueryException e) {
         return problem(HttpStatus.BAD_REQUEST, "invalid-query", e.getMessage());
+    }
+
+    @ExceptionHandler(InvalidStateCodeException.class)
+    ProblemDetail invalidStateCode(InvalidStateCodeException e) {
+        return problem(HttpStatus.UNPROCESSABLE_CONTENT, "invalid-state-code", e.getMessage());
     }
 
     /**

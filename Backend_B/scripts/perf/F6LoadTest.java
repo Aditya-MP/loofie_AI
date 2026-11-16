@@ -42,7 +42,7 @@ public class F6LoadTest {
                 .header("X-Dev-Org-Id", j.brand()).header("Idempotency-Key", UUID.randomUUID().toString())
                 .header("Content-Type", "application/json")
                 .POST(HttpRequest.BodyPublishers.ofString(
-                        "{\"action\":\"MARK_SHIPPED\",\"courier\":\"Delhivery\",\"trackingNumber\":\"DL" + j.id().substring(0, 8) + "\"}"))
+                        "{\"action\":\"MARK_SHIPPED\",\"courier\":\"Delhivery\",\"trackingNumber\":\"DL" + j.id().replace("-", "") + "\"}"))
                 .timeout(Duration.ofSeconds(10)).build());
         boolean receive = phase("CONFIRM_RECEIVED", rps, jobs, http, j -> HttpRequest.newBuilder(transitions(j))
                 .header("X-Dev-Role", "CREATOR").header("X-Dev-User-Id", j.creator())

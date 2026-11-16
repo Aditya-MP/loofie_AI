@@ -82,6 +82,11 @@ public class JobFixtures {
         return "receipts/" + UUID.randomUUID() + ".jpg";
     }
 
+    /** A tracking number no other job uses (duplicate numbers across brands are blocked). */
+    public static String trackingNumber() {
+        return "DL" + UUID.randomUUID().toString().replace("-", "").substring(0, 12).toUpperCase();
+    }
+
     /** Whether {@link #jobIn} puts an active creator on a job in this state. */
     public static boolean hasActiveCreator(JobStatus s) {
         return switch (s) {

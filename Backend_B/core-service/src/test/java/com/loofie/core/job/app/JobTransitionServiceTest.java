@@ -68,7 +68,7 @@ class JobTransitionServiceTest {
         assertThat(job(jobId).getAcceptDueAt()).isNull();
 
         engine.transition(TransitionCommand.of(jobId, JobAction.MARK_SHIPPED, brand, null)
-                .with(TransitionDetails.shipment("Delhivery", "DL123456789IN")));
+                .with(TransitionDetails.shipment("Delhivery", JobFixtures.trackingNumber())));
         assertThat(job(jobId).getReceiptOpsCheckAt()).isEqualTo(clock.instant().plus(JobDeadlines.RECEIPT_OPS_CHECK_AFTER));
         assertThat(job(jobId).getShipDueAt()).isNull();
 

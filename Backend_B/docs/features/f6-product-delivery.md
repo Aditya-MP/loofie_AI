@@ -202,3 +202,38 @@ The first 300 requests after start-up had p95 279 ms (cold start), the same patt
 
 **Other limits:** pickup-state holidays need the brand profile (F1); real photo upload is F7 (it must issue keys in
 the `receipts/<uuid>.<ext>` format); courier tracking is by hand until a tracking service is integrated.
+
+---
+
+## Round 2 (2026-11-16): the five decisions answered (DECISIONS.md section 5, backend-a `e682442`)
+
+### Plan
+
+| # | Decision | Design | Layers |
+|---|---|---|---|
+| A | `DEFECTIVE_PRODUCT` = BRAND | Enum value; `job_events.reason_code` CHECK widened (V10) | domain, DB |
+| B | Duplicate tracking number | Normalised number (upper case, no spaces or dashes) stored on the shipment and indexed. On ship/reship: other brand → **422 block** with the agreed message; same brand, other creator → allowed, `tracking_reuse = 'SAME_BRAND_OTHER_CREATOR'` on the shipment (ops detail) and `trackingReused` in the event; same brand and creator → allowed. Checked under a transaction-scoped advisory lock on the number, so two brands shipping the same number at the same moment cannot both pass | app, infra, DB |
+| C | Reships | Brand may `RESHIP` once (2 shipments in total). After that, **only ops** can reship (ops enters the details) or release. Ops added to `RESHIP` | domain, app |
+| D | Courier table (OTHER also needs the number: "Shipped" always does) | `couriers` (code, name, kind TRACKED / LOCAL / OTHER, tracking-link pattern with `{tracking}`, active), ops-editable (`/api/core/ops/couriers`, OPS only), active list for brands (`GET /api/core/couriers`). Shipments get `courier_code`, `tracking_url` (Other), `handover_photo_ref` (Local). Rules: TRACKED needs a tracking number; LOCAL needs a handover photo key (`handovers/<uuid>.<jpg|jpeg|png|heic|webp>`), no number; OTHER needs a name, the number and an `https://` tracking link. `tracking_number` becomes nullable (Local), with a CHECK that a shipment has a number or a handover photo. Old clients sending only `courier` text are matched by name, else 422. **Seeded with the agreed names and no link patterns: ops adds each courier's pattern** (not written from memory). Detail view shows a one-click tracking link | all |
+| E | Damage after "Received" | Creator may report `DAMAGED` from `IN_PRODUCTION` **once per job, within 24 h of the received timestamp**, with an evidence key (`damage/<uuid>.<jpg|jpeg|png|heic|webp|mp4|mov>`). The job goes to `DELIVERY_ISSUE`; the remaining production time is stored (`production_paused_seconds`) and the clock stops. No "missing parcel" timer (the product arrived). Exits: brand/ops `RESHIP` → the 120 h restart on the new receipt (stored time cleared); new ops action `OPS_RESUME_PRODUCTION` ("usable") → `IN_PRODUCTION` with the remaining time; `RESOLVE_FALSE_CLAIM` also resumes with the remaining time (a false claim must not earn a fresh 120 h); `OPS_RELEASE_CREATOR` with a code. After 24 h, or after the one report: creator refused ("ask ops"); **ops may pause the same way at any time** | domain, app, DB |
+
+Out of scope: refund approvals (own feature), tracking service, notifications to ops (events and the detail view
+carry the flags; delivery to a person needs the notification service).
+
+### Built, tested, measured (2026-11-16)
+
+All five built as planned, with one correction found by a test: **"Other" also needs the tracking number** (the
+first design made it optional, which would have broken the "every shipment has a number or a handover photo" rule;
+DECISIONS.md says "Shipped" always needs a number).
+
+| Proof | Result |
+|---|---|
+| `DeliveryRulesRound2Test` (15) | Defective product = BRAND from the code; other brand's number blocked even typed as " dl-12 34 "; same brand + creator allowed; same brand, other creator flagged (shipment, event, ops detail); **6 brands entering one number at the same moment: exactly 1 succeeds**; brand reships once, ops after; LOCAL needs a handover photo key, OTHER a name + number + https link; tracking link URL-encoded into the courier pattern; unknown / switched-off courier refused, old clients matched by name; only ops edits couriers, LOCAL/OTHER fixed; damage within 24 h pauses the clock exactly, two days of ops review cost the creator nothing, "usable" resumes with the time left; reship restarts the full 120 h; false damage claim resumes the time left; once per job, 24 h, evidence required, only damage after receipt; ops may pause any time; evidence and paused time visible to ops |
+| Contract test vs Backend A's mock (`e682442`) | 15 events incl. late damage, `DEFECTIVE_PRODUCT`, resume: all accepted, resends duplicates |
+| Full suite | **177 of 177** (contract test included) |
+| F6 load, 1M jobs, after a warm-up, 300 rps, 6,000 each | `MARK_SHIPPED` (now with courier lookup, lock, duplicate check) **p95 5 ms**, `CONFIRM_RECEIVED` p95 3 ms, 0 errors, PASS |
+
+**Known limits:** courier tracking-link patterns are empty until ops adds them (not written from memory); the
+"flagged to ops" duplicate and a second delivery problem reach ops through the job detail and events only, until the
+notification service exists; a job that auto-started (no "Received" tap) has no self-serve late-damage window (ops
+only); handover photos and damage evidence are keys only until F7 upload exists.
