@@ -35,6 +35,14 @@ public final class JobDeadlines {
     }
 
     public static void apply(Job job, Instant enteredAt, WorkingCalendar calendar) {
+        apply(job, enteredAt, calendar, null);
+    }
+
+    /**
+     * @param reviewWorkingDays null = the brand's review window is {@link #REVIEW_WINDOW} (120 calendar hours,
+     *                          Foundation v2); a number = that many working days (DECISIONS.md: 5), once signed off
+     */
+    public static void apply(Job job, Instant enteredAt, WorkingCalendar calendar, Integer reviewWorkingDays) {
         Instant accept = null;
         Instant shipReminder = null;
         Instant shipDue = null;
@@ -82,7 +90,8 @@ public final class JobDeadlines {
                 java.time.Duration left = job.takePausedProduction();
                 production = enteredAt.plus(left != null ? left : PRODUCTION_WINDOW);
             }
-            case IN_REVIEW -> review = enteredAt.plus(REVIEW_WINDOW);
+            case IN_REVIEW -> review = reviewWorkingDays == null ? enteredAt.plus(REVIEW_WINDOW)
+                    : calendar.endOfWorkingDays(enteredAt, reviewWorkingDays, null); // brand-side clock: working days
             case REPLACEMENT_NEEDED -> replacement = enteredAt.plus(REPLACEMENT_WINDOW);
             // Ops-side clock: working days, national holidays (ops is not tied to a brand state).
             case DISPUTED -> disputeReview = calendar.endOfWorkingDays(enteredAt, DISPUTE_REVIEW_WORKING_DAYS, null);

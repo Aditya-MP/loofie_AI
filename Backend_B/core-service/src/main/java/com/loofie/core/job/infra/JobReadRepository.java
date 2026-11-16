@@ -143,6 +143,20 @@ public class JobReadRepository {
                 .list();
     }
 
+    /** Whether any creator ever accepted this job (the refund four-eyes rule). Indexed by job. */
+    public boolean everAccepted(UUID jobId) {
+        return jdbc.sql("SELECT EXISTS (SELECT 1 FROM job_events WHERE job_id = :id AND action = 'ACCEPT')")
+                .param("id", jobId).query(Boolean.class).single();
+    }
+
+    /** The latest reason code recorded on the job, if any. */
+    public Optional<String> lastReasonCode(UUID jobId) {
+        return jdbc.sql("""
+                SELECT reason_code FROM job_events WHERE job_id = :id AND reason_code IS NOT NULL
+                ORDER BY occurred_at DESC, job_version DESC NULLS LAST LIMIT 1
+                """).param("id", jobId).query(String.class).optional();
+    }
+
     public List<EventView> events(UUID jobId) {
         return jdbc.sql("""
                 SELECT event_id, job_version, action, from_state, to_state, actor_type, actor_id, reason,

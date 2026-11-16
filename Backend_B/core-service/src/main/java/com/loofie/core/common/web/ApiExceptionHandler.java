@@ -19,6 +19,7 @@ import org.springframework.web.servlet.mvc.method.annotation.ResponseEntityExcep
 
 import com.loofie.core.calendar.domain.StateCodes.InvalidStateCodeException;
 import com.loofie.core.common.Ids;
+import com.loofie.core.refund.domain.RefundRuleException;
 import com.loofie.core.common.ServiceBusyException;
 import com.loofie.core.job.domain.JobExceptions.ActorNotAllowedException;
 import com.loofie.core.job.domain.JobExceptions.IllegalTransitionException;
@@ -119,6 +120,11 @@ class ApiExceptionHandler extends ResponseEntityExceptionHandler {
     @ExceptionHandler(InvalidQueryException.class)
     ProblemDetail invalidQuery(InvalidQueryException e) {
         return problem(HttpStatus.BAD_REQUEST, "invalid-query", e.getMessage());
+    }
+
+    @ExceptionHandler(RefundRuleException.class)
+    ProblemDetail refundRule(RefundRuleException e) {
+        return problem(HttpStatus.UNPROCESSABLE_CONTENT, "refund-rule", e.getMessage());
     }
 
     @ExceptionHandler(InvalidStateCodeException.class)

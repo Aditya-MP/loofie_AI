@@ -62,6 +62,16 @@ public class JobTransitionService {
     private final MeterRegistry meters;
     private final CourierRepository couriers;
     private final TrackingNumberRepository trackingNumbers;
+    /** {@code loofie.deadlines.review-working-days}: empty = 120 calendar hours (today); 5 = DECISIONS.md, once signed off. */
+    private Integer reviewWorkingDays;
+
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    void setReviewWorkingDays(@org.springframework.beans.factory.annotation.Value("${loofie.deadlines.review-working-days:#{null}}") Integer days) {
+        if (days != null && (days < 1 || days > 20)) {
+            throw new IllegalArgumentException("loofie.deadlines.review-working-days must be 1-20 or empty");
+        }
+        this.reviewWorkingDays = days;
+    }
 
     public JobTransitionService(JobRepository jobs, AssignmentRepository assignments, ShipmentRepository shipments,
                                 JobEventRecorder recorder, WorkingCalendar calendar, Clock clock, MeterRegistry meters,
@@ -96,6 +106,10 @@ public class JobTransitionService {
         List<UUID> eventIds = new ArrayList<>();
         TransitionRule rule = requireRule(job.getStatus(), cmd.action());
         authorize(job, rule, cmd.actor(), cmd.reason(), cmd.details());
+        requireRefundApproval(job, rule, cmd);
+        if (cmd.refundRequestId() != null) {
+            job.releaseRefundHold();
+        }
         UUID eventId = applyStep(job, rule, cmd.actor(), cmd.reason(), cmd.creatorId(), cmd.details(), correlationId,
                 null);
         eventIds.add(eventId);
@@ -127,15 +141,42 @@ public class JobTransitionService {
         return TransitionTable.find(from, action).orElseThrow(() -> new IllegalTransitionException(from, action));
     }
 
+    /**
+     * Money moves only after approval (DECISIONS.md section 6): a cancellation or refund runs only from an approved
+     * refund request, and while a request is open the job is held so nothing changes the case it was approved for.
+     * Cancelling an unpaid order moves no money and needs no request.
+     */
+    private static void requireRefundApproval(Job job, TransitionRule rule, TransitionCommand cmd) {
+        if (cmd.refundRequestId() != null) {
+            return;
+        }
+        if (isMoneyAction(job.getStatus(), rule.action())) {
+            throw new TransitionGuardException(rule.action() + " moves money: create a refund request "
+                    + "(POST /api/core/ops/jobs/" + job.getId() + "/refund-requests); it runs once approved");
+        }
+        if (job.isRefundHold()) {
+            throw new TransitionGuardException("A refund request is open for this job; approve, reject or withdraw it "
+                    + "first");
+        }
+    }
+
+    public static boolean isMoneyAction(JobStatus from, JobAction action) {
+        return switch (action) {
+            case CANCEL -> from != JobStatus.AWAITING_PAYMENT;
+            case RESOLVE_REFUND, REPLACEMENT_EXPIRED -> true;
+            default -> false;
+        };
+    }
+
     private void authorize(Job job, TransitionRule rule, Actor actor, String reason, TransitionDetails details) {
-        if (!rule.roles().contains(actor.role())) {
+        if (!rule.roles().contains(actor.role().acting())) {
             throw new ActorNotAllowedException(actor.role() + " may not " + rule.action() + " (allowed: " + rule.roles() + ")");
         }
-        if (actor.role() == ActorRole.OPS && (reason == null || reason.isBlank())) {
+        if (actor.role().isOps() && (reason == null || reason.isBlank())) {
             throw new TransitionGuardException("Ops actions need a reason");
         }
         // Reason codes go to the AI log and can count against a creator, so only ops may choose one.
-        if (details.reasonCode() != null && actor.role() != ActorRole.OPS) {
+        if (details.reasonCode() != null && !actor.role().isOps()) {
             throw new ActorNotAllowedException("Only ops may set a reason code");
         }
     }
@@ -146,8 +187,8 @@ public class JobTransitionService {
      * see every job.
      */
     private void requireInScope(Job job, Actor actor) {
-        boolean inScope = switch (actor.role()) {
-            case OPS, SYSTEM -> true;
+        boolean inScope = switch (actor.role().acting()) {
+            case OPS, OPS_LEAD, FOUNDER, SYSTEM -> true; // acting() never returns the senior roles
             case BRAND_ADMIN, BRAND_MEMBER -> job.getBrandOrgId().equals(actor.orgId());
             case CREATOR -> actor.userId().equals(activeAssignment(job).map(Assignment::getCreatorId).orElse(null));
         };
@@ -176,7 +217,7 @@ public class JobTransitionService {
             }
             JobDeadlines.extendProduction(job, now); // same state: keep the clock running, just move it
         } else {
-            JobDeadlines.apply(job, now, calendar);
+            JobDeadlines.apply(job, now, calendar, reviewWorkingDays);
         }
         jobs.saveAndFlush(job); // optimistic lock check happens here; bumps version
         countAfterCommit(rule.action(), actor);
@@ -330,7 +371,7 @@ public class JobTransitionService {
             case MARK_SHIPPED, RESHIP -> {
                 int before = (int) shipments.countByJobId(job.getId());
                 // One reship goes through normally; a second delivery problem is for ops (DECISIONS.md section 5).
-                if (rule.action() == JobAction.RESHIP && actor.role() != ActorRole.OPS && before >= MAX_BRAND_SHIPMENTS) {
+                if (rule.action() == JobAction.RESHIP && !actor.role().isOps() && before >= MAX_BRAND_SHIPMENTS) {
                     throw new TransitionGuardException("This job has already been reshipped once; ops handles a "
                             + "second delivery problem (reship or replace the creator)");
                 }

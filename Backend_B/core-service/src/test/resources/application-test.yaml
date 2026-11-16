@@ -19,3 +19,5 @@ loofie:
     enabled: false                  # tests call DeadlineWorker.runOnce() directly
   retention:
     enabled: false                  # tests call RetentionJob.runOnce() directly
+  refunds:
+    daily-summary: false            # tests call RefundSummary.sendYesterday() directly

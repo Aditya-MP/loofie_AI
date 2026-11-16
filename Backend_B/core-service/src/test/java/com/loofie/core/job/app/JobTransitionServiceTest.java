@@ -270,11 +270,16 @@ class JobTransitionServiceTest {
 
     @Test
     void opsActionsNeedAReason() {
-        Seeded seeded = fixtures.jobIn(JobStatus.PAID);
+        // Unpaid: no money moves, so ops cancels directly (with a reason).
+        Seeded seeded = fixtures.jobIn(JobStatus.AWAITING_PAYMENT);
         assertThatThrownBy(() -> engine.transition(seeded.jobId(), JobAction.CANCEL, ops, " "))
                 .isInstanceOf(TransitionGuardException.class);
         assertThat(engine.transition(seeded.jobId(), JobAction.CANCEL, ops, "brand withdrew").to())
                 .isEqualTo(JobStatus.CANCELLED);
+        // Paid: money moves, so only through an approved refund request.
+        Seeded paid = fixtures.jobIn(JobStatus.PAID);
+        assertThatThrownBy(() -> engine.transition(paid.jobId(), JobAction.CANCEL, ops, "brand withdrew"))
+                .isInstanceOf(TransitionGuardException.class).hasMessageContaining("refund request");
     }
 
     @Test

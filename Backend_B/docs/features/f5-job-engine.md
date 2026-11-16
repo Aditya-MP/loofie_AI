@@ -253,3 +253,76 @@ users, plus managed PostgreSQL with enough memory to hold the hot indexes.
 6. Ops list throughput is about 80 list calls per second per instance (see 14).
 7. "Creator moved back to NEW level" (F9) waits for creator profiles.
 8. The F6 rules that differ from Foundation v2 are provisional until the founder signs off.
+
+---
+
+## Round 2 (2026-11-16): "completely done" = brand motive + backend
+
+Research for the last F5 work, judged by two questions: *does it keep Loofie's promise to brands, creators and
+ops?* and *is it proven?* Sources: DECISIONS.md sections 5–6 (backend-a `e682442`), `docs/product-decisions.md`.
+
+### What breaks a promise today
+
+| # | Finding | Who is hurt | Today |
+|---|---|---|---|
+| M1 | **Money moves without approval.** `RESOLVE_REFUND` (ops alone) and `CANCEL` (ops alone) move the job to `REFUNDED` / `CANCELLED` at once; the timer's `REPLACEMENT_EXPIRED` refunds with **nobody** approving. DECISIONS.md: money moves only after request → approve, four-eyes after acceptance. | Loofie (a mistaken or social-engineered refund: "the brand called and asked") | One click |
+| M2 | **Core cannot say how much.** It stores only the creator fee per job; no Loofie fee rate, no GST, so the ₹10,000 / ₹25,000 limits and the per-stage amounts (full / minus fee / kill fee / fee as credit) cannot be computed. | Brand (wrong amount), approver (can't apply the limits) | Not stored |
+| M3 | **The cancellation table is not enforced.** `CANCEL` stops at `CREATOR_ACCEPTED`; "after receipt or shoot started: no refund, creator gets a 50% kill fee" has no path. | Creator (did work, gets nothing), brand (can't cancel) | Not possible |
+| M4 | **Reminders reach nobody.** "Ship by Thursday", "review closes in 24 h" are written as events, but no brand, creator or ops person ever sees them. The 2-day reminder, the late alert and the dispute-review alert are promises we don't keep. | Brand (marked late without warning), creator, ops | Stored only |
+| M5 | **Video review clock**: DECISIONS.md says 5 working days (brands are offices); Foundation v2 row 12 says 120 calendar hours. A brand with a Saturday and a holiday in its window gets less time than promised under the new rule. | Brand | 120 h (founder sign-off pending) |
+| M6 | No refund history or daily summary for the founder. | Loofie | None |
+
+### Plan (approved 2026-11-16)
+
+| # | Item | Design | Size |
+|---|---|---|---|
+| R1 | **Price snapshot per slot** (M2) | At order intake store `loofie_fee_bp` (default 1500 = 15%) and `gst_bp` (1800) on the order, so every slot's value is fixed when the brand pays: `slot = (creator fee + fee) × (1 + GST)`; DECISIONS.md example ₹5,000 → ₹6,785. Amounts per case computed by one pure function, tested against the DECISIONS.md examples. | S |
+| R2 | **Refund requests with approvals** (M1, M6) | New `refund` feature. `refund_requests`: job, brand, case, reason code, amounts (brand cash, fee credit, creator kill fee), requested by, required approvals (worked out once at request time), status REQUESTED → APPROVED / REJECTED / WITHDRAWN. **One open request per job; while open, the job's other actions are refused.** Rules from DECISIONS.md section 6: after acceptance → an `OPS_LEAD` who is not the requester; no acceptance and ≤ ₹10,000 → one `OPS_LEAD` may do both; > ₹25,000 or > 3 refunds to the brand in 30 days → also the founder. On final approval, the job transition (`CANCEL`, `RESOLVE_REFUND`, `REPLACEMENT_EXPIRED`) runs **in the same transaction** and a `RefundApproved` event goes to the outbox for finance. An approved row cannot be changed (database trigger). The approver sees the brand's refund history. Daily summary endpoint (count, total, who requested, who approved). | L |
+| R3 | **Timer no longer refunds by itself** (M1) | `REPLACEMENT_EXPIRED` creates a refund request (requested by SYSTEM, Loofie's own failure: fee included) and alerts ops; an `OPS_LEAD` approves. | S |
+| R4 | **Cancellation table** (M3) | `CANCEL` as a request from every pre-approval state, with the case taken from the state: before acceptance full; after acceptance before shipping minus fee; after receipt / shoot started no refund + 50% kill fee to the creator. Shipped-not-received waits for Open 4. | M |
+| R5 | **Notification inbox** (M4) | `notifications` table written **in the same transaction** as each notice (brand org, creator or ops, per the notice's audience) and each refund decision; `GET /api/core/notifications` (only your own), mark read; kept 90 days. Brands and creators then see reminders in the app; WhatsApp/email delivery later plugs in on the same rows. | M |
+| R6 | **Review clock switch** (M5) | `loofie.deadlines.review-working-days` (empty = 120 calendar hours, today's rule; 5 = DECISIONS.md). Off until the founder signs off. | S |
+| R7 | **Roles** `OPS_LEAD`, `FOUNDER` | New `ActorRole` values; dev login accepts them; real login is F1. | S |
+| R8 | **Proof** | Rule tests per approval case and amount example; self-approval refused; race (two approvers at once, request vs other action); approved row immutable; load test of request + approve at 50 rps (rare action) and the engine at 500 rps unchanged; contract test for the new events. | M |
+
+### Decisions needed before R2/R4 are final
+
+1. **Refund reason codes** (Open 5): proposal `BRAND_CANCELLED`, `LOOFIE_NO_CREATOR` (replacement expired), `DISPUTE_UPHELD`,
+   `BRAND_LATE_SHIP`, `DUPLICATE_PAYMENT`, `OTHER`.
+2. **GST on refunds and the fee credit** ([CONFIRM] CA): build the amounts as DECISIONS.md writes them (credit note for
+   the GST part) and mark them pending CA?
+3. **Fee credit** (Open 3): store it as a one-time credit against the brand's next order (recorded, never cash)?
+4. **Founder = ?** One `FOUNDER` user; if Aditya is the founder, he is that user.
+5. **Who may request** a refund: any `OPS`, or only `OPS_LEAD`? (DECISIONS.md says who approves, not who requests.)
+
+### Built, tested, measured (2026-11-16)
+
+Decisions taken as recommended (the plan was approved with them): refund reason codes `BRAND_CANCELLED`,
+`LOOFIE_NO_CREATOR`, `DISPUTE_UPHELD`, `BRAND_LATE_SHIP`, `OTHER` (`DUPLICATE_PAYMENT` belongs to payments, F4, not
+to a job); amounts as DECISIONS.md writes them, **pending CA**; the late-ship fee is a credit, never cash; any ops
+person may ask, only an `OPS_LEAD` (or the founder standing in) approves; the founder is a role, whoever holds it.
+
+| # | Built |
+|---|---|
+| R1 | `orders.loofie_fee_bp` / `gst_bp`, fixed at payment (`loofie.pricing.*`, 1500 / 1800). |
+| R2 | `refund` feature: `refund_requests` (V11) with amounts, case, required approvals, status; one open request per job (unique index) and the job **held** while it waits; approval rules in `ApprovalPolicy`; last approval runs the job action in the same transaction; decided rows frozen by a trigger; brand history and the 30-day count for the approver; `/api/core/ops/jobs/{id}/refund-requests`, `/refund-requests/{id}/approve|reject|withdraw`, list, detail, `/refunds/summary?date=`; **`Idempotency-Key` required on every write**; daily 09:00 IST summary to the founder's inbox. |
+| R3 | The timer opens a refund request (SYSTEM, `LOOFIE_NO_CREATOR` or `BRAND_LATE_SHIP`) instead of refunding; held jobs are skipped by every timer. |
+| R4 | `CANCEL` from every stage the table covers (full / minus fee / kill fee); `RESOLVE_REFUND` from `REPLACEMENT_NEEDED`; the plain transition API refuses every money action. Shipped-not-received still waits (Open 4). |
+| R5 | `notifications` inbox: every timer notice goes to the brand / creator / ops it names, in the notice's transaction; refund events to ops, founder and brand; `GET /api/core/notifications`, mark read (404 if not yours); 90-day retention. |
+| R6 | `loofie.deadlines.review-working-days` (empty = 120 h today). |
+| R7 | `OPS_LEAD`, `FOUNDER`: act as ops everywhere, the audit log keeps the real role. |
+
+| Proof | Result |
+|---|---|
+| `RefundRulesTest` (8, pure) | DECISIONS.md example Rs 5,000 -> Rs 6,785 exactly; every case; rounding; every limit at its edge (Rs 10,000 / 10,000.01, Rs 25,000 / 25,000.01, 3rd / 4th refund); every approval path including founder ≠ lead ≠ requester |
+| `RefundFlowTest` (12) | one lead asks + approves a small pre-acceptance refund; after acceptance the asker and plain ops are refused; the hold blocks other actions, withdraw / reject release it; large refund needs lead **then** founder; 4th refund to a brand in 30 days needs the founder; kill fee; late-ship cash + credit; decided rows cannot be updated or deleted; money never moves through the plain action; the timer asks instead of refunding and is not re-triggered; **4 leads approving at the same moment: exactly one cancel**; daily summary |
+| `InboxRolesAndApiTest` (5) | reminder reaches the right brand only, creator and ops inboxes, mark-read scoping, paging limit; senior roles act as ops and are logged as themselves; review clock switch; refund API needs a key (428), a retried approval is replayed, never applied twice |
+| Full suite + contract test vs Backend A mock | **202 of 202** |
+| Load, 1M jobs, after warm-up | refund **request** 50 rps p95 5 ms, **approve** p95 6 ms, 3,000 / 3,000 each; 8 correctly left waiting for the founder (brands past 3 in 30 days); **engine 500 rps realistic mix p95 2 ms, 0 failed** |
+
+Found while measuring: the perf data loader did not clear `refund_requests` / `notifications`, so its job delete
+failed and 801 test jobs stayed in the 1M set (0.08%, numbers unaffected). Fixed in `load-data.sql`.
+
+**Still open (written down, not built):** shipped-not-received cancellation row, the CA's word on GST for refunds
+and credits, real delivery of inbox items (WhatsApp / email), recording the fee credit against the next order (F4
+order intake), founder sign-off before switching the review clock to working days, real login for the new roles (F1).

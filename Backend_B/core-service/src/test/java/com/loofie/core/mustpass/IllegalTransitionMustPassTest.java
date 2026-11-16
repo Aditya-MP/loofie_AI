@@ -89,7 +89,7 @@ class IllegalTransitionMustPassTest {
         ActorRole role = TransitionTable.rolesFor(action).iterator().next();
         return switch (role) {
             case SYSTEM -> Actor.system();
-            case OPS -> Actor.ops(UUID.randomUUID());
+            case OPS, OPS_LEAD, FOUNDER -> Actor.ops(UUID.randomUUID());
             case CREATOR -> Actor.creator(job.creatorId());
             case BRAND_ADMIN -> Actor.brandAdmin(UUID.randomUUID(), job.brandOrgId());
             case BRAND_MEMBER -> Actor.brandMember(UUID.randomUUID(), job.brandOrgId());

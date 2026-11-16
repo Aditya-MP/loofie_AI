@@ -3,7 +3,9 @@ SET search_path = core_test;
 SET statement_timeout = 0;
 \timing on
 
-TRUNCATE deadline_notices, shipments, assignments, idempotency_keys, processed_events, scheduler_leases CASCADE;
+-- refund_requests and notifications first: they reference jobs (a row trigger blocks DELETE, TRUNCATE is fine).
+TRUNCATE refund_requests, notifications, deadline_notices, shipments, assignments, idempotency_keys, processed_events,
+    scheduler_leases CASCADE;
 DELETE FROM outbox;
 ALTER TABLE job_events DISABLE TRIGGER job_events_no_truncate;
 TRUNCATE job_events;

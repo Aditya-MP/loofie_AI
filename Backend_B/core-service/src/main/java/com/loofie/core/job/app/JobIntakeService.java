@@ -44,7 +44,7 @@ public class JobIntakeService {
     @Transactional(propagation = Propagation.MANDATORY)
     public List<UUID> createJobs(UUID orderId, UUID brandOrgId, Actor actor, List<NewJob> newJobs, UUID correlationId) {
         TransitionRule rule = TransitionTable.find(JobStatus.DRAFT_BRIEF, JobAction.SUBMIT_ORDER).orElseThrow();
-        if (!rule.roles().contains(actor.role()) || !brandOrgId.equals(actor.orgId())) {
+        if (!rule.roles().contains(actor.role().acting()) || !brandOrgId.equals(actor.orgId())) {
             throw new ActorNotAllowedException(actor.role() + " may not submit this order");
         }
         Instant now = clock.instant();

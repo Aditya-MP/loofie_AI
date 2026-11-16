@@ -48,6 +48,8 @@ class DeadlineWorkerTest {
     @Autowired MutableClock clock;
     @Autowired com.loofie.core.job.infra.JobDeadlineRepository deadlineRepo;
     @Autowired com.loofie.core.job.app.JobNoticeService noticeService;
+    @Autowired com.loofie.core.job.app.TimerRefunds timerRefunds;
+    @Autowired com.loofie.core.refund.app.RefundService refunds;
     @Autowired io.micrometer.core.instrument.MeterRegistry meters;
 
     final Actor ops = Actor.ops(UUID.randomUUID());
@@ -183,6 +185,12 @@ class DeadlineWorkerTest {
 
         clock.advance(JobDeadlines.REPLACEMENT_WINDOW);
         drain();
+        // Money moves only after approval: the timer asks for the refund and holds the job, it does not refund.
+        assertThat(status(seeded.jobId())).isEqualTo(JobStatus.REPLACEMENT_NEEDED);
+        UUID request = jdbc.sql("SELECT id FROM refund_requests WHERE job_id = ? AND status = 'REQUESTED'")
+                .param(seeded.jobId()).query(UUID.class).single();
+        drain(); // held: not due again
+        refunds.approve(com.loofie.core.job.domain.Actor.opsLead(UUID.randomUUID()), request, null);
         assertThat(status(seeded.jobId())).isEqualTo(JobStatus.REFUNDED);
     }
 
@@ -291,7 +299,7 @@ class DeadlineWorkerTest {
         clock.set(job(seeded.jobId()).getReviewDueAt().plus(Duration.ofHours(3))); // "down" when it fell due
 
         DeadlineWorker afterRestart = new DeadlineWorker(deadlineRepo, engine, noticeService, clock,
-                new TimerProperties(true, Duration.ofSeconds(30), 100), new SimpleMeterRegistry());
+                new TimerProperties(true, Duration.ofSeconds(30), 100), new SimpleMeterRegistry(), timerRefunds);
         for (int i = 0; i < 20 && afterRestart.runOnce().didWork(); i++) {
             // drain
         }

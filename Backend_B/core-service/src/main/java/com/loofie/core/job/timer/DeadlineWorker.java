@@ -18,6 +18,8 @@ import org.springframework.stereotype.Component;
 
 import com.loofie.core.job.app.JobNoticeService;
 import com.loofie.core.job.app.JobTransitionService;
+import com.loofie.core.job.app.TimerRefunds;
+import com.loofie.core.job.domain.JobAction;
 import com.loofie.core.job.domain.Actor;
 import com.loofie.core.job.domain.JobExceptions.IllegalTransitionException;
 import com.loofie.core.job.domain.JobExceptions.TransitionGuardException;
@@ -68,13 +70,15 @@ public class DeadlineWorker {
     private final Clock clock;
     private final TimerProperties props;
     private final MeterRegistry meters;
+    private final TimerRefunds refunds;
 
     private final Map<UUID, Instant> backoff = new ConcurrentHashMap<>();
     private final AtomicLong oldestDueAgeSeconds = new AtomicLong();
     private final AtomicReference<Instant> lastRunAt = new AtomicReference<>();
 
     DeadlineWorker(JobDeadlineRepository deadlines, JobTransitionService engine, JobNoticeService notices, Clock clock,
-                   TimerProperties props, MeterRegistry meters) {
+                   TimerProperties props, MeterRegistry meters, TimerRefunds refunds) {
+        this.refunds = refunds;
         this.deadlines = deadlines;
         this.engine = engine;
         this.notices = notices;
@@ -136,7 +140,13 @@ public class DeadlineWorker {
 
     private boolean act(UUID jobId, Action rule, Instant now) {
         try {
-            engine.transition(jobId, rule.action(), Actor.system(), null);
+            if (rule.action() == JobAction.REPLACEMENT_EXPIRED) {
+                // Money moves only after approval: ask for the refund instead of refunding (the job is held meanwhile,
+                // so it is not due again).
+                refunds.replacementExpired(jobId, now);
+            } else {
+                engine.transition(jobId, rule.action(), Actor.system(), null);
+            }
             count(rule, "moved");
             return true;
         } catch (ObjectOptimisticLockingFailureException e) {

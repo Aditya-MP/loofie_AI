@@ -14,9 +14,12 @@ import com.loofie.core.job.domain.JobAction;
  * @param details         action-specific input (shipment, photo, issue type, reason code); never null
  * @param expectedVersion the job version the caller's screen showed; when set and the job has moved
  *                        on since, the call is refused instead of acting on stale information
+ * @param refundRequestId set only by the refund feature when a refund request has been fully approved: the one way
+ *                        a money action (cancel, refund) runs, and the one way past an open refund request's hold
  */
 public record TransitionCommand(UUID jobId, JobAction action, Actor actor, String reason, UUID creatorId,
-                                UUID correlationId, TransitionDetails details, Long expectedVersion) {
+                                UUID correlationId, TransitionDetails details, Long expectedVersion,
+                                UUID refundRequestId) {
 
     public TransitionCommand {
         Objects.requireNonNull(jobId, "jobId");
@@ -25,19 +28,33 @@ public record TransitionCommand(UUID jobId, JobAction action, Actor actor, Strin
         details = details == null ? TransitionDetails.NONE : details;
     }
 
+    public TransitionCommand(UUID jobId, JobAction action, Actor actor, String reason, UUID creatorId,
+                             UUID correlationId, TransitionDetails details, Long expectedVersion) {
+        this(jobId, action, actor, reason, creatorId, correlationId, details, expectedVersion, null);
+    }
+
     public static TransitionCommand of(UUID jobId, JobAction action, Actor actor, String reason) {
         return new TransitionCommand(jobId, action, actor, reason, null, null, TransitionDetails.NONE, null);
     }
 
     public TransitionCommand withCreator(UUID creatorId) {
-        return new TransitionCommand(jobId, action, actor, reason, creatorId, correlationId, details, expectedVersion);
+        return new TransitionCommand(jobId, action, actor, reason, creatorId, correlationId, details, expectedVersion,
+                refundRequestId);
     }
 
     public TransitionCommand with(TransitionDetails details) {
-        return new TransitionCommand(jobId, action, actor, reason, creatorId, correlationId, details, expectedVersion);
+        return new TransitionCommand(jobId, action, actor, reason, creatorId, correlationId, details, expectedVersion,
+                refundRequestId);
     }
 
     public TransitionCommand expectingVersion(Long expectedVersion) {
-        return new TransitionCommand(jobId, action, actor, reason, creatorId, correlationId, details, expectedVersion);
+        return new TransitionCommand(jobId, action, actor, reason, creatorId, correlationId, details, expectedVersion,
+                refundRequestId);
+    }
+
+    /** Only the refund feature calls this, after the request's last approval. */
+    public TransitionCommand forApprovedRefund(UUID refundRequestId) {
+        return new TransitionCommand(jobId, action, actor, reason, creatorId, correlationId, details, expectedVersion,
+                Objects.requireNonNull(refundRequestId));
     }
 }

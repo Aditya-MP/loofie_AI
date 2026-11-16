@@ -77,6 +77,17 @@ loofie:
     outbox: 7d
     outbox-parked: 30d
     idempotency-keys: 24h
+    notifications: 90d
+  pricing:
+    # Stored on each order when the brand pays (DECISIONS.md section 4). Basis points: 1500 = 15%.
+    loofie-fee-bp: 1500
+    gst-bp: 1800
+  deadlines:
+    # Brand video review: empty = 120 calendar hours (Foundation v2, today); 5 = working days (DECISIONS.md).
+    # Switch on only after the founder signs off the change.
+    review-working-days:
+  refunds:
+    daily-summary: true       # 09:00 India time, yesterday's refunds to the founder's inbox
 
 management:
   endpoints:

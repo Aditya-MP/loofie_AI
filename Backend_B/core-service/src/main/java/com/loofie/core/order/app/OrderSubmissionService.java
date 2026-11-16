@@ -37,11 +37,21 @@ public class OrderSubmissionService {
     private final OrderRepository orders;
     private final JobIntakeService intake;
     private final Clock clock;
+    private final int loofieFeeBp;
+    private final int gstBp;
 
-    public OrderSubmissionService(OrderRepository orders, JobIntakeService intake, Clock clock) {
+    /**
+     * @param loofieFeeBp {@code loofie.pricing.loofie-fee-bp}: Loofie's fee on the creator fees (1500 = 15%)
+     * @param gstBp       {@code loofie.pricing.gst-bp}: GST on the total (1800 = 18%). Both are stored on the order.
+     */
+    public OrderSubmissionService(OrderRepository orders, JobIntakeService intake, Clock clock,
+                                  @org.springframework.beans.factory.annotation.Value("${loofie.pricing.loofie-fee-bp:1500}") int loofieFeeBp,
+                                  @org.springframework.beans.factory.annotation.Value("${loofie.pricing.gst-bp:1800}") int gstBp) {
         this.orders = orders;
         this.intake = intake;
         this.clock = clock;
+        this.loofieFeeBp = loofieFeeBp;
+        this.gstBp = gstBp;
     }
 
     @Transactional
@@ -63,7 +73,7 @@ public class OrderSubmissionService {
             throw new TransitionGuardException("Order total must be at least Rs 15,000 in creator fees");
         }
 
-        Order order = Order.create(Ids.newId(), brandOrgId, clock.instant());
+        Order order = Order.create(Ids.newId(), brandOrgId, clock.instant(), loofieFeeBp, gstBp);
         orders.saveAndFlush(order);
         List<NewJob> jobs = picks.stream().map(p -> new NewJob(p.digitalOnly(), p.creatorFeePaise())).toList();
         List<UUID> jobIds = intake.createJobs(order.getId(), brandOrgId, actor, jobs, Ids.newId());

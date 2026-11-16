@@ -99,7 +99,7 @@ public class AiFeedbackMapper {
         return switch (role) {
             case "BRAND_ADMIN", "BRAND_MEMBER" -> "brand";
             case "CREATOR" -> "creator";
-            case "OPS" -> "ops";
+            case "OPS", "OPS_LEAD", "FOUNDER" -> "ops";
             default -> "system";
         };
     }

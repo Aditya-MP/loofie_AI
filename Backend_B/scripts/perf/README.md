@@ -59,3 +59,12 @@ AI_FEEDBACK_URL=http://127.0.0.1:8100 AI_FEEDBACK_API_KEY=perf java -jar core-se
 
 Measured 2026-11-15: 1,145 events/s with the defaults (32 in flight, batch 200). Throughput = in-flight / latency.
 Warm the app up (a short low-rate run) before a gated load test: the first seconds after boot are slow.
+
+Refund requests and approvals (an OPS_LEAD asks and approves PAID jobs: nobody accepted, under Rs 10,000):
+
+```bash
+PGPASSWORD=core_local "$PSQL" -h localhost -U core_app -d core_db -At -c "SELECT id FROM core_test.jobs WHERE status='PAID' ORDER BY random() LIMIT 3000" > paid.txt
+java scripts/perf/RefundLoadTest.java 50 3000 paid.txt
+```
+
+Measured 2026-11-16: request p95 5 ms, approve p95 6 ms at 50 rps; engine at 500 rps unchanged (p95 2 ms).

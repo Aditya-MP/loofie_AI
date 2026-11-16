@@ -22,7 +22,8 @@ import com.loofie.core.common.LeaderLease;
  * <ul>
  *   <li>delivered outbox rows (the receiver has them; kept {@code outbox} long for debugging),</li>
  *   <li>parked outbox rows (rejected by the receiver; kept {@code outboxParked} for investigation and requeue),</li>
- *   <li>idempotency keys (clients retry within minutes, never after a day).</li>
+ *   <li>idempotency keys (clients retry within minutes, never after a day),</li>
+ *   <li>notifications (an inbox is for what is happening now; 90 days).</li>
  * </ul>
  * Deletes go in small batches so they never lock a table for long. {@code job_events} is the audit
  * log and is never deleted.
@@ -33,18 +34,19 @@ public class RetentionJob {
 
     @ConfigurationProperties("loofie.retention")
     public record RetentionProperties(boolean enabled, Duration interval, Duration outbox, Duration outboxParked,
-                                      Duration idempotencyKeys, int batchSize) {
+                                      Duration idempotencyKeys, Duration notifications, int batchSize) {
         public RetentionProperties {
             interval = interval == null ? Duration.ofMinutes(10) : interval;
             outbox = outbox == null ? Duration.ofDays(7) : outbox;
             outboxParked = outboxParked == null ? Duration.ofDays(30) : outboxParked;
             idempotencyKeys = idempotencyKeys == null ? Duration.ofHours(24) : idempotencyKeys;
+            notifications = notifications == null ? Duration.ofDays(90) : notifications;
             batchSize = batchSize <= 0 ? 5000 : batchSize;
         }
     }
 
     /** What one run deleted. */
-    public record Result(long outbox, long parked, long idempotencyKeys) {
+    public record Result(long outbox, long parked, long idempotencyKeys, long notifications) {
     }
 
     private static final Logger log = LoggerFactory.getLogger(RetentionJob.class);
@@ -75,10 +77,15 @@ public class RetentionJob {
                 DELETE FROM idempotency_keys WHERE (scope, idem_key) IN (
                     SELECT scope, idem_key FROM idempotency_keys WHERE created_at < :before LIMIT :limit)
                 """, now.minus(props.idempotencyKeys()));
-        if (outbox + parked + keys > 0) {
-            log.info("Retention: deleted {} outbox, {} parked outbox, {} idempotency rows", outbox, parked, keys);
+        long inbox = deleteInBatches("""
+                DELETE FROM notifications WHERE id IN (
+                    SELECT id FROM notifications WHERE created_at < :before LIMIT :limit)
+                """, now.minus(props.notifications()));
+        if (outbox + parked + keys + inbox > 0) {
+            log.info("Retention: deleted {} outbox, {} parked outbox, {} idempotency, {} notification rows", outbox, parked,
+                    keys, inbox);
         }
-        return new Result(outbox, parked, keys);
+        return new Result(outbox, parked, keys, inbox);
     }
 
     private long deleteInBatches(String sql, Instant before) {

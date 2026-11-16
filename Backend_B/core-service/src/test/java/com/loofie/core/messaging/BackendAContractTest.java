@@ -48,6 +48,7 @@ class BackendAContractTest {
 
     @Autowired JobTransitionService engine;
     @Autowired JobNoticeService notices;
+    @Autowired com.loofie.core.refund.app.RefundService refunds;
     @Autowired JobFixtures fixtures;
     @Autowired AiFeedbackMapper mapper;
     @Autowired JdbcClient jdbc;
@@ -90,7 +91,9 @@ class BackendAContractTest {
         Instant dueAt = clock.instant().plus(Duration.ofHours(6));
         notices.raise(new JobNoticeService.Notice(c.jobId(), c.orderId(), 1, JobStatus.CREATOR_ACCEPTED,
                 "SHIP_REMINDER", dueAt, List.of("BRAND")), clock.instant());
-        engine.transition(c.jobId(), JobAction.CANCEL, ops, "brand withdrew, call Priya on 98765 43210");
+        var cancel = refunds.request(ops, c.jobId(), JobAction.CANCEL,
+                com.loofie.core.refund.domain.RefundReason.BRAND_CANCELLED, "brand withdrew, call Priya on 98765 43210");
+        refunds.approve(Actor.opsLead(UUID.randomUUID()), cancel.id(), null);
         jobs.add(c.jobId());
 
         // F6 round 2: damage found after receipt (clock paused), then ops releases with DEFECTIVE_PRODUCT.

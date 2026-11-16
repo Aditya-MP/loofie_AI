@@ -44,7 +44,7 @@ public class JobDeadlineRepository {
     public List<DueJob> due(JobStatus status, JobDeadline deadline, Instant now, Collection<UUID> excluded, int limit) {
         String col = "j." + DeadlineColumns.of(deadline);
         String skip = excluded.isEmpty() ? "" : " AND j.id NOT IN (:excluded)";
-        var spec = jdbc.sql("SELECT j.id, " + col + " AS due_at FROM jobs j WHERE j.status = :status AND " + col
+        var spec = jdbc.sql("SELECT j.id, " + col + " AS due_at FROM jobs j WHERE j.status = :status AND NOT j.refund_hold AND " + col
                         + " <= :now" + skip + " ORDER BY " + col + " LIMIT :limit")
                 .param("status", status.name())
                 .param("now", utc(now))
@@ -71,7 +71,7 @@ public class JobDeadlineRepository {
         // "col <= now + before" (not "col - before <= now") so the column's index is used.
         Instant from = before.isZero() ? now.minus(NOTICE_LOOKBACK) : now;
         return jdbc.sql("SELECT j.id, j.order_id, j.version, " + due + " AS due_at FROM jobs j"
-                        + " WHERE j.status = :status AND " + col + " <= :horizon AND " + col + " > :from"
+                        + " WHERE j.status = :status AND NOT j.refund_hold AND " + col + " <= :horizon AND " + col + " > :from"
                         + " AND NOT EXISTS (SELECT 1 FROM deadline_notices n"
                         + "   WHERE n.job_id = j.id AND n.kind = :kind AND n.due_at = " + due + ")"
                         + " ORDER BY " + col + " LIMIT :limit")

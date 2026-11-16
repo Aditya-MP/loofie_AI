@@ -123,3 +123,11 @@ Leave PostgreSQL 14 running if Aditya's service is run locally.
 - **Reships:** the brand reships once; further reships are by ops (`actor_type: ops` on that `RESHIP`).
 - All of it checked against your mock at `e682442`: 15 events (incl. the above), every one accepted, every resend
   a duplicate.
+
+## Changes on 2026-11-16 (F5 round 2: refunds and cancellations)
+
+- Cancellations and refunds now run only after approval, but they reach you exactly as before: a
+  `job_state_changed` to `CANCELLED` / `REFUNDED`. `actor_type` is `ops` (an `OPS_LEAD` or the founder approved it) or
+  `system` (a replacement window ran out). Refund amounts are never sent.
+- `CANCEL` can now come from later stages too (`IN_PRODUCTION`, `IN_REVIEW`...: the creator gets a kill fee), and
+  `RESOLVE_REFUND` from `REPLACEMENT_NEEDED`.

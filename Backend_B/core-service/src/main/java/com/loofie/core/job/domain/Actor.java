@@ -27,7 +27,7 @@ public record Actor(ActorRole role, UUID userId, UUID orgId) {
 
     /** Permission check for use cases open to a single role. */
     public void requireRole(ActorRole required, String message) {
-        if (role != required) {
+        if (role.acting() != required.acting() || (required != ActorRole.OPS && role != required)) {
             throw new JobExceptions.ActorNotAllowedException(message);
         }
     }
@@ -38,6 +38,14 @@ public record Actor(ActorRole role, UUID userId, UUID orgId) {
 
     public static Actor ops(UUID userId) {
         return new Actor(ActorRole.OPS, userId, null);
+    }
+
+    public static Actor opsLead(UUID userId) {
+        return new Actor(ActorRole.OPS_LEAD, userId, null);
+    }
+
+    public static Actor founder(UUID userId) {
+        return new Actor(ActorRole.FOUNDER, userId, null);
     }
 
     public static Actor creator(UUID creatorId) {

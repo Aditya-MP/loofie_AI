@@ -107,6 +107,10 @@ public class Job {
     @Column(name = "late_damage_reported", nullable = false)
     private boolean lateDamageReported;
 
+    /** An open refund request holds the job: no action runs until it is decided (see the refund feature). */
+    @Column(name = "refund_hold", nullable = false)
+    private boolean refundHold;
+
     @Column(name = "created_at", nullable = false, updatable = false)
     private Instant createdAt;
 
@@ -219,6 +223,21 @@ public class Job {
 
     public Long getProductionPausedSeconds() {
         return productionPausedSeconds;
+    }
+
+    public void holdForRefund() {
+        if (refundHold) {
+            throw new IllegalStateException("Job " + id + " already has an open refund request");
+        }
+        refundHold = true;
+    }
+
+    public void releaseRefundHold() {
+        refundHold = false;
+    }
+
+    public boolean isRefundHold() {
+        return refundHold;
     }
 
     public void markLateDamageReported() {

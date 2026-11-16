@@ -87,6 +87,7 @@ public final class TransitionTable {
         add(DISPUTED, RESOLVE_REFUND, REFUNDED, OPS);
         add(REPLACEMENT_NEEDED, APPROVE_SWAP, CREATOR_INVITED, BRAND_ADMIN);
         add(REPLACEMENT_NEEDED, REPLACEMENT_EXPIRED, REFUNDED, SYSTEM);
+        add(REPLACEMENT_NEEDED, RESOLVE_REFUND, REFUNDED, OPS); // the brand wants its money back instead of waiting
 
         // Payout (facts from finance). The job closes as soon as the creator is paid; the brand's
         // rating stays open for 7 days and never blocks closing.
@@ -94,9 +95,11 @@ public final class TransitionTable {
         addThen(PAYOUT_PENDING, PAYOUT_COMPLETED, PAID_OUT, CLOSE, SYSTEM);
         add(PAID_OUT, CLOSE, CLOSED, SYSTEM);
 
-        // Cancellation. TODO(open-q): cancellation policy. Limited to states before any product
-        // has been shipped or work started; extend only once the policy is confirmed.
-        for (JobStatus s : List.of(AWAITING_PAYMENT, PAID, CREATOR_INVITED, DECLINED, CREATOR_ACCEPTED)) {
+        // Cancellation (DECISIONS.md section 6), as a refund request except before payment: before acceptance full
+        // refund, after acceptance minus the fee, after receipt / shoot started no refund + 50% kill fee to the creator.
+        // TODO(open-q): shipped but not received (PRODUCT_SHIPPED, DELIVERY_ISSUE): which row applies?
+        for (JobStatus s : List.of(AWAITING_PAYMENT, PAID, CREATOR_INVITED, DECLINED, CREATOR_ACCEPTED, PRODUCT_RECEIVED,
+                IN_PRODUCTION, DRAFT_SUBMITTED, IN_REVIEW, REVISION_REQUESTED)) {
             add(s, CANCEL, CANCELLED, OPS);
         }
     }

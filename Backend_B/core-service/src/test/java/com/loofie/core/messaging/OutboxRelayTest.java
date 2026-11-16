@@ -48,6 +48,7 @@ class OutboxRelayTest {
     @Autowired LeaderLease lease;
     @Autowired JobTransitionService engine;
     @Autowired JobNoticeService notices;
+    @Autowired com.loofie.core.refund.app.RefundService refunds;
     @Autowired JobFixtures fixtures;
     @Autowired FakeAiService ai;
     @Autowired JdbcClient jdbc;
@@ -149,8 +150,9 @@ class OutboxRelayTest {
     @Test
     void opsNotesAndInternalIdsNeverLeaveTheService() {
         Seeded job = fixtures.jobIn(JobStatus.CREATOR_ACCEPTED);
-        engine.transition(job.jobId(), JobAction.CANCEL, Actor.ops(UUID.randomUUID()),
-                "brand withdrew, call Priya on 98765 43210");
+        var request = refunds.request(Actor.ops(UUID.randomUUID()), job.jobId(), JobAction.CANCEL,
+                com.loofie.core.refund.domain.RefundReason.BRAND_CANCELLED, "brand withdrew, call Priya on 98765 43210");
+        refunds.approve(Actor.opsLead(UUID.randomUUID()), request.id(), "ok, Priya confirmed on 98765 43210");
 
         drain();
 

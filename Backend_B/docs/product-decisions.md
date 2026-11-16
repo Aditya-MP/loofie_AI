@@ -110,7 +110,7 @@ creator's amount in cash + the Loofie fee as credit for its next booking. **[CON
 Loofie's own failure (creator ghosts, no replacement): the slot is refunded **including** the fee.
 **[CONFIRM]** the numbers in the brand terms and with the CA.
 
-## Refund and cancellation approvals (2026-11-16, answers F5 S3)
+## Refund and cancellation approvals (2026-11-16, answers F5 S3) — built (docs/features/f5-job-engine.md Round 2)
 
 Money moves **only after approval**, in two steps: **request → approve**. Nothing is paid at request time.
 
