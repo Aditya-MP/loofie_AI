@@ -5,10 +5,10 @@ import java.util.UUID;
 
 /**
  * Who is performing an action. Passed in explicitly so the domain never reads tokens or the
- * security context; the auth adapter (pending Shreya's design) builds this from the request.
+ * security context; F1 identity builds this from the session cookie (ActorResolver).
  *
  * @param role   the caller's role
- * @param userId Backend A user id (creator id for creators); null only for SYSTEM
+ * @param userId the account id from F1 identity (users.id; Backend A account_ref for creators); null only for SYSTEM
  * @param orgId  brand org id for brand roles; null otherwise
  */
 public record Actor(ActorRole role, UUID userId, UUID orgId) {

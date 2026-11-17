@@ -34,19 +34,21 @@ public class RetentionJob {
 
     @ConfigurationProperties("loofie.retention")
     public record RetentionProperties(boolean enabled, Duration interval, Duration outbox, Duration outboxParked,
-                                      Duration idempotencyKeys, Duration notifications, int batchSize) {
+                                      Duration idempotencyKeys, Duration notifications, Duration auditLog,
+                                      int batchSize) {
         public RetentionProperties {
             interval = interval == null ? Duration.ofMinutes(10) : interval;
             outbox = outbox == null ? Duration.ofDays(7) : outbox;
             outboxParked = outboxParked == null ? Duration.ofDays(30) : outboxParked;
             idempotencyKeys = idempotencyKeys == null ? Duration.ofHours(24) : idempotencyKeys;
             notifications = notifications == null ? Duration.ofDays(90) : notifications;
+            auditLog = auditLog == null ? Duration.ofDays(365) : auditLog;
             batchSize = batchSize <= 0 ? 5000 : batchSize;
         }
     }
 
     /** What one run deleted. */
-    public record Result(long outbox, long parked, long idempotencyKeys, long notifications) {
+    public record Result(long outbox, long parked, long idempotencyKeys, long notifications, long identity) {
     }
 
     private static final Logger log = LoggerFactory.getLogger(RetentionJob.class);
@@ -81,11 +83,45 @@ public class RetentionJob {
                 DELETE FROM notifications WHERE id IN (
                     SELECT id FROM notifications WHERE created_at < :before LIMIT :limit)
                 """, now.minus(props.notifications()));
-        if (outbox + parked + keys + inbox > 0) {
-            log.info("Retention: deleted {} outbox, {} parked outbox, {} idempotency, {} notification rows", outbox, parked,
-                    keys, inbox);
+        long identity = identity(now);
+        if (outbox + parked + keys + inbox + identity > 0) {
+            log.info("Retention: deleted {} outbox, {} parked outbox, {} idempotency, {} notification, {} identity rows",
+                    outbox, parked, keys, inbox, identity);
         }
-        return new Result(outbox, parked, keys, inbox);
+        return new Result(outbox, parked, keys, inbox, identity);
+    }
+
+    /**
+     * F1: OTP challenges after a day (codes live 5 minutes), sessions a week after they ended (kept briefly to answer
+     * "was I logged out?"), rate counters after two days, unused staff invites a month after expiry, and the audit log
+     * after {@code auditLog} (1 year: CERT-In needs 180 days, DPDP logs 1 year). Consents are never deleted here.
+     */
+    private long identity(Instant now) {
+        long n = deleteInBatches("""
+                DELETE FROM otp_challenges WHERE id IN (
+                    SELECT id FROM otp_challenges WHERE created_at < :before LIMIT :limit)
+                """, now.minus(Duration.ofDays(1)));
+        n += deleteInBatches("""
+                DELETE FROM sessions WHERE id IN (
+                    SELECT id FROM sessions WHERE expires_at < :before LIMIT :limit)
+                """, now.minus(Duration.ofDays(7)));
+        n += deleteInBatches("""
+                DELETE FROM sessions WHERE id IN (
+                    SELECT id FROM sessions WHERE revoked_at < :before LIMIT :limit)
+                """, now.minus(Duration.ofDays(7)));
+        n += deleteInBatches("""
+                DELETE FROM rate_counters WHERE (key, window_start) IN (
+                    SELECT key, window_start FROM rate_counters WHERE window_start < :before LIMIT :limit)
+                """, now.minus(Duration.ofDays(2)));
+        n += deleteInBatches("""
+                DELETE FROM staff_invites WHERE id IN (
+                    SELECT id FROM staff_invites WHERE accepted_at IS NULL AND expires_at < :before LIMIT :limit)
+                """, now.minus(Duration.ofDays(30)));
+        n += deleteInBatches("""
+                DELETE FROM audit_log WHERE id IN (
+                    SELECT id FROM audit_log WHERE at < :before LIMIT :limit)
+                """, now.minus(props.auditLog()));
+        return n;
     }
 
     private long deleteInBatches(String sql, Instant before) {

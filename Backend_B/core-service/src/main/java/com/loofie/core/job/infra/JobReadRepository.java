@@ -118,6 +118,17 @@ public class JobReadRepository {
                 .list();
     }
 
+    /** Unfinished jobs where this creator is the active assignee (partial index assignments_active_creator_idx). */
+    public List<UUID> activeJobIdsForCreator(UUID creatorId) {
+        return jdbc.sql("""
+                SELECT j.id FROM assignments a JOIN jobs j ON j.id = a.job_id
+                WHERE a.creator_id = :creator AND a.status = 'ACTIVE'
+                  AND j.status NOT IN ('CLOSED', 'REFUNDED', 'CANCELLED')
+                ORDER BY j.id LIMIT 500
+                """)
+                .param("creator", creatorId).query(UUID.class).list();
+    }
+
     /** The current creator's parcels (none when the job has no active creator), for the brand / creator screen. */
     public List<DeliveryShipment> currentCreatorShipments(UUID jobId) {
         return jdbc.sql("""

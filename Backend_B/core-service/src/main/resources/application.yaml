@@ -8,6 +8,9 @@ server:
 spring:
   application:
     name: core-service
+  autoconfigure:
+    # Spring Security is here for CSRF, CORS and headers only; login is our own (identity package). No generated user.
+    exclude: org.springframework.boot.security.autoconfigure.UserDetailsServiceAutoConfiguration
   threads:
     virtual:
       enabled: true             # Java 25 virtual threads; the DB pool below is the real concurrency limit
@@ -78,6 +81,31 @@ loofie:
     outbox-parked: 30d
     idempotency-keys: 24h
     notifications: 90d
+    audit-log: 365d             # F1 audit log: CERT-In needs 180 days, DPDP 1 year
+  identity:
+    # F1 round A (docs/features/f1-identity-round-a.md). Limits agreed 2026-11-17.
+    sender: none                # none = SMS/email refused with a 503 until a provider exists; local/tests: log
+    otp-pepper: ${LOOFIE_OTP_PEPPER:}   # base64, 32+ bytes; the app does not start without it (except dev-secrets)
+    totp-key: ${LOOFIE_TOTP_KEY:}       # base64, exactly 32 bytes (AES-256)
+    dev-secrets: false
+    notice-version: "2026-11-draft"     # change when the lawyer-reviewed terms and privacy notice go live
+    cookie-secure: true
+    allowed-origins: []                 # e.g. https://app.loofie.in
+    app-base-url: https://app.loofie.in
+    bootstrap-founder-email: ${LOOFIE_BOOTSTRAP_FOUNDER_EMAIL:}
+    otp-ttl: 5m
+    otp-max-attempts: 5
+    otp-per-destination15m: 3
+    otp-per-destination-day: 10
+    otp-per-ip15m: 100
+    verify-per-ip15m: 200
+    mfa-per-user15m: 5
+    sms-daily-cap: 5000          # about Rs 1,000-1,500 a day; above this texts pause and ops is told
+    user-session-idle: 30d
+    user-session-absolute: 90d
+    staff-session: 12h
+    mfa-session-ttl: 10m
+    invite-ttl: 7d
   pricing:
     # Stored on each order when the brand pays (DECISIONS.md section 4). Basis points: 1500 = 15%.
     loofie-fee-bp: 1500

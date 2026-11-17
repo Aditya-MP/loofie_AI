@@ -8,3 +8,11 @@ loofie:
   ai-feedback:
     # Backend A on this machine (`uv run loofie serve` or `uv run loofie mock`). Set AI_FEEDBACK_API_KEY to send.
     base-url: ${AI_FEEDBACK_URL:http://localhost:8100}
+  identity:
+    sender: log                 # codes are written to the log, not sent
+    dev-secrets: true           # public dev keys when LOOFIE_OTP_PEPPER / LOOFIE_TOTP_KEY are not set
+    cookie-secure: false        # plain http on localhost (cookie name loofie_session, no __Host- prefix)
+    allowed-origins:
+      - http://localhost:3000
+      - http://localhost:5173
+    app-base-url: http://localhost:3000

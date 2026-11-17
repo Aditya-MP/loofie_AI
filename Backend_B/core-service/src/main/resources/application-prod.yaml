@@ -25,3 +25,13 @@ management:
 loofie:
   ai-feedback:
     require-https: true                 # an http URL or a URL without a key stops the app at start
+  # F1 login. Without LOOFIE_OTP_PEPPER and LOOFIE_TOTP_KEY the app refuses to start. Until an SMS / email provider is
+  # chosen (MSG91 after DLT registration; Postmark or SES), sender stays "none": OTP requests answer 503, no fake send.
+  identity:
+    otp-pepper: ${LOOFIE_OTP_PEPPER}
+    totp-key: ${LOOFIE_TOTP_KEY}
+    dev-secrets: false
+    cookie-secure: true
+    allowed-origins: ${LOOFIE_APP_ORIGINS}         # e.g. https://app.loofie.in
+    app-base-url: ${LOOFIE_APP_BASE_URL:https://app.loofie.in}
+    bootstrap-founder-email: ${LOOFIE_BOOTSTRAP_FOUNDER_EMAIL:}   # first founder only; remove after first start

@@ -78,7 +78,7 @@ Status legend: **P1** = fixed in Phase 1 (this round). **P2/P3** = later phases.
 | 5.4 | Shutdown can cut a batch | Graceful shutdown: finish in-flight requests and scheduled runs (30s). | P1 |
 | 5.5 | Thread-per-request limits | Java 25 virtual threads; the database pool is the real limit. | P1 |
 | 5.6 | No production profile | `application-prod.yaml` that takes database and Kafka settings from environment variables only. | P1 |
-| 5.7 | No real login | Every request is refused in production until F1 auth exists. **Biggest blocker for launch.** | F1 |
+| 5.7 | ~~No real login~~ **Done for creators and staff (F1 round A, 2026-11-18).** Session cookie login; brands log in but act only once round B (organisations) exists. Real SMS / email providers still to be chosen. | F1 round B, providers |
 | 5.8 | No rate limiting | Belongs at the load balancer or gateway (per-IP, per-user). Depends on hosting. | P3 |
 | 5.9 | No CI | Tests only run on one laptop. GitHub Actions with a Postgres service container. | P3 |
 | 5.10 | No load or failure tests | Phase 1 adds concurrency tests in JUnit. A k6 load script and chaos runs come with deployment. | P1 / P3 |

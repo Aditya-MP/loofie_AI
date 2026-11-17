@@ -9,14 +9,16 @@ import org.slf4j.LoggerFactory;
 import org.springframework.context.annotation.Profile;
 import org.springframework.stereotype.Component;
 
+import com.loofie.core.identity.app.SessionAuthenticator;
 import com.loofie.core.job.domain.Actor;
 import com.loofie.core.job.domain.ActorRole;
 
 /**
  * LOCAL DEVELOPMENT ONLY. Trusts plain headers to say who the caller is:
  * {@code X-Dev-Role} (BRAND_ADMIN, BRAND_MEMBER, CREATOR, OPS), {@code X-Dev-User-Id} and, for
- * brand roles, {@code X-Dev-Org-Id}. Active only under the "local" profile; every other profile
- * gets {@link DenyAllActorResolver} until real authentication replaces both.
+ * brand roles, {@code X-Dev-Org-Id}. A request without {@code X-Dev-Role} uses the real session
+ * cookie, so the login flow works locally too. Active only under the "local" profile; every other
+ * profile gets {@link SessionActorResolver} (cookie only).
  */
 @Component
 @Profile("local")
@@ -28,7 +30,10 @@ class DevHeaderActorResolver implements ActorResolver {
 
     private static final Logger log = LoggerFactory.getLogger(DevHeaderActorResolver.class);
 
-    DevHeaderActorResolver() {
+    private final SessionAuthenticator sessions;
+
+    DevHeaderActorResolver(SessionAuthenticator sessions) {
+        this.sessions = sessions;
         log.warn("DEV AUTH ACTIVE: callers are identified by {} headers. Never run the 'local' profile in production.", ROLE);
     }
 
@@ -36,7 +41,7 @@ class DevHeaderActorResolver implements ActorResolver {
     public Actor resolve(HttpServletRequest request) {
         String role = request.getHeader(ROLE);
         if (role == null || role.isBlank()) {
-            throw new UnauthenticatedException("Missing " + ROLE + " header");
+            return sessions.actor(request);
         }
         try {
             ActorRole r = ActorRole.valueOf(role.trim());

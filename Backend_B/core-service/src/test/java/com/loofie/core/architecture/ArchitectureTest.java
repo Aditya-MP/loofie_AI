@@ -51,6 +51,14 @@ class ArchitectureTest {
             .should().dependOnClassesThat().resideInAPackage("com.loofie.core.calendar.infra..")
             .because("other features use HolidayCalendar / HolidayAdminService");
 
+    /** F1: identity keeps its tables to itself so it can become a separate Identity Service later. */
+    @ArchTest
+    static final ArchRule noCrossFeatureIdentityRepositoryAccess = noClasses()
+            .that().resideOutsideOfPackage("com.loofie.core.identity..")
+            .and().resideOutsideOfPackage("com.loofie.core.housekeeping..")
+            .should().dependOnClassesThat().resideInAPackage("com.loofie.core.identity.infra..")
+            .because("other features see a user only through ActorResolver / SessionAuthenticator");
+
     /** Layers point one way: api -> app -> domain, and infra serves app. Never backwards. */
     @ArchTest
     static final ArchRule infraDoesNotDependOnUpperLayers = noClasses()
