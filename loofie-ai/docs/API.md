@@ -121,8 +121,12 @@ lands on the app page        (?instagram=connected&account_ref=..&handle=..     
 `reason` on failure: `denied` (creator cancelled), `expired_link` (link older than 10 minutes:
 start again), `not_professional` (Personal account), `already_linked` (this Instagram account is
 connected to a different Loofie account: usually an abandoned draft, see the cleanup rule in
-DECISIONS.md section 10), `no_page` (Facebook login only: no Facebook Page with her Instagram
-linked; show the "link Instagram to a Page" guide), `instagram_error`, `bad_request`.
+DECISIONS.md section 10), `no_instagram` (no Instagram account was shared on Meta's screen: ask her to
+connect again and pick her account), `several_accounts` (she shared more than one: ask her to
+share only her own; we never guess which one is hers), `no_page` (only with `IG_FLAVOR=facebook`:
+no Facebook Page with her Instagram linked), `instagram_error`, `bad_request`.
+
+A repeated callback (double tap, browser retry) still answers `connected`.
 
 **Don't trust the return URL.** Anyone can type `?instagram=connected`. Confirm with
 `GET /ai/instagram/accounts/{account_ref}` (server-to-server, API key) before marking anything.
@@ -136,14 +140,16 @@ linked; show the "link Instagram to a Page" guide), `instagram_error`, `bad_requ
 |---|---|---|
 | `syncing` | fetching (10–30 s) | spinner |
 | `active` | done, numbers are `API_VERIFIED` | "Instagram connected ✓" |
-| `error` | last fetch failed; retried automatically | nothing yet; ops sees `last_error` |
+| `error` | last fetch failed (Meta slow or rate-limited); retried automatically after 1 min, 5 min, 30 min, 2 h, 6 h | the numbers already stored, or "still fetching" |
 | `expired` / `revoked` | the login no longer works | "Reconnect Instagram" button (same flow) |
 
 `insights_allowed: false`: the creator unticked views/reach on Instagram's screen; followers and
 posts are verified but views aren't. Ask them to reconnect and allow it.
 
 Other calls:
-- `POST /ai/instagram/accounts/{account_ref}/sync`: re-fetch now (ops button). `409` if the login expired.
+- `POST /ai/instagram/accounts/{account_ref}/sync`: re-fetch now (ops button). `409` if the login expired,
+  `502` if Meta refused (it's retried automatically); if a worker is already fetching it, you get
+  its current state instead of a second fetch.
 - `DELETE /ai/instagram/accounts/{account_ref}`: creator disconnected in the app (data kept).
   `?delete_data=true`: also delete everything fetched from Instagram. Use it for abandoned
   drafts and for deleted accounts (DPDP).

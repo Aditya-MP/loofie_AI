@@ -121,7 +121,7 @@ def test_code_to_long_lived_token_and_profile():
     grant = c.exchange_code("good-code")
     assert grant.user_id == "fb-user-1" and "instagram_manage_insights" in grant.permissions
     assert "pages_manage_posts" not in grant.permissions  # declined permissions don't count
-    token, expires = c.long_lived(grant.access_token)
+    token, expires = c.long_lived(grant)
     assert token == "long-fb" and expires == 5183999
     me = c.me(token)
     assert me["user_id"] == "17841400000000001" and me["followers_count"] == 12400

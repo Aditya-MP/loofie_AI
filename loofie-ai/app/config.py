@@ -39,7 +39,8 @@ class Settings(BaseSettings):
     ig_redirect_uri: str = ""  # public https URL of /auth/instagram/callback, registered in the Meta app
     ig_token_key: str = ""  # Fernet key that encrypts stored Instagram tokens
     ig_flavor: str = ""  # "facebook" | "instagram"; empty = config/instagram.toml
-    ig_fb_config_id: str = ""  # Facebook Login for Business configuration id (facebook flavor)
+    ig_fb_config_id: str = ""  # Facebook Login for Business configuration id (required for unified)
+    ig_workers: int = 0  # sync worker threads inside the API (0 = none; use `loofie instagram worker`)
     app_return_url: str = ""  # creator app page the browser returns to after login
 
 

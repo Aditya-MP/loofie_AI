@@ -1,16 +1,25 @@
-"""Connect, sync, keep fresh, disconnect: the Instagram Login lifecycle.
+"""Connect, sync, keep fresh, disconnect: the Instagram connect lifecycle.
 
-connect  : login code → long-lived token (encrypted) → account row        (seconds, in the callback)
+connect  : login code → token (encrypted) → account row                   (about 1 s, in the callback)
+queue    : every fetch goes through a queue kept in the database (next_sync_at), so nothing is lost
+           on a restart and any number of workers can share the work:
+             claim  — lease one due account (lease_until); two workers never take the same one
+             run    — sync it; success clears the queue entry, a Meta hiccup or rate limit is
+                      retried later with growing delays, a dead token stops for good
 sync     : fetch profile + posts + insights → creator/posts rows (API_VERIFIED)
-           → profile + quality rebuilt                                    (background, ~10–30 s)
-maintain : daily job; renews tokens before they die, re-syncs weekly
+           → profile + quality rebuilt                                    (10–30 s per creator)
+maintain : daily job; renews tokens before they die, queues weekly re-syncs, drains the queue
 forget   : creator disconnected, or Meta asked us to delete their data
 """
 
+import logging
 import secrets
+import threading
+from collections import Counter
 from datetime import UTC, datetime, timedelta
 
-from sqlalchemy import delete, select
+from sqlalchemy import delete, or_, select, update
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.db.models import Creator, CreatorProfile, CreatorQuality, InstagramAccount, InstagramSnapshot, Post
@@ -18,7 +27,13 @@ from app.feedback.events import log_event
 from app.importer import provenance
 from app.importer.upsert import upsert
 from app.instagram import ingest, security
-from app.instagram.client import InstagramClient, InstagramError, NoLinkedInstagram, instagram_config
+from app.instagram.client import (
+    InstagramClient,
+    InstagramError,
+    NoLinkedInstagram,
+    SeveralInstagramAccounts,
+    instagram_config,
+)
 from app.profile.builder import build_and_save
 from app.quality.service import assess_and_save
 
@@ -32,6 +47,7 @@ def has_insights(permissions: list[str] | None) -> bool:
 
 PROFESSIONAL = {"BUSINESS", "MEDIA_CREATOR", "CREATOR", "PROFESSIONAL"}
 LIVE = ("connected", "syncing", "active", "error")  # statuses that still hold a usable token
+log = logging.getLogger(__name__)
 
 
 class ConnectError(Exception):
@@ -70,10 +86,24 @@ def connect(session: Session, client: InstagramClient, code: str, state: str, to
         raise ConnectError("expired_link", str(e)) from e
     try:
         grant = client.exchange_code(code)
-        token, expires_in = client.long_lived(grant.access_token)
-        me = client.me(token)
+    except InstagramError as e:
+        # The same callback can arrive twice (a double tap, a browser retry): the code works only
+        # once, so the second exchange fails although the first one connected her. Don't report a
+        # failure for a login that just succeeded.
+        done = session.scalar(select(InstagramAccount).where(InstagramAccount.account_ref == account_ref))
+        recent = now - timedelta(minutes=instagram_config()["state_ttl_minutes"])
+        if done is not None and done.status in LIVE and done.token_refreshed_at and done.token_refreshed_at >= recent:
+            return done
+        raise ConnectError("instagram_error", str(e)) from e
+    mine = session.scalar(select(InstagramAccount).where(InstagramAccount.account_ref == account_ref))
+    try:
+        token, expires_in = client.long_lived(grant)
+        me = client.me(token, prefer=mine.ig_user_id if mine else None)  # a reconnect keeps her account
+    except SeveralInstagramAccounts as e:
+        raise ConnectError("several_accounts", str(e)) from e
     except NoLinkedInstagram as e:
-        raise ConnectError("no_page", f"{e}; permissions granted: {sorted(grant.permissions)}") from e
+        reason = "no_instagram" if client.unified else "no_page"
+        raise ConnectError(reason, f"{e}; permissions granted: {sorted(grant.permissions)}") from e
     except InstagramError as e:
         raise ConnectError("instagram_error", str(e)) from e
     if str(me.get("account_type", "")).upper() not in PROFESSIONAL:
@@ -94,15 +124,22 @@ def connect(session: Session, client: InstagramClient, code: str, state: str, to
 
     acct.ig_user_id = ig_user_id
     acct.app_user_id = grant.user_id
+    acct.business_id = grant.business_id
     acct.username = me["username"].lower()
     acct.account_type = me.get("account_type")
     acct.permissions = grant.permissions
     acct.token_encrypted = security.encrypt(token, token_key)
-    acct.token_expires_at = now + timedelta(seconds=expires_in)
+    acct.token_expires_at = now + timedelta(seconds=expires_in) if expires_in else None  # None = never
     acct.token_refreshed_at = now
     acct.status = "connected"
     acct.last_error = None
-    session.flush()
+    try:
+        session.flush()
+    except IntegrityError as e:
+        # Two creators connecting the same Instagram account at the same moment: the database's
+        # unique ig_user_id lets exactly one win. The other gets the same answer as above.
+        session.rollback()
+        raise ConnectError("already_linked", f"@{me.get('username')} was just connected to another account") from e
     _event(session, "instagram_connected", acct, username=acct.username, permissions=grant.permissions)
     return acct
 
@@ -114,10 +151,11 @@ def _fetch(client: InstagramClient, acct: InstagramAccount, token: str) -> tuple
     me = client.me(token, prefer=acct.ig_user_id)
     media = client.media(token, ig_user_id=str(me.get("user_id") or acct.ig_user_id))
     if has_insights(acct.permissions):
-        for m in media:
-            # Albums have no insights; stories / ads are skipped by the ingester anyway.
-            if ingest.post_type(m) in {"reel", "photo"}:
-                m["insights"] = client.insights(token, m["id"])
+        # One insights call per post is most of a sync's Meta calls: only the newest posts need views
+        # (average views use the last 10 reels), so older ones are skipped.
+        recent = [m for m in media if ingest.post_type(m) in {"reel", "photo"}]  # albums have none
+        for m in recent[: instagram_config()["queue"]["insights_last_n"]]:
+            m["insights"] = client.insights(token, m["id"])
     return me, media
 
 
@@ -181,12 +219,133 @@ def sync(session: Session, embedder, client: InstagramClient, acct: InstagramAcc
     return notes
 
 
+# ------------------------------------------------------------------ the sync queue
+
+
+def _q() -> dict:
+    return instagram_config()["queue"]
+
+
+def enqueue(acct: InstagramAccount, now: datetime, fresh: bool = True) -> None:
+    """Ask for a fetch. fresh=True (a login, an ops button): start counting retries from zero."""
+    acct.next_sync_at = now
+    if fresh:
+        acct.sync_attempts = 0
+
+
+def _due(now: datetime):
+    return (
+        InstagramAccount.status.in_(LIVE),
+        InstagramAccount.token_encrypted.is_not(None),
+        InstagramAccount.next_sync_at.is_not(None),
+        InstagramAccount.next_sync_at <= now,
+        or_(InstagramAccount.lease_until.is_(None), InstagramAccount.lease_until < now),
+    )
+
+
+def claim(session: Session, now: datetime, limit: int = 1, account_id: int | None = None) -> list[int]:
+    """Lease up to `limit` due accounts (oldest first) and commit, so other workers skip them.
+    SKIP LOCKED: workers racing for the same rows never block or double-claim. A worker that dies
+    mid-sync loses its lease after lease_seconds, and the account is picked up again."""
+    q = select(InstagramAccount.id).where(*_due(now))
+    if account_id is not None:
+        q = q.where(InstagramAccount.id == account_id)
+    ids = list(
+        session.scalars(
+            q.order_by(InstagramAccount.next_sync_at, InstagramAccount.id)
+            .limit(limit)
+            .with_for_update(skip_locked=True)
+        )
+    )
+    if ids:
+        lease = now + timedelta(seconds=_q()["lease_seconds"])
+        session.execute(update(InstagramAccount).where(InstagramAccount.id.in_(ids)).values(lease_until=lease))
+    session.commit()
+    return ids
+
+
+def run(session: Session, embedder, client: InstagramClient, account_id: int, token_key: str, now: datetime) -> str:
+    """Sync one leased account. Returns synced | retry | expired | failed. Always releases the lease
+    and commits, whatever happens, so one bad account never blocks the queue."""
+    acct = session.get(InstagramAccount, account_id)
+    if acct is None:
+        return "failed"
+    try:
+        sync(session, embedder, client, acct, token_key, now)
+        acct.next_sync_at, acct.sync_attempts, acct.lease_until = None, 0, None
+        session.commit()
+        return "synced"
+    except InstagramError as e:
+        # sync() already set status / last_error and logged the event; decide what happens next.
+        delays = _q()["retry_delays_seconds"]
+        acct.lease_until = None
+        if e.retryable and acct.sync_attempts < len(delays):
+            acct.next_sync_at = now + timedelta(seconds=delays[acct.sync_attempts])
+            acct.sync_attempts += 1
+            outcome = "retry"
+        else:
+            acct.next_sync_at = None
+            outcome = "expired" if acct.status == "expired" else "failed"
+        session.commit()
+        return outcome
+    except Exception:
+        log.exception("instagram sync crashed for account %s", account_id)
+        session.rollback()
+        acct = session.get(InstagramAccount, account_id)
+        acct.status, acct.last_error = "error", "internal error during sync"
+        acct.next_sync_at, acct.lease_until = None, None
+        session.commit()
+        return "failed"
+
+
+def drain(
+    session: Session,
+    embedder,
+    client: InstagramClient,
+    token_key: str,
+    now: datetime | None = None,
+    max_jobs: int = 10_000,
+) -> Counter:
+    """Work through everything due right now in this process (daily job, tests). Workers running at
+    the same time share the queue safely: each account is leased by exactly one of them."""
+    outcomes: Counter = Counter()
+    for _ in range(max_jobs):
+        when = now or datetime.now(UTC)
+        ids = claim(session, when)
+        if not ids:
+            break
+        outcomes[run(session, embedder, client, ids[0], token_key, when)] += 1
+    return outcomes
+
+
+def work_forever(session_factory, embedder, client: InstagramClient, token_key: str, stop: threading.Event) -> None:
+    """One worker thread. Start several (IG_WORKERS) in the API, or run `loofie instagram worker`
+    on more machines: the queue lives in the database, so they all share it."""
+    idle = _q()["poll_seconds"]
+    while not stop.is_set():
+        pause = client.pause_seconds()
+        if pause:  # Meta said slow down: every worker waits, nobody burns the limit further
+            stop.wait(min(pause, 60))
+            continue
+        try:
+            with session_factory() as s:
+                now = datetime.now(UTC)
+                ids = claim(s, now)
+                if not ids:
+                    stop.wait(idle)
+                    continue
+                run(s, embedder, client, ids[0], token_key, now)
+        except Exception:  # the database blinked: wait and carry on, never kill the worker
+            log.exception("instagram worker loop error")
+            stop.wait(idle * 5)
+
+
 # ------------------------------------------------------------------ keep fresh
 
 
 def maintain(session: Session, embedder, client: InstagramClient, token_key: str, now: datetime | None = None):
-    """Run daily. Renews tokens close to expiry (Meta: ≥24 h old, before day 60) and re-syncs
-    accounts not synced for a week. One account failing never stops the others."""
+    """Run daily. Renews tokens close to expiry (Meta: ≥24 h old, before day 60), queues accounts not
+    synced for a week, then works through the queue. One account failing never stops the others."""
     now = now or datetime.now(UTC)
     cfg = instagram_config()
     counts = {"refreshed": 0, "synced": 0, "expired": 0, "failed": 0}
@@ -196,27 +355,35 @@ def maintain(session: Session, embedder, client: InstagramClient, token_key: str
     for acct in accounts:
         try:
             if acct.token_expires_at and acct.token_expires_at <= now:
-                acct.status, acct.token_encrypted = "expired", None
+                acct.status, acct.token_encrypted, acct.next_sync_at = "expired", None, None
                 _event(session, "instagram_token_expired", acct)
                 counts["expired"] += 1
                 session.commit()
                 continue
-            renew_at = acct.token_expires_at - timedelta(days=cfg["refresh_when_days_left"])
-            old_enough = now - acct.token_refreshed_at >= timedelta(hours=cfg["min_token_age_hours"])
-            if now >= renew_at and old_enough:
-                token, expires_in = client.refresh(security.decrypt(acct.token_encrypted, token_key))
-                acct.token_encrypted = security.encrypt(token, token_key)
-                acct.token_expires_at, acct.token_refreshed_at = now + timedelta(seconds=expires_in), now
-                counts["refreshed"] += 1
-            if acct.last_synced_at is None or now - acct.last_synced_at >= timedelta(days=cfg["sync_every_days"]):
-                sync(session, embedder, client, acct, token_key, now)
-                counts["synced"] += 1
+            if acct.token_expires_at and client.can_refresh:  # None = the token doesn't expire
+                renew_at = acct.token_expires_at - timedelta(days=cfg["refresh_when_days_left"])
+                old_enough = now - acct.token_refreshed_at >= timedelta(hours=cfg["min_token_age_hours"])
+                if now >= renew_at and old_enough:
+                    token, expires_in = client.refresh(security.decrypt(acct.token_encrypted, token_key))
+                    acct.token_encrypted = security.encrypt(token, token_key)
+                    acct.token_expires_at, acct.token_refreshed_at = now + timedelta(seconds=expires_in), now
+                    counts["refreshed"] += 1
+            weekly = acct.last_synced_at is None or now - acct.last_synced_at >= timedelta(days=cfg["sync_every_days"])
+            if weekly and acct.next_sync_at is None:
+                enqueue(acct, now, fresh=False)
             session.commit()
         except InstagramError as e:
             if e.token_dead and acct.status != "expired":
                 acct.status, acct.token_encrypted, acct.last_error = "expired", None, str(e)[:500]
+                acct.next_sync_at = None
             counts["expired" if acct.status == "expired" else "failed"] += 1
             session.commit()  # keep the status that explains the failure
+    done = drain(session, embedder, client, token_key, now)
+    counts["synced"] += done["synced"]
+    counts["expired"] += done["expired"]
+    counts["failed"] += done["failed"]
+    if done["retry"]:
+        counts["retrying"] = done["retry"]  # Meta hiccups: retried automatically later
     return counts
 
 

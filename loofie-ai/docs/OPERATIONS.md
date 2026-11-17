@@ -73,9 +73,25 @@ same address: run `cloudflared` there with the same tunnel, or point the DNS at 
 
 ## Instagram Login
 
-**What works today (17 Nov, tested with a real account):** a new Meta app can't use Instagram
-Login ("not available for newer apps"), so the service uses **Facebook login**
-(`IG_FLAVOR=facebook`):
+**Default: Unified Login (`IG_FLAVOR=unified`), no Facebook Page needed.**
+
+1. Meta app (type **Business**, owned by a business portfolio) with the **Manage messaging &
+   content on Instagram** use case → **API setup with Unified login** → **Create new
+   configuration**. Add `instagram_manage_insights` to it, or views and reach stay empty.
+   Copy its id to `IG_FB_CONFIG_ID`.
+2. `IG_APP_ID` / `IG_APP_SECRET` = the **Meta app** ID and secret (not Instagram ones).
+3. Register `IG_REDIRECT_URI` as the configuration's redirect URL (`http://localhost:8100/...`
+   for a test on this PC).
+4. Before real creators: App Review (Advanced Access) and Live mode; until then only people with
+   a role on the app can log in.
+
+**Workers.** Fetches run from a queue in the database. `IG_WORKERS=2` runs two worker threads
+inside the API (enough for the pilot). More load: raise it, or run
+`uv run loofie instagram worker -n 4` on another machine against the same database. `loofie
+instagram status` shows each account's state; `maintain` (daily) renews tokens, queues weekly
+re-syncs and works through the queue.
+
+**Fallback: Facebook login** (`IG_FLAVOR=facebook`), tested on 17 Nov:
 
 1. Meta app of type **Business** created with the **Other** use case (the newer use-case screens
    hide the old products). Add **Instagram** and **Facebook Login for Business**.

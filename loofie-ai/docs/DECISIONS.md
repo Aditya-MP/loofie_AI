@@ -337,20 +337,36 @@ access never locks anyone out, and one phone number = one person.
   delay.
 - Lawyer review of the consent text, privacy policy and retention policy (about 1 day).
 
-**[OPEN] Which Meta login the Instagram button uses.** Meta closed "Instagram Login" (log in with
-Instagram, no Facebook Page) to apps created after 2025. What's open:
-- **Facebook Login** (built, `IG_FLAVOR=facebook`): works, but her Instagram must be linked to a
-  Facebook Page. Real friction for small creators.
-- **Unified Login** (not built yet): she logs in with Instagram, **no Page needed**; Meta asks for
-  a short business form the first time (name, country, website), and the token belongs to a
-  business portfolio Meta creates for her. Whether views and reach (insights) come through is not
-  confirmed.
+**Which Meta login the Instagram button uses: Unified Login (default, `IG_FLAVOR=unified`).**
+Meta closed "Instagram Login" to apps created after 2025. Unified Login is Meta's recommended
+setup for new apps and the closest to "log in with Google": she logs in with Instagram, picks her
+account, allows. **No Facebook Page.** Meta asks a short business form the first time (name,
+country, website: her Instagram link works), and the token belongs to a business portfolio Meta
+makes for her. Views and reach need `instagram_manage_insights` in the configuration.
+- She shares no account → `no_instagram`; several → `several_accounts` (we never guess).
+- Facebook login (`IG_FLAVOR=facebook`, Page required) stays as the fallback.
+- The backend contract (`login-url`, `accounts/{ref}`, return URL) is the same for all of them.
 
-Recommendation: build Unified Login next and test it on a real account; keep Facebook Login as the
-fallback. The backend contract (`login-url`, `accounts/{ref}`, return URL) is the same for all three.
+**Many creators at once (the sync queue).** Every fetch is a row in the database
+(`next_sync_at`), not a task in memory, so:
+- **Nothing is lost on a restart:** a fetch half done when the server stops is picked up again.
+- **Any number of workers** (threads in the API with `IG_WORKERS`, or `loofie instagram worker`
+  on more machines) share the queue. Each creator is **leased** to one worker at a time, so two
+  workers never fetch the same creator and nobody's data lands under someone else (tested: 30
+  creators, 2 workers racing, each fetched exactly once).
+- **Meta slow or down:** retried after 1 min, 5 min, 30 min, 2 h, 6 h, then left for the weekly
+  re-sync. A dead token stops at once (`expired`).
+- **Rate limits:** Meta's usage headers are read on every call; above 85% (or on a rate-limit
+  error) every worker pauses, so we slow down before Meta blocks the app.
+- **Fewer calls:** views are read only for the newest 12 posts (they're what the average uses).
+- **Same Instagram, two Loofie accounts at the same moment:** the database lets exactly one win;
+  the other gets `already_linked`.
 
 ## Change log
 
+- 2026-11-17: Unified Login built and made the default (no Facebook Page); durable sync queue with
+  leases, retries with back-off, rate-limit pause, insights for the newest posts only; new reasons
+  `no_instagram`, `several_accounts`; repeated callbacks answer `connected` (section 10).
 - 2026-11-17: Accounts and sign-up agreed with the backend (section 10): Instagram connects a
   profile, phone OTP logs in, drafts confirmed server-side, abandoned-draft cleanup, roles, DPDP
   status / consents / audit log, OTP limits, DLT. Instagram login: `facebook` flavor built

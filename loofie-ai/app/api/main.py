@@ -6,6 +6,7 @@ The backend calls these endpoints with the X-API-Key header. Interactive docs at
 import hmac
 import json
 import logging
+import threading
 import time
 import uuid
 from contextlib import asynccontextmanager
@@ -46,7 +47,7 @@ from app.importer import provenance
 from app.importer.upsert import upsert
 from app.instagram import security
 from app.instagram import service as ig_service
-from app.instagram.client import InstagramClient, InstagramError, instagram_config
+from app.instagram.client import InstagramClient, instagram_config
 from app.matcher import track_record
 from app.matcher.features import BriefQuery, matcher_config
 from app.matcher.service import match as run_match
@@ -64,7 +65,12 @@ async def lifespan(app: FastAPI):
 
         app.state.embedder = get_embedder()
     app.state.niche = ZeroShotNiche(app.state.embedder)
+    workers = start_instagram_workers(app)
     yield
+    for stop, threads in workers:
+        stop.set()
+        for t in threads:
+            t.join(timeout=10)
 
 
 app = FastAPI(title="Loofie AI", version="1", lifespan=lifespan)
@@ -417,19 +423,54 @@ def session_factory(app: FastAPI):
     return getattr(app.state, "session_factory", None) or SessionLocal
 
 
-def instagram(request: Request) -> InstagramClient:
+def instagram_configured() -> bool:
     s = get_settings()
-    if not (s.ig_app_id and s.ig_app_secret and s.ig_redirect_uri and s.ig_token_key):
+    return bool(s.ig_app_id and s.ig_app_secret and s.ig_redirect_uri and s.ig_token_key)
+
+
+def build_instagram_client() -> InstagramClient:
+    s = get_settings()
+    return InstagramClient(
+        s.ig_app_id, s.ig_app_secret, s.ig_redirect_uri, flavor=s.ig_flavor or None, config_id=s.ig_fb_config_id
+    )
+
+
+def instagram(request: Request) -> InstagramClient:
+    if not instagram_configured():
         raise HTTPException(503, "Instagram login is not configured on the AI service")
     if getattr(request.app.state, "instagram", None) is None:
-        request.app.state.instagram = InstagramClient(
-            s.ig_app_id,
-            s.ig_app_secret,
-            s.ig_redirect_uri,
-            flavor=s.ig_flavor or None,
-            config_id=s.ig_fb_config_id,
-        )
+        try:
+            request.app.state.instagram = build_instagram_client()
+        except ValueError as e:  # e.g. unified login without IG_FB_CONFIG_ID
+            raise HTTPException(503, f"Instagram login is misconfigured: {e}") from e
     return request.app.state.instagram
+
+
+def start_instagram_workers(app: FastAPI) -> list:
+    """IG_WORKERS threads that work the sync queue (retries, weekly re-syncs, anything a restart left
+    half done). More capacity: raise IG_WORKERS, or run `loofie instagram worker` on another machine."""
+    s = get_settings()
+    if s.ig_workers <= 0 or not instagram_configured():
+        return []
+    if getattr(app.state, "instagram", None) is None:
+        try:
+            app.state.instagram = build_instagram_client()
+        except ValueError:
+            log.exception("instagram workers not started: misconfigured")
+            return []
+    stop = threading.Event()
+    threads = [
+        threading.Thread(
+            target=ig_service.work_forever,
+            args=(session_factory(app), app.state.embedder, app.state.instagram, s.ig_token_key, stop),
+            name=f"instagram-worker-{i}",
+            daemon=True,
+        )
+        for i in range(s.ig_workers)
+    ]
+    for t in threads:
+        t.start()
+    return [(stop, threads)]
 
 
 InstagramDep = Annotated[InstagramClient, Depends(instagram)]
@@ -470,22 +511,14 @@ def _back_to_app(outcome: dict):
 
 
 def sync_in_background(app: FastAPI, account_id: int) -> None:
+    """Right after a login: fetch this creator now instead of waiting for a worker's next look.
+    It goes through the same queue lease, so if a worker already took it, this does nothing; if this
+    process dies halfway, the lease runs out and a worker finishes the job."""
     key = get_settings().ig_token_key
     with session_factory(app)() as s:
-        acct = s.get(InstagramAccount, account_id)
-        if acct is None or acct.status != "syncing":
-            return
-        try:
-            ig_service.sync(s, app.state.embedder, app.state.instagram, acct, key, datetime.now(UTC))
-            s.commit()
-        except InstagramError:
-            s.commit()  # the account's status/last_error explain it
-        except Exception:
-            log.exception(json.dumps({"job": "instagram_sync", "account_id": account_id, "error": "unhandled"}))
-            s.rollback()
-            acct = s.get(InstagramAccount, account_id)
-            acct.status, acct.last_error = "error", "internal error during sync"
-            s.commit()
+        now = datetime.now(UTC)
+        if ig_service.claim(s, now, account_id=account_id):
+            ig_service.run(s, app.state.embedder, app.state.instagram, account_id, key, now)
 
 
 @app.get("/auth/instagram/callback")
@@ -507,9 +540,11 @@ def instagram_callback(
         session.rollback()
         log.info(json.dumps({"job": "instagram_connect", "failed": e.reason, "detail": str(e)[:300]}))
         return _back_to_app({"instagram": "failed", "reason": e.reason})
-    acct.status = "syncing"
-    session.commit()
-    background.add_task(sync_in_background, request.app, acct.id)
+    if acct.status == "connected":  # a fresh login (a repeated callback finds it already syncing or active)
+        acct.status = "syncing"
+        ig_service.enqueue(acct, datetime.now(UTC))
+        session.commit()
+        background.add_task(sync_in_background, request.app, acct.id)
     return _back_to_app({"instagram": "connected", "account_ref": acct.account_ref, "handle": acct.username})
 
 
@@ -531,12 +566,16 @@ def instagram_sync_now(account_ref: str, request: Request, session: SessionDep, 
     acct = account_or_404(session, account_ref)
     if acct.token_encrypted is None:
         raise HTTPException(409, f"account is {acct.status}: the creator has to log in with Instagram again")
-    try:
-        ig_service.sync(session, request.app.state.embedder, ig, acct, get_settings().ig_token_key, datetime.now(UTC))
-    except InstagramError:
-        session.commit()
-        raise HTTPException(502, f"Instagram refused the fetch; account is now {acct.status}") from None
+    now = datetime.now(UTC)
+    ig_service.enqueue(acct, now)
     session.commit()
+    if not ig_service.claim(session, now, account_id=acct.id):
+        session.refresh(acct)
+        return account_out(acct)  # a worker is fetching it right now: same result, no double fetch
+    outcome = ig_service.run(session, request.app.state.embedder, ig, acct.id, get_settings().ig_token_key, now)
+    session.refresh(acct)
+    if outcome != "synced":
+        raise HTTPException(502, f"Instagram refused the fetch; account is now {acct.status}")
     return account_out(acct)
 
 

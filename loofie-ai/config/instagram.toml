@@ -4,11 +4,12 @@
 # version deprecation notice.
 version = "instagram-ingest-v2"
 
-# Which Meta login the creator goes through. Meta closed "Instagram Login" to apps created after
-# 2025 (dashboard: "not available for newer apps"), so new apps use "facebook": the creator logs in
-# with Facebook and her Instagram must be linked to a Facebook Page. "instagram" = the older login,
-# kept for apps that still have it. Override per environment with IG_FLAVOR in .env.
-flavor = "facebook"
+# Which Meta login the creator goes through (IG_FLAVOR in .env overrides it):
+# - "unified": log in with Instagram, pick the account, no Facebook Page needed. Meta's recommended
+#   setup for new apps; needs a Facebook Login for Business configuration (IG_FB_CONFIG_ID).
+# - "facebook": Facebook login; her Instagram must be linked to a Facebook Page.
+# - "instagram": the older Instagram Login, closed to apps created after 2025.
+flavor = "unified"
 
 fb_authorize_url = "https://www.facebook.com"
 fb_graph_url = "https://graph.facebook.com"
@@ -41,3 +42,14 @@ refresh_when_days_left = 10   # long-lived tokens last 60 days; renew when this 
 min_token_age_hours = 24      # Meta refuses to refresh a token younger than this
 sync_every_days = 7           # automatic re-fetch, keeps numbers inside the 30-day staleness rule
 timeout_seconds = 15
+
+# The sync queue: every fetch is a row in the database, shared by all workers.
+[queue]
+lease_seconds = 300          # a worker owns an account this long; if it dies, another takes over
+poll_seconds = 2             # idle workers look for new work this often
+# A Meta hiccup or rate limit: try again after these waits, then give up until the weekly re-sync.
+retry_delays_seconds = [60, 300, 1800, 7200, 21600]
+insights_last_n = 12         # insights (views) only for the newest posts: most of a sync's Meta calls
+usage_pause_percent = 85     # Meta's usage headers above this: all workers pause
+usage_pause_seconds = 60
+throttle_pause_seconds = 300 # Meta refused with a rate-limit code: all workers pause this long

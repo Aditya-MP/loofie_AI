@@ -1,6 +1,7 @@
 """Usage (through the main command):
 loofie instagram maintain     daily job: renew tokens close to expiry, re-fetch accounts older than a week
 loofie instagram status       every connected account and its state
+loofie instagram worker [-n 4] work the sync queue until stopped (Ctrl+C); run on as many machines as needed
 loofie instagram new-key      print a fresh IG_TOKEN_KEY for .env (do this once, then never change it)
 """
 
@@ -19,7 +20,8 @@ from app.instagram import security
 def main() -> int:
     sys.stdout.reconfigure(encoding="utf-8", errors="replace")
     ap = argparse.ArgumentParser(prog="loofie instagram")
-    ap.add_argument("action", choices=["maintain", "status", "new-key"])
+    ap.add_argument("action", choices=["maintain", "status", "new-key", "worker"])
+    ap.add_argument("-n", "--threads", type=int, default=4, help="worker threads (worker only)")
     args = ap.parse_args()
 
     if args.action == "new-key":
@@ -47,6 +49,30 @@ def main() -> int:
         client = InstagramClient(
             s.ig_app_id, s.ig_app_secret, s.ig_redirect_uri, flavor=s.ig_flavor or None, config_id=s.ig_fb_config_id
         )
+        if args.action == "worker":
+            import threading
+
+            from app.instagram.service import work_forever
+
+            stop = threading.Event()
+            embedder = get_embedder()
+            threads = [
+                threading.Thread(target=work_forever, args=(SessionLocal, embedder, client, s.ig_token_key, stop))
+                for _ in range(max(1, args.threads))
+            ]
+            for t in threads:
+                t.start()
+            print(f"{len(threads)} Instagram sync workers running. Ctrl+C to stop.")
+            try:
+                while any(t.is_alive() for t in threads):
+                    for t in threads:
+                        t.join(timeout=1)
+            except KeyboardInterrupt:
+                print("stopping after the current fetches…")
+                stop.set()
+                for t in threads:
+                    t.join()
+            return 0
         counts = maintain(session, get_embedder(), client, s.ig_token_key)
         print(f"Instagram maintenance: {counts}")
         return 1 if counts["failed"] else 0

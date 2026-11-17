@@ -285,6 +285,11 @@ class InstagramAccount(Timestamps, Base):
     status: Mapped[str] = mapped_column(String(20), index=True)
     last_synced_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     last_error: Mapped[str | None] = mapped_column(Text)
+    business_id: Mapped[str | None] = mapped_column(String(40))  # unified login: the token's business portfolio
+    # The sync queue (app/instagram/service.py): due when next_sync_at <= now and no live lease.
+    next_sync_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    sync_attempts: Mapped[int] = mapped_column(Integer, server_default="0", default=0)
+    lease_until: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
 
 class InstagramSnapshot(Base):
