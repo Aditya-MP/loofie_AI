@@ -127,6 +127,14 @@ class ApiExceptionHandler extends ResponseEntityExceptionHandler {
         return problem(HttpStatus.UNPROCESSABLE_CONTENT, "refund-rule", e.getMessage());
     }
 
+    /** A year import with wrong rows: nothing was applied; every bad row is listed. */
+    @ExceptionHandler(com.loofie.core.calendar.app.HolidayYearImport.RejectedRows.class)
+    ProblemDetail holidayRows(com.loofie.core.calendar.app.HolidayYearImport.RejectedRows e) {
+        ProblemDetail p = problem(HttpStatus.UNPROCESSABLE_CONTENT, "invalid-holiday-rows", e.getMessage());
+        p.setProperty("rows", e.rows());
+        return p;
+    }
+
     @ExceptionHandler(InvalidStateCodeException.class)
     ProblemDetail invalidStateCode(InvalidStateCodeException e) {
         return problem(HttpStatus.UNPROCESSABLE_CONTENT, "invalid-state-code", e.getMessage());

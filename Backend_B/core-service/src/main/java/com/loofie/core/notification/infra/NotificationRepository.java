@@ -39,6 +39,27 @@ public class NotificationRepository {
                 .update();
     }
 
+    /** Inserts unless this inbox got {@code kind} since {@code since}; locked per kind, so two instances cannot both send. */
+    @Transactional(propagation = Propagation.MANDATORY)
+    public boolean insertOncePerDay(UUID id, Inbox to, String kind, String payloadJson, Instant at, Instant since) {
+        jdbc.sql("SELECT pg_advisory_xact_lock(hashtextextended(:k, 0))").param("k", "notice-once:" + kind)
+                .query().singleRow();
+        var check = jdbc.sql("SELECT EXISTS (SELECT 1 FROM notifications WHERE recipient_type = :type AND "
+                        + (to.id() == null ? "recipient_id IS NULL" : "recipient_id = :rid")
+                        + " AND kind = :kind AND created_at >= :since)")
+                .param("type", to.type());
+        if (to.id() != null) {
+            check = check.param("rid", to.id());
+        }
+        boolean sent = check.param("kind", kind).param("since", utc(since))
+                .query(Boolean.class).single();
+        if (sent) {
+            return false;
+        }
+        insert(id, to, kind, null, payloadJson, at);
+        return true;
+    }
+
     /** Newest first, from any of the caller's inboxes, older than {@code before} (keyset paging). */
     public List<Row> list(List<Inbox> inboxes, boolean unreadOnly, Instant before, UUID jobId, int limit) {
         StringBuilder where = new StringBuilder("(");

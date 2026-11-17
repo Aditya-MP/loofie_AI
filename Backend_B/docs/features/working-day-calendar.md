@@ -1,6 +1,6 @@
 # Working-day calendar: production readiness
 
-Status: **items 1–5 built and tested (steps 12–15), 2026-11-16.** Items 6–7 wait for decisions D1–D2. Results at the end.
+Status: **done for everything Backend B can deliver today** (first pass 2026-11-16, final pass 2026-11-17, results at the end). The real holiday list (ops) and state holidays (F1) are still open.
 
 ## 1. Business purpose
 
@@ -162,3 +162,64 @@ partial-index counts, run only when ops edits a holiday (a few times a year).
 - `runningClocksNotChanged` counts clocks that end after the day; a clock started today after midnight on that
   same day is counted too (it does not span it). Off by a few at most, on the day itself only.
 - Per-brand weekly off days and pickup state: F1.
+
+---
+
+## Final pass (2026-11-17): research and plan (approved 2026-11-17)
+
+### Findings
+
+| # | Finding | Who it hurts |
+|---|---|---|
+| C1 | **The "list ran out" alarm reaches nobody.** It is a metric and a log line; the alert rule needs hosting, which does not exist. The ops inbox now exists (F5 round 2) but the alarm does not use it. | Brands (marked late through a holiday), ops (not told) |
+| C2 | **The alarm is blind to a half-entered year.** "Missing" means fewer than the 3 fixed national days. 2027 already has those 3 seeded, so on 1 December it stays silent although Holi, Diwali, Eid and every courier closure for 2027 are missing. Once ops gives the real list (about 15-20 days), 3 is far too low a bar. | Brands |
+| C3 | **The yearly list can only be entered one day per call, with no preview.** When ops sends the list (a sheet of 15-20 rows), entering it by hand risks a half-entered year (some calls fail, nobody notices) and typos. Earlier we said a bulk import was not needed; with D2 about to deliver a real list, it is the safest way to load it. | Ops, brands |
+| OK | Rules, edge cases, state codes, audit trail, scope, performance: done and tested in the first pass. The delivery screen (F6) now shows the brand its ship-by date. | – |
+
+### Plan
+
+| # | Change | Design | Size |
+|---|---|---|---|
+| K1 | **Year import with preview** | `PUT /api/core/ops/holidays/years/{year}` with the full list for that year (date, state code, name). `?dryRun=true` (default) answers the diff: added, renamed, removed, unchanged, and for each the running clocks it reaches; nothing is written. `dryRun=false` applies it **all or nothing** in one transaction, each change in `holiday_changes`. Every row validated (date in that year, state code, name); one bad row → 422 listing the rows, nothing applied. OPS only. | M |
+| K2 | **Alarm threshold from config** | `loofie.calendar.expected-national-per-year` (default 3 = today). Set to the real count once ops gives the list, so a half-entered year is "missing". | S |
+| K3 | **Alarm to the ops inbox** | When next year is missing (from 1 December) or the next 365 days have fewer than expected: a `HOLIDAYS_MISSING` notice to the ops inbox, at most once per day across all instances (advisory lock + "already sent today" check). | S |
+| K4 | **Tests** | Import preview writes nothing; apply all-or-nothing; bad row → 422, nothing applied; history rows per change; non-OPS refused; rows outside the year refused; alarm threshold; inbox notice once a day, also with two instances at once. | S |
+| K5 | **Docs** | Results, Definition of Done, blocked list. | S |
+
+No load test: the deadline path is unchanged (measured in the F6 final pass, `MARK_SHIPPED` p95 6 ms), and the import
+runs a few times a year.
+
+### Stays blocked (written down, not built)
+
+| Item | Who unblocks |
+|---|---|
+| The real 2026-2027 courier-closure list (D2), and who owns it yearly (D4) | Ops |
+| State holidays taking effect (brand pickup state) | F1 brand profile |
+| Alert rule on the metrics (paging) | Hosting |
+
+### Built and tested (2026-11-17)
+
+| # | Built | Where |
+|---|---|---|
+| K1 | `PUT /api/core/ops/holidays/years/{year}` with the year's full list (`date`, `stateCode`, `name`). **Preview by default** (`dryRun=true`): ADDED / RENAMED / REMOVED / UNCHANGED per row with the running clocks each change does not reach, nothing saved. `dryRun=false`: all or nothing in one transaction, under a per-year lock, each change in `holiday_changes` (additions and renames first, then removals). Every row checked first (date in that year, state code, 1-100 char name, no duplicate day + state, at most 500 rows); any bad row → 422 `invalid-holiday-rows` listing every bad row, nothing applied. OPS (incl. OPS_LEAD / FOUNDER) only | `HolidayYearImport`, `OpsHolidayController`, `ApiExceptionHandler` |
+| K2 | `loofie.calendar.expected-national-per-year` (default 3, allowed 3-60, in `application.yaml`); new gauge `loofie.calendar.national.holidays.expected` | `HolidayCoverage` |
+| K3 | `HOLIDAYS_MISSING` notice to the ops inbox (`why` NEXT_YEAR_MISSING or NEXT_365_DAYS_SHORT, year, found, expected), at most once per India day across all instances (advisory lock + "sent today" check). A failed check is now logged as a warning, not hidden at debug | `HolidayCoverage`, `NotificationService.toOpsOncePerDay` |
+
+| Proof | Result |
+|---|---|
+| `CalendarFinalPassTest` (9) | preview saves nothing and writes no history; apply replaces the year (1 added, 1 renamed with old/new name, 1 removed, 2 unchanged) with one history row per change by the right person; 5 different bad rows (wrong year, bad state, duplicate national day, blank name, no date) all listed and **nothing applied**; "wb" / "OR" stored as WB / OD with the state-holiday note; brand, creator, SYSTEM refused, OPS_LEAD allowed; two imports of the same year at once → 4 additions in total, 4 history rows; API: preview by default, 30 February → 400, bad row → 422 with the row number, brand → 403; 3 expected = 2027 looks complete, 15 expected = 2027 half-entered and ops told (with year, found, expected); setting below 3 refused at start; **4 instances checking at once + a later check the same day → 1 notice; next day → 2**; nothing missing → no notice |
+| Full suite | **241 run, 0 failed, 2 skipped** (the opt-in Backend A contract tests; nothing sent to Backend A changed) |
+| Performance | Deadline path unchanged (F6 final pass: `MARK_SHIPPED` p95 6 ms at 300 rps). The import and the alarm run a few times a year / every 6 h. No load test (approved plan) |
+
+### Definition of Done (final)
+
+| Item | State |
+|---|---|
+| Rules, edge cases, bad input, audit trail, scope | Done, tested (first pass) |
+| Ops can load the yearly list safely (preview, all or nothing) | **Done**, tested |
+| A missing or half-entered year reaches a person | **Done**: ops inbox notice, once a day; metric for paging when hosting exists |
+| Real 2026-2027 courier-closure list | **Blocked: ops (D2, D4).** Load it with K1, then set `expected-national-per-year` |
+| State holidays in effect | **Blocked: F1** (brand pickup state) |
+| Paging on the metrics | **Blocked: hosting** |
+
+**The working-day calendar is done for everything Backend B can deliver today.**

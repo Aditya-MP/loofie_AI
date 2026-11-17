@@ -61,6 +61,18 @@ public class NotificationService {
         repo.insert(Ids.newId(), new Inbox(OPS, null), kind, jobId, json.writeValueAsString(payload), at);
     }
 
+    /**
+     * A standing alarm for ops (e.g. the holiday list ran out): at most one per kind per India day, however many
+     * instances check. Its own transaction. Returns false when today's was already sent.
+     */
+    @Transactional
+    public boolean toOpsOncePerDay(String kind, Map<String, Object> payload, Instant at) {
+        Instant dayStart = at.atZone(java.time.ZoneId.of("Asia/Kolkata")).toLocalDate()
+                .atStartOfDay(java.time.ZoneId.of("Asia/Kolkata")).toInstant();
+        return repo.insertOncePerDay(Ids.newId(), new Inbox(OPS, null), kind, json.writeValueAsString(payload), at,
+                dayStart);
+    }
+
     @Transactional(propagation = Propagation.MANDATORY)
     public void toFounder(String kind, UUID jobId, Map<String, Object> payload, Instant at) {
         repo.insert(Ids.newId(), new Inbox(FOUNDER, null), kind, jobId, json.writeValueAsString(payload), at);

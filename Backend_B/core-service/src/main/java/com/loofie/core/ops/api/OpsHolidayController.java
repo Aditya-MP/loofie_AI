@@ -22,6 +22,7 @@ import org.springframework.web.bind.annotation.RestController;
 
 import com.loofie.core.calendar.app.HolidayAdminService;
 import com.loofie.core.calendar.app.HolidayAdminService.EditResult;
+import com.loofie.core.calendar.app.HolidayYearImport;
 import com.loofie.core.calendar.domain.HolidayChange;
 import com.loofie.core.calendar.domain.HolidayChange.Outcome;
 import com.loofie.core.calendar.domain.Holiday;
@@ -42,9 +43,22 @@ class OpsHolidayController {
     }
 
     private final HolidayAdminService holidays;
+    private final HolidayYearImport yearImport;
 
-    OpsHolidayController(HolidayAdminService holidays) {
+    OpsHolidayController(HolidayAdminService holidays, HolidayYearImport yearImport) {
         this.holidays = holidays;
+        this.yearImport = yearImport;
+    }
+
+    /**
+     * The whole list for one year, replacing what is there (rows not in the list are removed). Preview by default:
+     * {@code dryRun=false} applies it, all or nothing. A bad row: 422 listing every bad row, nothing applied.
+     */
+    @PutMapping("/years/{year}")
+    HolidayYearImport.Result importYear(Actor actor, @PathVariable int year,
+                                        @RequestParam(defaultValue = "true") boolean dryRun,
+                                        @RequestBody List<HolidayYearImport.Row> rows) {
+        return yearImport.importYear(actor, year, rows, dryRun);
     }
 
     @GetMapping

@@ -86,6 +86,10 @@ loofie:
     # Brand video review: empty = 120 calendar hours (Foundation v2, today); 5 = working days (DECISIONS.md).
     # Switch on only after the founder signs off the change.
     review-working-days:
+  calendar:
+    # National holidays a full year should have. 3 = only the fixed days (26 Jan, 15 Aug, 2 Oct). Once ops delivers
+    # the real list, set it to that list's national count so a half-entered year raises HOLIDAYS_MISSING.
+    expected-national-per-year: 3
   refunds:
     daily-summary: true       # 09:00 India time, yesterday's refunds to the founder's inbox
 

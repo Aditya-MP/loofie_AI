@@ -119,6 +119,13 @@ public class HolidayRepository {
                 .list();
     }
 
+    /** Serialises imports of one year (transaction-scoped). */
+    @Transactional(propagation = Propagation.MANDATORY)
+    public void lockYear(int year) {
+        jdbc.sql("SELECT pg_advisory_xact_lock(hashtext('holiday-year'), :year)").param("year", year)
+                .query().singleRow();
+    }
+
     private Optional<String> lockName(LocalDate date, String state) {
         return jdbc.sql("SELECT name FROM holidays WHERE holiday_date = :date AND state_code = :state FOR UPDATE")
                 .param("date", date).param("state", state)
