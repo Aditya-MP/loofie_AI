@@ -29,8 +29,9 @@ class NotificationController {
 
     @GetMapping
     List<Item> inbox(Actor actor, @RequestParam(defaultValue = "false") boolean unreadOnly,
-                     @RequestParam(required = false) Instant before, @RequestParam(defaultValue = "50") int limit) {
-        return notifications.inbox(actor, unreadOnly, before, limit);
+                     @RequestParam(required = false) Instant before, @RequestParam(required = false) UUID jobId,
+                     @RequestParam(defaultValue = "50") int limit) {
+        return notifications.inbox(actor, unreadOnly, before, jobId, limit);
     }
 
     /** 204 when marked; 404 when it is not in the caller's inbox (indistinguishable from missing). */

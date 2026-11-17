@@ -17,11 +17,14 @@ import com.loofie.core.job.app.RefundSupport;
 import com.loofie.core.job.app.RefundSupport.Basis;
 import com.loofie.core.job.app.TimerRefunds;
 import com.loofie.core.job.app.TransitionCommand;
+import com.loofie.core.job.app.TransitionDetails;
 import com.loofie.core.job.domain.Actor;
 import com.loofie.core.job.domain.ActorRole;
 import com.loofie.core.job.domain.JobAction;
 import com.loofie.core.job.domain.JobExceptions.IllegalTransitionException;
 import com.loofie.core.job.domain.JobExceptions.JobNotFoundException;
+import com.loofie.core.job.domain.JobStatus;
+import com.loofie.core.job.domain.ReasonCode;
 import com.loofie.core.job.domain.TransitionTable;
 import com.loofie.core.notification.app.NotificationService;
 import com.loofie.core.order.app.OrderPricing;
@@ -86,6 +89,16 @@ public class RefundService implements TimerRefunds {
     /** Ops asks for a cancellation or refund. Any ops person may ask; the note is required (it stays in core). */
     @Transactional
     public RefundView request(Actor actor, UUID jobId, JobAction action, RefundReason reason, String note) {
+        return request(actor, jobId, action, reason, note, null);
+    }
+
+    /**
+     * @param jobReasonCode whose fault the dispute was: required when refunding a dispute (it feeds the creator's
+     *                      track record), ignored otherwise
+     */
+    @Transactional
+    public RefundView request(Actor actor, UUID jobId, JobAction action, RefundReason reason, String note,
+                              ReasonCode jobReasonCode) {
         actor.requireRole(ActorRole.OPS, "Refunds are requested by ops");
         if (note == null || note.isBlank()) {
             throw new RefundRuleException("Say why (the note stays inside Loofie)");
@@ -93,7 +106,7 @@ public class RefundService implements TimerRefunds {
         if (reason == null) {
             throw new RefundRuleException("A refund needs a reason code");
         }
-        return open(actor, jobId, action, reason, note.trim());
+        return open(actor, jobId, action, reason, note.trim(), jobReasonCode);
     }
 
     /** The timer: the replacement window passed with no creator. Loofie's own failure unless the brand shipped late. */
@@ -103,12 +116,21 @@ public class RefundService implements TimerRefunds {
         Basis b = jobs.basis(jobId);
         RefundReason reason = "BRAND_LATE_SHIP".equals(b.lastReasonCode()) ? RefundReason.BRAND_LATE_SHIP
                 : RefundReason.LOOFIE_NO_CREATOR;
-        open(Actor.system(), jobId, JobAction.REPLACEMENT_EXPIRED, reason, "replacement window ended with no creator");
+        open(Actor.system(), jobId, JobAction.REPLACEMENT_EXPIRED, reason, "replacement window ended with no creator",
+                null);
     }
 
-    private RefundView open(Actor actor, UUID jobId, JobAction action, RefundReason reason, String note) {
+    private RefundView open(Actor actor, UUID jobId, JobAction action, RefundReason reason, String note,
+                            ReasonCode jobReasonCode) {
         Instant now = clock.instant();
         Basis b = jobs.basis(jobId);
+        boolean dispute = action == JobAction.RESOLVE_REFUND && b.status() == JobStatus.DISPUTED;
+        if (dispute && jobReasonCode == null) {
+            throw new RefundRuleException("Refunding a dispute needs the job reason code (whose fault it was)");
+        }
+        if (jobReasonCode == ReasonCode.FALSE_CLAIM) {
+            throw new RefundRuleException("FALSE_CLAIM is set only by resolving a false delivery claim");
+        }
         if (TransitionTable.find(b.status(), action).isEmpty()) {
             throw new IllegalTransitionException(b.status(), action);
         }
@@ -125,7 +147,7 @@ public class RefundService implements TimerRefunds {
         Row row = new Row(Ids.newId(), jobId, b.brandOrgId(), action, refundCase, reason, note, amounts.brandCash(),
                 amounts.brandCredit(), amounts.creatorKillFee(), b.creatorEverAccepted(), required.leadMaySelfApprove(),
                 required.founderRequired(), actor.userId(), actor.role().name(), now, Status.REQUESTED, null, null,
-                null, null, null, null, null);
+                null, null, null, null, null, dispute && jobReasonCode != null ? jobReasonCode.name() : null);
         repo.insert(row);
         notifications.toOps("REFUND_REQUESTED", jobId, summary(row), now);
         if (required.founderRequired()) {
@@ -156,7 +178,11 @@ public class RefundService implements TimerRefunds {
         // Last approval: the money action runs now, as part of this decision.
         Actor runAs = r.action() == JobAction.REPLACEMENT_EXPIRED ? Actor.system() : actor;
         String reason = runAs == actor ? "refund request " + r.id() + " approved: " + r.note() : null;
-        engine.transition(TransitionCommand.of(r.jobId(), r.action(), runAs, reason).forApprovedRefund(r.id()));
+        TransitionCommand cmd = TransitionCommand.of(r.jobId(), r.action(), runAs, reason).forApprovedRefund(r.id());
+        if (r.jobReasonCode() != null) {
+            cmd = cmd.with(TransitionDetails.reason(ReasonCode.valueOf(r.jobReasonCode())));
+        }
+        engine.transition(cmd);
         repo.decide(r.id(), Status.APPROVED, actor.userId(), now, blankToNull(note));
         Row decided = repo.find(r.id()).orElseThrow();
         Map<String, Object> toBrand = new LinkedHashMap<>();

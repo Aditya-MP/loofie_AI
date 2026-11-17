@@ -39,6 +39,7 @@ import com.loofie.core.job.domain.WorkingCalendar;
 import com.loofie.core.job.infra.AssignmentRepository;
 import com.loofie.core.job.infra.CourierRepository;
 import com.loofie.core.job.infra.TrackingNumberRepository;
+import com.loofie.core.job.infra.JobReadRepository;
 import com.loofie.core.job.infra.JobRepository;
 import com.loofie.core.job.infra.ShipmentRepository;
 
@@ -62,6 +63,8 @@ public class JobTransitionService {
     private final MeterRegistry meters;
     private final CourierRepository couriers;
     private final TrackingNumberRepository trackingNumbers;
+    private final JobReadRepository reads;
+    private static final org.slf4j.Logger log = org.slf4j.LoggerFactory.getLogger(JobTransitionService.class);
     /** {@code loofie.deadlines.review-working-days}: empty = 120 calendar hours (today); 5 = DECISIONS.md, once signed off. */
     private Integer reviewWorkingDays;
 
@@ -75,7 +78,9 @@ public class JobTransitionService {
 
     public JobTransitionService(JobRepository jobs, AssignmentRepository assignments, ShipmentRepository shipments,
                                 JobEventRecorder recorder, WorkingCalendar calendar, Clock clock, MeterRegistry meters,
-                                CourierRepository couriers, TrackingNumberRepository trackingNumbers) {
+                                CourierRepository couriers, TrackingNumberRepository trackingNumbers,
+                                JobReadRepository reads) {
+        this.reads = reads;
         this.couriers = couriers;
         this.trackingNumbers = trackingNumbers;
         this.jobs = jobs;
@@ -204,14 +209,38 @@ public class JobTransitionService {
 
         checkGuards(job, rule, details, now);
         ReasonCode reasonCode = reasonCodeFor(job, rule, details);
-        Assignment assignment = changeAssignment(job, rule, creatorId, now);
-        UUID assignmentId = assignment == null ? null : assignment.getId();
+        boolean correction = rule.action() == JobAction.OPS_CORRECT_REASON;
+        Map<String, Object> correctionFacts = new LinkedHashMap<>();
+        UUID correctedCreator = null;
+        UUID correctedAssignment = null;
+        if (correction) {
+            // The correction is about the creator of the decision it corrects, who may no longer be on the job.
+            JobReadRepository.CodedEvent last = reads.lastCodedEvent(job.getId()).orElseThrow(
+                    () -> new TransitionGuardException("This job has no reason code to correct"));
+            if (last.reasonCode().equals(reasonCode.name())) {
+                throw new TransitionGuardException("The reason code is already " + reasonCode);
+            }
+            correctedAssignment = last.assignmentId();
+            correctedCreator = last.assignmentId() == null ? null : assignments.findById(last.assignmentId())
+                    .map(Assignment::getCreatorId).orElse(null);
+            correctionFacts.put("corrects", last.eventId().toString());
+            correctionFacts.put("previousReasonCode", last.reasonCode());
+        }
+        Assignment assignment = correction ? null : changeAssignment(job, rule, creatorId, now);
+        UUID assignmentId = correction ? correctedAssignment : assignment == null ? null : assignment.getId();
+        UUID eventCreator = correction ? correctedCreator : assignment == null ? null : assignment.getCreatorId();
         Map<String, Object> facts = applyDeliveryFacts(job, rule, actor, details, assignmentId, now);
+        facts.putAll(correctionFacts);
         if (rule.action() == JobAction.REQUEST_REVISION) {
             job.markFreeRevisionUsed();
         }
+        if (rule.action() == JobAction.SUBMIT_DRAFT) {
+            job.recordFirstDraft(now); // before the deadlines are cleared: on time against the deadline as it stood
+        }
         job.moveTo(rule.to(), now);
-        if (isExtension(rule.action())) {
+        if (correction) {
+            // A correction changes the record, never the job: state and every clock stay exactly as they were.
+        } else if (isExtension(rule.action())) {
             if (rule.action() == JobAction.REQUEST_EXTENSION) {
                 job.markCreatorExtensionUsed();
             }
@@ -222,9 +251,38 @@ public class JobTransitionService {
         jobs.saveAndFlush(job); // optimistic lock check happens here; bumps version
         countAfterCommit(rule.action(), actor);
 
-        return recorder.recordStateChange(job, assignmentId, assignment == null ? null : assignment.getCreatorId(), from,
-                rule.action(), actor, reason, reasonCode,
-                job.getDeliveryIssueType(), facts, now, correlationId, causationId);
+        UUID eventId = recorder.recordStateChange(job, assignmentId, eventCreator, from, rule.action(), actor, reason,
+                reasonCode, job.getDeliveryIssueType(), facts, now, correlationId, causationId);
+        recordOutcome(job, rule.action(), from, assignment, reasonCode, now, correlationId, eventId);
+        return eventId;
+    }
+
+    /** Actions that end a creator's part early: the outcome says replaced, with the cause's reason code. */
+    private static final java.util.Set<JobAction> REPLACED_BY = java.util.EnumSet.of(JobAction.PRODUCTION_EXPIRED,
+            JobAction.CREATOR_WITHDRAW, JobAction.OPS_RELEASE_CREATOR, JobAction.RESOLVE_REPLACE, JobAction.RESOLVE_REFUND);
+
+    /**
+     * {@code job_outcome} for the AI's track record (DECISIONS.md section 9), in this transaction: when the job closes
+     * (on time, revisions, disputed) or when the creator's part ends early (replaced, with the cause's code; the
+     * matcher counts it only if the code is the creator's fault). Cancellations send none: the creator did not fail.
+     */
+    private void recordOutcome(Job job, JobAction action, JobStatus from, Assignment assignment, ReasonCode code,
+                               Instant now, UUID correlationId, UUID causationId) {
+        boolean closed = action == JobAction.CLOSE;
+        boolean replaced = REPLACED_BY.contains(action) && !(action == JobAction.RESOLVE_REFUND
+                && from != JobStatus.DISPUTED);
+        if ((!closed && !replaced) || assignment == null) {
+            return;
+        }
+        Boolean onTime = closed ? job.getFirstDraftOnTime() : Boolean.FALSE;
+        if (onTime == null) {
+            log.warn("Job {} closed without a recorded first draft; no job_outcome sent", job.getId());
+            return;
+        }
+        recorder.recordOutcome(job, assignment.getId(), assignment.getCreatorId(), onTime,
+                reads.countActions(job.getId(), assignment.getId(), JobAction.REQUEST_REVISION),
+                reads.countActions(job.getId(), assignment.getId(), JobAction.REJECT) > 0, replaced, closed ? null : code, now,
+                correlationId, causationId);
     }
 
     /** Business metric per action; counted only once the transaction really commits. */
@@ -336,6 +394,22 @@ public class JobTransitionService {
                     throw new TransitionGuardException("Releasing a creator needs a reason code");
                 }
             }
+            // A dispute decision says whose fault it was: it feeds the creator's track record (DECISIONS.md section 9).
+            case RESOLVE_REPLACE -> {
+                if (details.reasonCode() == null) {
+                    throw new TransitionGuardException("Replacing the creator after a dispute needs a reason code");
+                }
+            }
+            case RESOLVE_REFUND -> {
+                if (job.getStatus() == JobStatus.DISPUTED && details.reasonCode() == null) {
+                    throw new TransitionGuardException("Refunding a dispute needs a reason code");
+                }
+            }
+            case OPS_CORRECT_REASON -> {
+                if (details.reasonCode() == null) {
+                    throw new TransitionGuardException("Say the corrected reason code");
+                }
+            }
             default -> {
                 // no extra guard
             }
@@ -349,6 +423,8 @@ public class JobTransitionService {
     private static ReasonCode reasonCodeFor(Job job, TransitionRule rule, TransitionDetails details) {
         return switch (rule.action()) {
             case RESOLVE_FALSE_CLAIM -> ReasonCode.FALSE_CLAIM;
+            // Deadline and extension passed with no draft: the creator went silent (counts against them).
+            case PRODUCTION_EXPIRED -> ReasonCode.CREATOR_UNRESPONSIVE;
             case CREATOR_WITHDRAW -> job.getStatus() == JobStatus.CREATOR_ACCEPTED
                     ? ReasonCode.BRAND_LATE_SHIP
                     : job.getDeliveryIssueType() == null ? ReasonCode.OTHER : job.getDeliveryIssueType().withdrawalReason();

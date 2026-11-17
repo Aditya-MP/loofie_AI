@@ -97,7 +97,11 @@ class JobTransitionServiceTest {
                 "PRODUCT_SHIPPED>PRODUCT_RECEIVED", "PRODUCT_RECEIVED>IN_PRODUCTION",
                 "IN_PRODUCTION>DRAFT_SUBMITTED", "DRAFT_SUBMITTED>IN_REVIEW", "IN_REVIEW>APPROVED",
                 "APPROVED>PAYOUT_PENDING", "PAYOUT_PENDING>PAID_OUT", "PAID_OUT>CLOSED");
-        assertThat(fixtures.outboxCount(jobId)).isEqualTo(13);
+        // 13 state changes + the job_outcome sent when it closes (on time, no revisions, not disputed).
+        assertThat(fixtures.outboxCount(jobId)).isEqualTo(14);
+        var outcome = jdbc.sql("SELECT envelope->'payload' AS p FROM outbox WHERE message_key = ? AND event_type = 'JobOutcome'")
+                .param(jobId.toString()).query(String.class).single();
+        assertThat(outcome).contains("\"onTime\": true", "\"revisions\": 0", "\"disputed\": false", "\"replaced\": false");
         assertOutboxMirrorsEvents(jobId);
     }
 

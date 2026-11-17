@@ -64,7 +64,7 @@ class InboxRolesAndApiTest {
                 .andExpect(jsonPath("$[?(@.jobId == '" + job.jobId() + "')]", hasSize(0)));
         mvc.perform(asCreator(get("/api/core/notifications"), job.creatorId()))
                 .andExpect(jsonPath("$[?(@.jobId == '" + job.jobId() + "')]", hasSize(0)));
-        mvc.perform(asRole(get("/api/core/notifications"), "OPS"))
+        mvc.perform(asRole(get("/api/core/notifications").param("jobId", job.jobId().toString()), "OPS"))
                 .andExpect(jsonPath("$[?(@.kind == 'SHIP_REMINDER' && @.jobId == '" + job.jobId() + "')]", hasSize(1)));
 
         mvc.perform(asBrand(post("/api/core/notifications/{id}/read", id), UUID.randomUUID()))

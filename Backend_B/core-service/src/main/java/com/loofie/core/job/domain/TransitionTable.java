@@ -104,6 +104,16 @@ public final class TransitionTable {
         }
     }
 
+    static {
+        // A reason code can be corrected in any state, even after the job ended: the AI's track record takes the
+        // latest code per job, so a wrongly blamed creator is cleared (DECISIONS.md section 9).
+        for (JobStatus s : JobStatus.values()) {
+            if (s.isStorable()) {
+                add(s, OPS_CORRECT_REASON, s, OPS);
+            }
+        }
+    }
+
     private TransitionTable() {
     }
 

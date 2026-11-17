@@ -107,6 +107,10 @@ public class Job {
     @Column(name = "late_damage_reported", nullable = false)
     private boolean lateDamageReported;
 
+    /** Whether this creator's first draft came in before the production deadline (job_outcome.on_time). */
+    @Column(name = "first_draft_on_time")
+    private Boolean firstDraftOnTime;
+
     /** An open refund request holds the job: no action runs until it is decided (see the refund feature). */
     @Column(name = "refund_hold", nullable = false)
     private boolean refundHold;
@@ -225,6 +229,17 @@ public class Job {
         return productionPausedSeconds;
     }
 
+    /** Called at SUBMIT_DRAFT: the first draft of this creator decides on time / late; resubmissions do not. */
+    public void recordFirstDraft(Instant at) {
+        if (firstDraftOnTime == null) {
+            firstDraftOnTime = productionDueAt == null || !at.isAfter(productionDueAt);
+        }
+    }
+
+    public Boolean getFirstDraftOnTime() {
+        return firstDraftOnTime;
+    }
+
     public void holdForRefund() {
         if (refundHold) {
             throw new IllegalStateException("Job " + id + " already has an open refund request");
@@ -256,6 +271,7 @@ public class Job {
         courierDeliveredAt = null;
         productionPausedSeconds = null;
         lateDamageReported = false;
+        firstDraftOnTime = null;
         clearDeliveryIssue();
     }
 

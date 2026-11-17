@@ -30,7 +30,7 @@ public class RefundRequestRepository {
                       boolean creatorAccepted, boolean leadMaySelfApprove, boolean founderRequired, UUID requestedBy,
                       String requestedByRole, Instant requestedAt, Status status, UUID leadApprovedBy,
                       Instant leadApprovedAt, UUID founderApprovedBy, Instant founderApprovedAt, UUID decidedBy,
-                      Instant decidedAt, String decisionNote) {
+                      Instant decidedAt, String decisionNote, String jobReasonCode) {
 
         public long total() {
             return brandCash + brandCredit + creatorKillFee;
@@ -41,7 +41,7 @@ public class RefundRequestRepository {
             id, job_id, brand_org_id, action, refund_case, reason_code, note, brand_cash_paise, brand_credit_paise,
             creator_kill_fee_paise, creator_accepted, lead_may_self_approve, founder_required, requested_by,
             requested_by_role, requested_at, status, lead_approved_by, lead_approved_at, founder_approved_by,
-            founder_approved_at, decided_by, decided_at, decision_note""";
+            founder_approved_at, decided_by, decided_at, decision_note, job_reason_code""";
 
     private final JdbcClient jdbc;
 
@@ -54,9 +54,9 @@ public class RefundRequestRepository {
         jdbc.sql("""
                 INSERT INTO refund_requests (id, job_id, brand_org_id, action, refund_case, reason_code, note,
                     brand_cash_paise, brand_credit_paise, creator_kill_fee_paise, creator_accepted, lead_may_self_approve,
-                    founder_required, requested_by, requested_by_role, requested_at, status, version)
+                    founder_required, requested_by, requested_by_role, requested_at, status, version, job_reason_code)
                 VALUES (:id, :job, :brand, :action, :case, :reason, :note, :cash, :credit, :kill, :accepted, :self,
-                    :founder, :by, :role, :at, 'REQUESTED', 0)
+                    :founder, :by, :role, :at, 'REQUESTED', 0, :jobCode)
                 """)
                 .param("id", r.id()).param("job", r.jobId()).param("brand", r.brandOrgId())
                 .param("action", r.action().name()).param("case", r.refundCase().name())
@@ -64,7 +64,7 @@ public class RefundRequestRepository {
                 .param("credit", r.brandCredit()).param("kill", r.creatorKillFee())
                 .param("accepted", r.creatorAccepted()).param("self", r.leadMaySelfApprove())
                 .param("founder", r.founderRequired()).param("by", r.requestedBy()).param("role", r.requestedByRole())
-                .param("at", utc(r.requestedAt()))
+                .param("at", utc(r.requestedAt())).param("jobCode", r.jobReasonCode())
                 .update();
     }
 
@@ -146,7 +146,7 @@ public class RefundRequestRepository {
                 Status.valueOf(rs.getString("status")), rs.getObject("lead_approved_by", UUID.class),
                 instant(rs, "lead_approved_at"), rs.getObject("founder_approved_by", UUID.class),
                 instant(rs, "founder_approved_at"), rs.getObject("decided_by", UUID.class), instant(rs, "decided_at"),
-                rs.getString("decision_note"));
+                rs.getString("decision_note"), rs.getString("job_reason_code"));
     }
 
     private static Instant instant(ResultSet rs, String col) throws SQLException {

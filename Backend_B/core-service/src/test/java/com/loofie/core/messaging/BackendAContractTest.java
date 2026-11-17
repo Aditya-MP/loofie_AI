@@ -140,6 +140,84 @@ class BackendAContractTest {
         assertThat(sent).as("the timer notice and every state change with a creator").isGreaterThanOrEqualTo(13);
     }
 
+    /**
+     * The business check: Backend A's own track-record code (its mock runs the real scoring on the events it got)
+     * must read our events as intended. Five creators, five stories.
+     */
+    @Test
+    void backendAsTrackRecordReadsOurEventsAsIntended() throws Exception {
+        Instant before = clock.instant();
+        clock.set(Instant.now());
+        try {
+            Actor ops = Actor.ops(UUID.randomUUID());
+            Seeded onTime = fixtures.jobIn(JobStatus.IN_PRODUCTION);
+            fixtures.setDeadline(onTime.jobId(), "production_due_at", clock.instant().plus(Duration.ofHours(10)));
+            engine.transition(onTime.jobId(), JobAction.SUBMIT_DRAFT, Actor.creator(onTime.creatorId()), null);
+            engine.transition(onTime.jobId(), JobAction.PREVIEW_READY, Actor.system(), null);
+            engine.transition(onTime.jobId(), JobAction.APPROVE, Actor.brandAdmin(UUID.randomUUID(), onTime.brandOrgId()), null);
+            engine.transition(onTime.jobId(), JobAction.PAYOUT_QUEUED, Actor.system(), null);
+            engine.transition(onTime.jobId(), JobAction.PAYOUT_COMPLETED, Actor.system(), null);
+
+            Seeded ghost = fixtures.jobIn(JobStatus.IN_PRODUCTION);
+            fixtures.setDeadline(ghost.jobId(), "production_due_at", clock.instant().minus(Duration.ofMinutes(1)));
+            engine.transition(ghost.jobId(), JobAction.PRODUCTION_EXPIRED, Actor.system(), null);
+
+            Seeded lateShip = fixtures.jobIn(JobStatus.CREATOR_ACCEPTED);
+            fixtures.setDeadline(lateShip.jobId(), "ship_due_at", clock.instant().minus(Duration.ofMinutes(1)));
+            engine.transition(lateShip.jobId(), JobAction.CREATOR_WITHDRAW, Actor.creator(lateShip.creatorId()), null);
+
+            Seeded accused = fixtures.jobIn(JobStatus.DELIVERY_ISSUE);
+            engine.transition(accused.jobId(), JobAction.RESOLVE_FALSE_CLAIM, ops, "courier shows delivered");
+            clock.advance(Duration.ofSeconds(1));
+            engine.transition(TransitionCommand.of(accused.jobId(), JobAction.OPS_CORRECT_REASON, ops,
+                    "the parcel was really lost").with(TransitionDetails.reason(ReasonCode.COURIER_LOST)));
+
+            Seeded accusedOnly = fixtures.jobIn(JobStatus.DELIVERY_ISSUE);
+            engine.transition(accusedOnly.jobId(), JobAction.RESOLVE_FALSE_CLAIM, ops, "courier shows delivered");
+
+            List<Seeded> all = List.of(onTime, ghost, lateShip, accused, accusedOnly);
+            EventSender real = new AiFeedbackSender(new AiFeedbackProperties(System.getenv("AI_CONTRACT_URL"),
+                    System.getenv().getOrDefault("AI_CONTRACT_KEY", "contract-check"), Duration.ofSeconds(2),
+                    Duration.ofSeconds(10)), mapper, json);
+            List<Message> rows = jdbc.sql("""
+                    SELECT id, topic, message_key, event_type, envelope::text AS envelope FROM outbox
+                    WHERE message_key IN (:keys) ORDER BY seq
+                    """).param("keys", all.stream().map(s -> s.jobId().toString()).toList())
+                    .query((rs, n) -> new Message(rs.getObject("id", UUID.class), rs.getString("topic"),
+                            rs.getString("message_key"), rs.getString("event_type"), rs.getString("envelope")))
+                    .list();
+            for (Message m : rows) {
+                assertThat(real.send(m).get()).as(m.eventType()).isIn(Delivery.DELIVERED, Delivery.SKIPPED);
+            }
+
+            assertThat(track(onTime)).as("delivered on time").contains("\"jobs\":1", "\"on_time\":1",
+                    "\"creator_faults\":0");
+            assertThat(track(ghost)).as("ghosted: her fault").contains("\"creator_faults\":1");
+            assertThat(track(lateShip)).as("the brand was late: nothing against her").isEqualTo("null");
+            assertThat(track(accusedOnly)).as("accused, not corrected").contains("\"creator_faults\":1");
+            assertThat(track(accused)).as("accused, then cleared by the correction").isEqualTo("null");
+        } finally {
+            clock.set(before);
+        }
+    }
+
+    /** Registers the creator with the mock (handle = our id) and returns its track_record as JSON text. */
+    private String track(Seeded s) throws Exception {
+        String base = System.getenv("AI_CONTRACT_URL");
+        String key = System.getenv().getOrDefault("AI_CONTRACT_KEY", "contract-check");
+        String handle = "c" + s.creatorId().toString().replace("-", "").substring(0, 20);
+        var http = java.net.http.HttpClient.newHttpClient();
+        var profile = java.net.http.HttpRequest.newBuilder(java.net.URI.create(base + "/ai/creators/profile"))
+                .header("X-API-Key", key).header("Content-Type", "application/json")
+                .POST(java.net.http.HttpRequest.BodyPublishers.ofString(
+                        "{\"handle\":\"" + handle + "\",\"creator_ref\":\"" + s.creatorId() + "\"}")).build();
+        assertThat(http.send(profile, java.net.http.HttpResponse.BodyHandlers.ofString()).statusCode()).isEqualTo(200);
+        var get = java.net.http.HttpRequest.newBuilder(java.net.URI.create(base + "/ai/creators/" + handle))
+                .header("X-API-Key", key).GET().build();
+        var body = json.readTree(http.send(get, java.net.http.HttpResponse.BodyHandlers.ofString()).body());
+        return json.writeValueAsString(body.get("track_record")).replace(" ", "");
+    }
+
     private Seeded shipped() {
         Seeded seeded = fixtures.jobIn(JobStatus.PRODUCT_SHIPPED);
         jdbc.sql("""

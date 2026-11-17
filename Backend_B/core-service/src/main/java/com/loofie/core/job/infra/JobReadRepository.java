@@ -143,6 +143,28 @@ public class JobReadRepository {
                 .list();
     }
 
+    /** The latest decision on a job that carried a reason code: what a correction corrects. */
+    public record CodedEvent(UUID eventId, UUID assignmentId, String reasonCode) {
+    }
+
+    public Optional<CodedEvent> lastCodedEvent(UUID jobId) {
+        return jdbc.sql("""
+                SELECT event_id, assignment_id, reason_code FROM job_events
+                WHERE job_id = :id AND reason_code IS NOT NULL
+                ORDER BY occurred_at DESC, job_version DESC NULLS LAST LIMIT 1
+                """).param("id", jobId)
+                .query((rs, n) -> new CodedEvent(rs.getObject("event_id", UUID.class),
+                        rs.getObject("assignment_id", UUID.class), rs.getString("reason_code")))
+                .optional();
+    }
+
+    /** How often an action happened for one creator's assignment (revisions, rejections). */
+    public int countActions(UUID jobId, UUID assignmentId, com.loofie.core.job.domain.JobAction action) {
+        // By job first: uses the (job_id, job_version) index; a job has a few dozen events.
+        return jdbc.sql("SELECT count(*) FROM job_events WHERE job_id = :job AND assignment_id = :a AND action = :action")
+                .param("job", jobId).param("a", assignmentId).param("action", action.name()).query(Integer.class).single();
+    }
+
     /** Whether any creator ever accepted this job (the refund four-eyes rule). Indexed by job. */
     public boolean everAccepted(UUID jobId) {
         return jdbc.sql("SELECT EXISTS (SELECT 1 FROM job_events WHERE job_id = :id AND action = 'ACCEPT')")

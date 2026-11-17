@@ -25,6 +25,7 @@ public class AiFeedbackMapper {
 
     static final String STATE_CHANGED = "JobStateChanged";
     static final String DEADLINE_NOTICE = "JobDeadlineNotice";
+    static final String OUTCOME = "JobOutcome";
 
     private final JsonMapper json;
 
@@ -43,6 +44,7 @@ public class AiFeedbackMapper {
             case STATE_CHANGED -> Optional.of(request(envelope, "job_state_changed", actorType(text(p, "actorType")),
                     stateChanged(p)));
             case DEADLINE_NOTICE -> Optional.of(request(envelope, "job_timer_fired", "system", timerFired(p)));
+            case OUTCOME -> Optional.of(request(envelope, "job_outcome", "system", outcome(p)));
             default -> Optional.empty();
         };
     }
@@ -60,6 +62,19 @@ public class AiFeedbackMapper {
         putIfPresent(out, "deliveredAt", p.get("deliveredAt"));
         putIfPresent(out, "olderShipmentReceived", p.get("olderShipmentReceived"));
         putIfPresent(out, "afterReceipt", p.get("afterReceipt")); // damage found after "Received"
+        putIfPresent(out, "corrects", p.get("corrects")); // a reason-code correction: the event it replaces
+        return out;
+    }
+
+    /** DECISIONS.md section 9: on_time, revisions, disputed, replaced (+ the cause's code when replaced). */
+    private static Map<String, Object> outcome(JsonNode p) {
+        Map<String, Object> out = common(p);
+        putIfPresent(out, "on_time", p.get("onTime"));
+        putIfPresent(out, "revisions", p.get("revisions"));
+        putIfPresent(out, "disputed", p.get("disputed"));
+        putIfPresent(out, "replaced", p.get("replaced"));
+        putIfPresent(out, "reasonCode", p.get("reasonCode"));
+        putIfPresent(out, "faultParty", p.get("faultParty"));
         return out;
     }
 

@@ -40,7 +40,7 @@ public class NotificationRepository {
     }
 
     /** Newest first, from any of the caller's inboxes, older than {@code before} (keyset paging). */
-    public List<Row> list(List<Inbox> inboxes, boolean unreadOnly, Instant before, int limit) {
+    public List<Row> list(List<Inbox> inboxes, boolean unreadOnly, Instant before, UUID jobId, int limit) {
         StringBuilder where = new StringBuilder("(");
         for (int i = 0; i < inboxes.size(); i++) {
             if (i > 0) {
@@ -54,6 +54,7 @@ public class NotificationRepository {
         var spec = jdbc.sql("SELECT id, kind, job_id, payload::text AS payload, created_at, read_at FROM notifications"
                 + " WHERE " + where + (unreadOnly ? " AND read_at IS NULL" : "")
                 + (before != null ? " AND created_at < :before" : "")
+                + (jobId != null ? " AND job_id = :job" : "")
                 + " ORDER BY created_at DESC LIMIT :limit");
         for (int i = 0; i < inboxes.size(); i++) {
             spec = spec.param("t" + i, inboxes.get(i).type());
@@ -63,6 +64,9 @@ public class NotificationRepository {
         }
         if (before != null) {
             spec = spec.param("before", utc(before));
+        }
+        if (jobId != null) {
+            spec = spec.param("job", jobId);
         }
         return spec.param("limit", limit)
                 .query((rs, n) -> new Row(rs.getObject("id", UUID.class), rs.getString("kind"),

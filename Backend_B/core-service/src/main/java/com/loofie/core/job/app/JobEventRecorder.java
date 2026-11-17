@@ -79,9 +79,40 @@ class JobEventRecorder {
                 reasonCode == null ? null : reasonCode.name(),
                 json.writeValueAsString(payload), occurredAt));
 
-        EventEnvelope envelope = new EventEnvelope(eventId, JOB_STATE_CHANGED, 1, occurredAt, EventEnvelope.PRODUCER,
-                job.getId(), job.getVersion(), correlationId, causationId, payload);
+        EventEnvelope envelope = envelopeFor(eventId, job, occurredAt, correlationId, causationId, payload);
         outbox.enqueue(Outbox.JOB_STREAM, job.getId().toString(), envelope);
         return eventId;
+    }
+
+    static final String JOB_OUTCOME = "JobOutcome";
+
+    /**
+     * How one creator's part of a job went, for the AI's track record (DECISIONS.md section 9). Derived from the
+     * job's own log, so it is not stored again in job_events; it goes to the outbox in the caller's transaction.
+     *
+     * @param code null on a normal close; the cause's reason code when the creator's part ended early
+     */
+    @Transactional(propagation = Propagation.MANDATORY)
+    void recordOutcome(Job job, UUID assignmentId, UUID creatorId, boolean onTime, int revisions, boolean disputed,
+                       boolean replaced, ReasonCode code, Instant occurredAt, UUID correlationId, UUID causationId) {
+        Map<String, Object> payload = new LinkedHashMap<>();
+        payload.put("jobId", job.getId().toString());
+        payload.put("assignmentId", assignmentId.toString());
+        payload.put("creatorId", creatorId.toString());
+        payload.put("onTime", onTime);
+        payload.put("revisions", revisions);
+        payload.put("disputed", disputed);
+        payload.put("replaced", replaced);
+        payload.put("reasonCode", code == null ? null : code.name());
+        payload.put("faultParty", code == null ? null : code.fault().name());
+        UUID eventId = Ids.newId();
+        outbox.enqueue(Outbox.JOB_STREAM, job.getId().toString(), new EventEnvelope(eventId, JOB_OUTCOME, 1, occurredAt,
+                EventEnvelope.PRODUCER, job.getId(), job.getVersion(), correlationId, causationId, payload));
+    }
+
+    private static EventEnvelope envelopeFor(UUID eventId, Job job, Instant occurredAt, UUID correlationId,
+                                             UUID causationId, Map<String, Object> payload) {
+        return new EventEnvelope(eventId, JOB_STATE_CHANGED, 1, occurredAt, EventEnvelope.PRODUCER,
+                job.getId(), job.getVersion(), correlationId, causationId, payload);
     }
 }

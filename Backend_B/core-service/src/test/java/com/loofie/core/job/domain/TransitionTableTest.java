@@ -14,7 +14,12 @@ class TransitionTableTest {
     void terminalStatesHaveNoWayOut() {
         for (JobStatus s : JobStatus.values()) {
             if (s.isTerminal()) {
-                assertThat(TransitionTable.from(s)).as("transitions out of %s", s).isEmpty();
+                // Only the record-only reason-code correction, which leaves the job where it is.
+                assertThat(TransitionTable.from(s)).as("transitions out of %s", s)
+                        .allSatisfy(r -> {
+                            assertThat(r.to()).isEqualTo(s);
+                            assertThat(r.action()).isEqualTo(JobAction.OPS_CORRECT_REASON);
+                        });
             }
         }
     }

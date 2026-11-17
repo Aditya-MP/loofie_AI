@@ -69,10 +69,17 @@ public class NotificationService {
     @Transactional(readOnly = true)
     @SuppressWarnings("unchecked")
     public List<Item> inbox(Actor actor, boolean unreadOnly, Instant before, int limit) {
+        return inbox(actor, unreadOnly, before, null, limit);
+    }
+
+    /** @param jobId only what was sent about this job (null = everything in the caller's inboxes) */
+    @Transactional(readOnly = true)
+    @SuppressWarnings("unchecked")
+    public List<Item> inbox(Actor actor, boolean unreadOnly, Instant before, UUID jobId, int limit) {
         if (limit < 1 || limit > MAX_PAGE) {
             throw new InvalidQueryException("limit must be between 1 and " + MAX_PAGE);
         }
-        return repo.list(inboxesOf(actor), unreadOnly, before, limit).stream()
+        return repo.list(inboxesOf(actor), unreadOnly, before, jobId, limit).stream()
                 .map(r -> new Item(r.id(), r.kind(), r.jobId(), json.readValue(r.payload(), Map.class), r.createdAt(),
                         r.readAt() != null))
                 .toList();

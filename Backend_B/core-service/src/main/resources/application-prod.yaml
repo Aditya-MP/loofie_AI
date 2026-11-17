@@ -22,3 +22,6 @@ management:
 
 # Backend A. AI_FEEDBACK_URL and AI_FEEDBACK_API_KEY are optional on purpose: without them events wait in the
 # outbox (alert: loofie.outbox.oldest.age.seconds) and are sent once they are set. Nothing is lost.
+loofie:
+  ai-feedback:
+    require-https: true                 # an http URL or a URL without a key stops the app at start

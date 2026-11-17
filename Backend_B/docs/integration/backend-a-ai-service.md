@@ -131,3 +131,18 @@ Leave PostgreSQL 14 running if Aditya's service is run locally.
   `system` (a replacement window ran out). Refund amounts are never sent.
 - `CANCEL` can now come from later stages too (`IN_PRODUCTION`, `IN_REVIEW`...: the creator gets a kill fee), and
   `RESOLVE_REFUND` from `REPLACEMENT_NEEDED`.
+
+## Changes on 2026-11-16 (events round 2: what your track record reads)
+
+- **`job_outcome` is sent now** (it was not before): when a job closes (`on_time` = first draft before the
+  production deadline as it stood, extension included; `revisions`; `disputed`; `replaced: false`) and when a
+  creator's part ends early (`on_time: false`, `replaced: true`, plus `reasonCode` / `faultParty` of the cause).
+  Cancellations send none. One per creator per job.
+- **Ghosting carries a fault:** `PRODUCTION_EXPIRED` → `reasonCode: CREATOR_UNRESPONSIVE` (CREATOR).
+- **Dispute decisions carry a fault:** `RESOLVE_REPLACE` and a dispute `RESOLVE_REFUND` always have a code.
+- **Corrections:** a same-state `job_state_changed` (`from` = `to`) with the corrected `reasonCode` / `faultParty`
+  and `corrects: <event_id of the decision it replaces>`; `creator_ref` is the creator who was blamed, even if they
+  have left the job. Your "latest code per job wins" handles it as is. **Please confirm** that is how you want it.
+- Checked with your mock's own scoring (`track_record.build`) at `e682442`: on time → 1 job / 1 on time / 0 faults;
+  ghosted → 1 fault; replaced for brand late shipping → nothing; `FALSE_CLAIM` → 1 fault, corrected → cleared.
+- Still not sent: `rating`, `rebooked` (no rating or rebook feature yet), `brief_ref` (no briefs yet).

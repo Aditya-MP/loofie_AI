@@ -22,6 +22,7 @@ import org.springframework.web.bind.annotation.RestController;
 import com.loofie.core.common.web.Idempotency;
 import com.loofie.core.job.domain.Actor;
 import com.loofie.core.job.domain.JobAction;
+import com.loofie.core.job.domain.ReasonCode;
 import com.loofie.core.refund.app.RefundService;
 import com.loofie.core.refund.app.RefundService.RefundDetail;
 import com.loofie.core.refund.app.RefundService.RefundView;
@@ -38,8 +39,9 @@ import tools.jackson.databind.json.JsonMapper;
 @RequestMapping("/api/core/ops")
 class OpsRefundController {
 
+    /** @param jobReasonCode required when refunding a dispute: whose fault it was (e.g. WRONG_ITEM_SENT) */
     record RequestBodyIn(@NotNull JobAction action, @NotNull RefundReason reasonCode,
-                         @NotNull @Size(min = 1, max = 1000) String note) {
+                         @NotNull @Size(min = 1, max = 1000) String note, ReasonCode jobReasonCode) {
     }
 
     record DecisionIn(@Size(max = 1000) String note) {
@@ -62,7 +64,7 @@ class OpsRefundController {
                                        @RequestHeader(value = Idempotency.HEADER, required = false) String key,
                                        @Valid @RequestBody RequestBodyIn body) {
         RefundView v = once(actor, key, "POST /jobs/{jobId}/refund-requests", jobId + json.writeValueAsString(body),
-                () -> refunds.request(actor, jobId, body.action(), body.reasonCode(), body.note()));
+                () -> refunds.request(actor, jobId, body.action(), body.reasonCode(), body.note(), body.jobReasonCode()));
         return ResponseEntity.status(HttpStatus.CREATED).body(v);
     }
 

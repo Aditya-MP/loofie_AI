@@ -83,6 +83,56 @@ class AiFeedbackMapperTest {
     }
 
     @Test
+    @SuppressWarnings("unchecked")
+    void anOutcomeBecomesJobOutcomeInTheTrackRecordsWords() {
+        Map<String, Object> p = new LinkedHashMap<>();
+        p.put("jobId", UUID.randomUUID().toString());
+        p.put("creatorId", UUID.randomUUID().toString());
+        p.put("assignmentId", UUID.randomUUID().toString());
+        p.put("onTime", false);
+        p.put("revisions", 2);
+        p.put("disputed", true);
+        p.put("replaced", true);
+        p.put("reasonCode", "CREATOR_UNRESPONSIVE");
+        p.put("faultParty", "CREATOR");
+        String env = json.writeValueAsString(new EventEnvelope(UUID.randomUUID(), AiFeedbackMapper.OUTCOME, 1,
+                Instant.now(), EventEnvelope.PRODUCER, UUID.randomUUID(), 1, UUID.randomUUID(), null, p).toMap());
+
+        Map<String, Object> body = mapper.toRequest(AiFeedbackMapper.OUTCOME, env).orElseThrow();
+        assertThat(body).containsEntry("event_type", "job_outcome").containsEntry("actor_type", "system");
+        assertThat((Map<String, Object>) body.get("payload")).containsEntry("on_time", false)
+                .containsEntry("revisions", 2L).containsEntry("disputed", true).containsEntry("replaced", true)
+                .containsEntry("reasonCode", "CREATOR_UNRESPONSIVE").containsEntry("faultParty", "CREATOR")
+                .doesNotContainKey("assignmentId");
+    }
+
+    @Test
+    @SuppressWarnings("unchecked")
+    void aCorrectionSaysWhichDecisionItReplaces() {
+        Map<String, Object> p = statePayload();
+        p.put("fromState", "REPLACEMENT_NEEDED");
+        p.put("toState", "REPLACEMENT_NEEDED");
+        p.put("reasonCode", "COURIER_LOST");
+        p.put("faultParty", "COURIER");
+        p.put("corrects", UUID.randomUUID().toString());
+        Map<String, Object> payload = (Map<String, Object>) mapper.toRequest(AiFeedbackMapper.STATE_CHANGED,
+                envelope(p)).orElseThrow().get("payload");
+        assertThat(payload).containsKeys("corrects").containsEntry("from", "REPLACEMENT_NEEDED")
+                .containsEntry("to", "REPLACEMENT_NEEDED");
+    }
+
+    @Test
+    void productionRefusesToStartWithAnHttpUrlOrAUrlWithoutAKey() {
+        org.assertj.core.api.Assertions.assertThatThrownBy(() -> new AiFeedbackProperties("http://ai.example", "k",
+                null, null, true)).hasMessageContaining("https");
+        org.assertj.core.api.Assertions.assertThatThrownBy(() -> new AiFeedbackProperties("https://ai.example", " ",
+                null, null, true)).hasMessageContaining("API_KEY");
+        assertThat(new AiFeedbackProperties("", "", null, null, true).configured()).as("not set: events wait").isFalse();
+        assertThat(new AiFeedbackProperties("http://localhost:8100", "k", null, null, false).configured())
+                .as("local http is fine outside production").isTrue();
+    }
+
+    @Test
     void httpAnswersAreClassifiedAsAgreed() {
         assertThat(AiFeedbackSender.outcome(200, "{}")).isEqualTo(EventSender.Delivery.DELIVERED);
         assertThat(AiFeedbackSender.outcome(409, "{}")).isEqualTo(EventSender.Delivery.CONFLICT);
