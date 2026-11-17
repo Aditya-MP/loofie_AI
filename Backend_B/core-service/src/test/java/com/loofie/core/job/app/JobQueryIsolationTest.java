@@ -56,7 +56,7 @@ class JobQueryIsolationTest {
             }
         };
         // One slot, a short wait: like production's 5 slots, just easier to fill in a test.
-        JobQueryService fenced = new JobQueryService(slow, Clock.systemUTC(), txManager, meters, 1, 1,
+        JobQueryService fenced = new JobQueryService(slow, Clock.systemUTC(), txManager, meters, 1, 1, 1,
                 Duration.ofMillis(200), Duration.ofSeconds(2));
 
         CompletableFuture<?> first = CompletableFuture.runAsync(() -> {

@@ -2,7 +2,7 @@
 
 Scope: from "creator accepted" to "production clock running": shipping, the creator's three buttons, courier
 proof, missing and damaged parcels, reships, withdrawal, reason codes.
-Date: 2026-11-15. Status: **items 1, 4, 6, 9, 10 built and measured (sections 12-15). Items 2, 3, 5, 7, 8 wait for decisions. Not production-ready.**
+Date: 2026-11-15, final pass 2026-11-17. Status: **done for everything Backend B can deliver today** (see "Final pass" at the end); founder rules, courier link patterns, F1 / F7 inputs still open. Laptop-measured only.
 F6 runs on the F5 engine, so everything verified in `f5-job-engine.md` (locking, idempotency, scope 404s,
 outbox, timers, failure tests) applies here too. This document covers what is specific to F6.
 
@@ -237,3 +237,74 @@ DECISIONS.md says "Shipped" always needs a number).
 "flagged to ops" duplicate and a second delivery problem reach ops through the job detail and events only, until the
 notification service exists; a job that auto-started (no "Received" tap) has no self-serve late-damage window (ops
 only); handover photos and damage evidence are keys only until F7 upload exists.
+
+---
+
+## Final pass (2026-11-17): research and plan (approved 2026-11-17, P3 = yes)
+
+### Findings
+
+| # | Finding | Who it hurts |
+|---|---|---|
+| F1 | **Delivery state changes notify nobody.** Only timer notices (`SHIP_REMINDER`, `SHIP_LATE`, `RECEIPT_PROMPT`, ...) reach the inboxes. When a creator reports "Not received" or "Damaged", the brand's 48 h window starts but **the brand is not told**; the creator is not told the product shipped (or its tracking link), that a reship is coming, that ops resumed her clock, or that her claim was ruled false. Duplicate-number flags and "older parcel arrived, stop the reship" reach ops only through the job detail. | Brand (misses its 48 h, pays a refund), creator (clock starts without her knowing), ops |
+| F2 | **Brands and creators cannot read a job's delivery at all.** The only read API is the ops console. The brand cannot see the issue type and evidence it must answer; the creator cannot see the courier and tracking link. | Brand, creator |
+| F3 | A job that **auto-started** (courier proof + 24 h, no "Received" tap) has no self-serve late-damage window: the creator must ask ops. | Creator |
+| F4 | Load test covers only ship and receive; issue, reship, courier delivered and the new inbox writes are not measured. Edge cases not tested: issue reported just before / after the 48 h mark, reship with a courier ops has switched off, a second late-damage report after resume. | Proof |
+| OK | Courier link patterns: ops already sets them per courier (`PUT /api/core/ops/couriers/{code}`, https + `{tracking}` checked). About 10 rows: **no import endpoint needed**. Holiday import belongs to the calendar final pass. | – |
+
+### Plan
+
+| # | Change | Design | Size |
+|---|---|---|---|
+| P1 | **Delivery notifications**, in the same transaction as the change | `MARK_SHIPPED` → creator (courier, tracking link) · `RESHIP` → creator · `CONFIRM_RECEIVED` / `AUTO_START_PRODUCTION` → brand + creator (production due) · `REPORT_NOT_RECEIVED` / `REPORT_DELIVERY_ISSUE` (incl. late damage) → brand + ops (issue type, answer by) · `COURIER_DELIVERED` → creator (tap Received or report within 24 h) · `OPS_RESUME_PRODUCTION` → creator (time left) · `RESOLVE_FALSE_CLAIM` → creator · withdrawal for `BRAND_LATE_SHIP` / `COURIER_LOST` → brand · duplicate number (same brand, other creator) and older parcel received → ops (and brand for the older parcel). Ids, codes and times only, no addresses or notes. | M |
+| P2 | **Delivery view** `GET /api/core/jobs/{jobId}/delivery` | For the job's brand org (admin or member) and the job's **current** creator; anyone else 404. Status, ship-by, each shipment of the current creator (courier name, number, tracking link, shipped / delivered / received times, issue type and evidence key), answer-by, production due or paused time left. No ops notes, no other creator's shipments. | M |
+| P3 | **Late damage after auto-start** | Same rule as after a tap: once per job, 24 h from the auto-start time, evidence required. **Decision: yes?** (recommended: the creator who never tapped is otherwise worse off) | S |
+| P4 | **Edge tests** | Section F4 list, plus notification content and P2 scoping (other brand, old creator, member). | S |
+| P5 | **Final load** | Full delivery mix at 300 rps on 1M jobs (ship, receive, issue, reship, courier delivered) with inbox writes; gate p95 ≤ 300 ms, 0 errors; recheck the engine at 500 rps. | S |
+| P6 | **Docs** | Results, Definition of Done, blocked list. | S |
+
+### Stays blocked (written down, not built)
+
+| Item | Who unblocks |
+|---|---|
+| Tracking number required, auto-start only on courier proof, 3-working-day ship deadline (Foundation v2 differs) | Founder |
+| Courier tracking-link patterns | Ops (enter them in the courier table) |
+| Brand pickup-state holidays | F1 brand profile |
+| Real photo and evidence upload (keys only today) | F7 |
+| Automatic courier tracking | Later (a tracking service) |
+| Push, SMS, email for notices (in-app inbox only) | Notification channels feature |
+
+### Built, tested, measured (2026-11-17)
+
+| # | Built | Where |
+|---|---|---|
+| P1 | Delivery notices, same transaction as the change, sent after the automatic follow-ups so they carry the new clocks: `PRODUCT_SHIPPED` / `PRODUCT_RESHIPPED` → creator (courier, number, link, receipt prompt time) · `COURIER_DELIVERED` → creator (delivered at, auto-start at) · `PRODUCTION_STARTED` → brand (and the creator when it started on its own) · `DELIVERY_ISSUE_REPORTED` → brand + ops (type, answer by, after receipt) · `PRODUCTION_RESUMED` / `DELIVERY_CLAIM_REJECTED` → creator + brand (new deadline) · `CREATOR_WITHDREW` → brand + ops · `TRACKING_NUMBER_REUSED` → ops · `OLDER_PARCEL_RECEIVED` → brand + ops | `DeliveryNotices`, `JobTransitionService.transition` |
+| P2 | `GET /api/core/jobs/{jobId}/delivery`: status, ship by, issue and answer by, auto-start, production due or paused time, the current creator's parcels (courier, number, link, times, receipt / handover / damage keys). Brand admin or member of the job's brand, its current creator, ops; anyone else 404. No ops-only facts (delivery source, duplicate flag). Own bulkhead (`loofie.queries.delivery-max-concurrent`, 16) so it cannot starve the engine | `JobDeliveryController`, `JobQueryService.delivery`, `JobReadRepository.currentCreatorShipments` |
+| P3 | Late damage after the automatic start: same rule (once, 24 h, evidence) counting from `jobs.auto_started_at`; recorded on the latest parcel; cleared by a reship and for a new creator | V13, `Job`, `JobTransitionService.damageAfterReceipt` |
+| P5 | `F6LoadTest` now runs the whole flow (ship, receive, not received, courier proof, damage, reship, delivery screen) | `scripts/perf/F6LoadTest.java` |
+
+| Proof | Result |
+|---|---|
+| `DeliveryFinalPassTest` (16) | each notice to the right inboxes with the right content; listed courier link built from its pattern; refused change (other brand's number, switched-off courier on reship) tells nobody and leaves the state; notices carry no evidence or receipt keys and no notes; delivery screen same for brand member / creator / ops, 404 for another brand, a stranger, SYSTEM, a missing job and a released creator, brand sees no parcels of a released creator; evidence and paused clock shown; late damage after auto-start in time pauses, after 24 h refused; auto-start time cleared by a reship |
+| Full suite | **232 run, 0 failed, 2 skipped** (the opt-in Backend A contract tests; no event to Backend A changed in this pass) |
+| F6 load, 1M jobs, after a warm-up, 300 rps each phase | `MARK_SHIPPED` p95 6 ms (6,000) · `CONFIRM_RECEIVED` p95 5 ms (3,600) · not received p95 3 ms (1,200) · `COURIER_DELIVERED` p95 4 ms (1,200) · damage p95 4 ms (600) · `RESHIP` p95 4 ms (1,200) · delivery screen p95 2 ms (6,000) · **0 errors, all PASS** |
+| Notices written under load (warm-up + measured) | exactly as expected: shipped 7,000, reshipped 1,400, production started 4,200, courier delivered 1,400, issue reported 4,200 (2,100 reports × brand + ops) |
+| Engine 500 rps, realistic mix, relay on | p95 3 ms, p99 13 ms, 0 failed; 4,593 events all sent, 0 waiting, 0 parked (unchanged) |
+| Delivery screen query plan | index scans on `shipments (job_id, attempt)` and `assignments` primary key, 0.1 ms |
+
+### Definition of Done (final)
+
+| Criterion | Status |
+|---|---|
+| Brand: knows when to act (issue, answer-by, older parcel) and sees what was reported | **Done** (in-app inbox + delivery screen) |
+| Creator: knows the parcel is coming, its link, when her clock starts, resumes, or her claim is rejected; may report late damage either way | **Done** |
+| Ops: told about reports, reused numbers, older parcels, withdrawals | **Done** |
+| Security: scope 404s, storage keys only, no notes or evidence keys in notices | Done, tested |
+| Abuse: duplicate numbers, reship cap, evidence required | Done (round 2) |
+| Performance | Met: every delivery action p95 ≤ 6 ms at 300 rps; engine unchanged |
+| Failure: a refused change tells nobody (same transaction) | Tested |
+
+**F6 is done for everything Backend B can deliver today.** Still open, each with its owner in "Stays blocked" above:
+the founder's three Foundation v2 rules, courier link patterns (ops), pickup-state holidays (F1), real upload (F7),
+automatic tracking (later), push / SMS / email (notification channels). Laptop numbers only; production hosting not
+measured.

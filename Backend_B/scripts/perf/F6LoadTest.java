@@ -15,9 +15,11 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.atomic.LongAdder;
 
 /**
- * F6 load: real delivery actions, not reads. Phase 1 the brand marks jobs shipped (holiday lookup, shipment
- * insert, clocks); phase 2 the creators confirm receipt with a photo (shipment update, follow-up to production).
- * Open loop at a fixed rate. Exits 1 unless p95 <= 300 ms and every request got 200.
+ * F6 load: the whole delivery flow, each phase open loop at a fixed rate. The brand ships every job (courier lookup,
+ * duplicate check, shipment, clocks, creator notice); then half the creators confirm receipt (production starts,
+ * brand notice), a fifth report "not received" (brand + ops notices), a fifth get courier proof from ops (creator
+ * notice), a tenth confirm and then report damage (clock paused); the brands reship the "not received" ones; finally
+ * every brand opens the delivery screen. Exits 1 unless every phase has p95 <= 300 ms and every request got 200.
  *
  * Usage: java F6LoadTest.java <rps> <jobsPerPhase> <file of "jobId,brandOrgId,creatorId" for CREATOR_ACCEPTED jobs>
  */
@@ -37,20 +39,56 @@ public class F6LoadTest {
         HttpClient http = HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(5))
                 .executor(Executors.newVirtualThreadPerTaskExecutor()).build();
 
-        boolean ship = phase("MARK_SHIPPED", rps, jobs, http, j -> HttpRequest.newBuilder(transitions(j))
-                .header("X-Dev-Role", "BRAND_ADMIN").header("X-Dev-User-Id", UUID.randomUUID().toString())
-                .header("X-Dev-Org-Id", j.brand()).header("Idempotency-Key", UUID.randomUUID().toString())
-                .header("Content-Type", "application/json")
-                .POST(HttpRequest.BodyPublishers.ofString(
-                        "{\"action\":\"MARK_SHIPPED\",\"courier\":\"Delhivery\",\"trackingNumber\":\"DL" + j.id().replace("-", "") + "\"}"))
-                .timeout(Duration.ofSeconds(10)).build());
-        boolean receive = phase("CONFIRM_RECEIVED", rps, jobs, http, j -> HttpRequest.newBuilder(transitions(j))
-                .header("X-Dev-Role", "CREATOR").header("X-Dev-User-Id", j.creator())
-                .header("Idempotency-Key", UUID.randomUUID().toString()).header("Content-Type", "application/json")
-                .POST(HttpRequest.BodyPublishers.ofString(
-                        "{\"action\":\"CONFIRM_RECEIVED\",\"photoRef\":\"receipts/" + UUID.randomUUID() + ".jpg\"}"))
-                .timeout(Duration.ofSeconds(10)).build());
-        System.exit(ship && receive ? 0 : 1);
+        // Groups by position: 0-4 receive, 5-6 not received, 7-8 courier proof, 9 receive then damage.
+        List<Job> receive = new ArrayList<>();
+        List<Job> missing = new ArrayList<>();
+        List<Job> proof = new ArrayList<>();
+        List<Job> damaged = new ArrayList<>();
+        for (int i = 0; i < jobs.size(); i++) {
+            int g = i % 10;
+            (g < 5 ? receive : g < 7 ? missing : g < 9 ? proof : damaged).add(jobs.get(i));
+        }
+        List<Job> receiveAll = new ArrayList<>(receive);
+        receiveAll.addAll(damaged);
+
+        boolean ok = phase("MARK_SHIPPED", rps, jobs, http, j -> post(j, brand(j),
+                "{\"action\":\"MARK_SHIPPED\",\"courierCode\":\"DELHIVERY\",\"trackingNumber\":\"DL" + j.id().replace("-", "") + "\"}"));
+        ok &= phase("CONFIRM_RECEIVED", rps, receiveAll, http, j -> post(j, creator(j),
+                "{\"action\":\"CONFIRM_RECEIVED\",\"photoRef\":\"receipts/" + UUID.randomUUID() + ".jpg\"}"));
+        ok &= phase("REPORT_NOT_RECEIVED", rps, missing, http, j -> post(j, creator(j),
+                "{\"action\":\"REPORT_DELIVERY_ISSUE\",\"issueType\":\"NOT_RECEIVED\"}"));
+        ok &= phase("COURIER_DELIVERED", rps, proof, http, j -> post(j, ops(),
+                "{\"action\":\"COURIER_DELIVERED\",\"reason\":\"tracking page\",\"deliverySource\":\"TRACKING_PAGE\"}"));
+        ok &= phase("REPORT_DAMAGE", rps, damaged, http, j -> post(j, creator(j),
+                "{\"action\":\"REPORT_DELIVERY_ISSUE\",\"issueType\":\"DAMAGED\",\"evidenceRef\":\"damage/" + UUID.randomUUID() + ".jpg\"}"));
+        ok &= phase("RESHIP", rps, missing, http, j -> post(j, brand(j),
+                "{\"action\":\"RESHIP\",\"courierCode\":\"BLUE_DART\",\"trackingNumber\":\"BD" + j.id().replace("-", "") + "\"}"));
+        ok &= phase("GET_DELIVERY_VIEW", rps, jobs, http, j -> brand(j).apply(HttpRequest.newBuilder(
+                URI.create(BASE + "/api/core/jobs/" + j.id() + "/delivery"))).GET().timeout(Duration.ofSeconds(10)).build());
+        System.exit(ok ? 0 : 1);
+    }
+
+    interface Who {
+        HttpRequest.Builder apply(HttpRequest.Builder b);
+    }
+
+    static Who brand(Job j) {
+        return b -> b.header("X-Dev-Role", "BRAND_ADMIN").header("X-Dev-User-Id", UUID.randomUUID().toString())
+                .header("X-Dev-Org-Id", j.brand());
+    }
+
+    static Who creator(Job j) {
+        return b -> b.header("X-Dev-Role", "CREATOR").header("X-Dev-User-Id", j.creator());
+    }
+
+    static Who ops() {
+        return b -> b.header("X-Dev-Role", "OPS").header("X-Dev-User-Id", UUID.randomUUID().toString());
+    }
+
+    static HttpRequest post(Job j, Who who, String body) {
+        return who.apply(HttpRequest.newBuilder(transitions(j))).header("Idempotency-Key", UUID.randomUUID().toString())
+                .header("Content-Type", "application/json").POST(HttpRequest.BodyPublishers.ofString(body))
+                .timeout(Duration.ofSeconds(10)).build();
     }
 
     static URI transitions(Job j) {

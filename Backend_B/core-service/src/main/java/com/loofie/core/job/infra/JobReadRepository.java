@@ -21,6 +21,7 @@ import org.springframework.stereotype.Repository;
 
 import com.loofie.core.job.domain.Courier;
 import com.loofie.core.job.read.JobViews.AssignmentView;
+import com.loofie.core.job.read.JobViews.DeliveryShipment;
 import com.loofie.core.job.read.JobViews.EventView;
 import com.loofie.core.job.read.JobViews.Cursor;
 import com.loofie.core.job.read.JobViews.JobFilter;
@@ -114,6 +115,32 @@ public class JobReadRepository {
                 .query((rs, n) -> new AssignmentView(rs.getObject("id", UUID.class), rs.getObject("creator_id", UUID.class),
                         rs.getString("status"), rs.getString("close_reason"), instant(rs, "opened_at"),
                         instant(rs, "closed_at")))
+                .list();
+    }
+
+    /** The current creator's parcels (none when the job has no active creator), for the brand / creator screen. */
+    public List<DeliveryShipment> currentCreatorShipments(UUID jobId) {
+        return jdbc.sql("""
+                SELECT s.attempt, s.courier, s.courier_code, s.tracking_number, s.tracking_url, c.tracking_url_pattern,
+                       s.shipped_at, s.courier_delivered_at, s.received_at, s.receipt_photo_ref,
+                       s.handover_photo_ref, s.damage_reported_at, s.damage_evidence_ref
+                FROM shipments s
+                JOIN assignments a ON a.id = s.assignment_id AND a.status = 'ACTIVE'
+                LEFT JOIN couriers c ON c.code = s.courier_code
+                WHERE s.job_id = :id ORDER BY s.attempt
+                """)
+                .param("id", jobId)
+                .query((rs, n) -> {
+                    String number = rs.getString("tracking_number");
+                    String link = rs.getString("tracking_url") != null ? rs.getString("tracking_url")
+                            : new Courier(rs.getString("courier_code"), "", Courier.Kind.TRACKED,
+                                    rs.getString("tracking_url_pattern"), true, 0).trackingLink(number);
+                    return new DeliveryShipment(rs.getInt("attempt"), rs.getString("courier"),
+                            rs.getString("courier_code"), number, link, instant(rs, "shipped_at"),
+                            instant(rs, "courier_delivered_at"), instant(rs, "received_at"),
+                            rs.getString("receipt_photo_ref"), rs.getString("handover_photo_ref"),
+                            instant(rs, "damage_reported_at"), rs.getString("damage_evidence_ref"));
+                })
                 .list();
     }
 

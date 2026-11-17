@@ -111,6 +111,10 @@ public class Job {
     @Column(name = "first_draft_on_time")
     private Boolean firstDraftOnTime;
 
+    /** When production started on its own (courier proof + 24 h, no "Received" tap): the late-damage window counts from here. */
+    @Column(name = "auto_started_at")
+    private Instant autoStartedAt;
+
     /** An open refund request holds the job: no action runs until it is decided (see the refund feature). */
     @Column(name = "refund_hold", nullable = false)
     private boolean refundHold;
@@ -185,6 +189,7 @@ public class Job {
         }
         lastShippedAt = at;
         courierDeliveredAt = null;
+        autoStartedAt = null;
         clearDeliveryIssue();
     }
 
@@ -255,6 +260,14 @@ public class Job {
         return refundHold;
     }
 
+    public void markAutoStarted(Instant at) {
+        autoStartedAt = at;
+    }
+
+    public Instant getAutoStartedAt() {
+        return autoStartedAt;
+    }
+
     public void markLateDamageReported() {
         lateDamageReported = true;
     }
@@ -271,6 +284,7 @@ public class Job {
         courierDeliveredAt = null;
         productionPausedSeconds = null;
         lateDamageReported = false;
+        autoStartedAt = null;
         firstDraftOnTime = null;
         clearDeliveryIssue();
     }

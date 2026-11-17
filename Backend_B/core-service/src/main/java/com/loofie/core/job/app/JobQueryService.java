@@ -25,6 +25,7 @@ import com.loofie.core.job.infra.JobReadRepository;
 import com.loofie.core.job.infra.JobReadRepository.JobRow;
 import com.loofie.core.job.read.JobViews.Cursor;
 import com.loofie.core.job.read.JobViews.Deadline;
+import com.loofie.core.job.read.JobViews.DeliveryView;
 import com.loofie.core.job.read.JobViews.JobDetail;
 import com.loofie.core.job.read.JobViews.JobFilter;
 import com.loofie.core.job.read.JobViews.JobSummary;
@@ -62,6 +63,7 @@ public class JobQueryService {
     private final TransactionTemplate readTx;
     private final Semaphore listPermits;
     private final Semaphore detailPermits;
+    private final Semaphore deliveryPermits;
     private final Duration queueWait;
     private final Duration statementTimeout;
     private final MeterRegistry meters;
@@ -70,6 +72,7 @@ public class JobQueryService {
                            MeterRegistry meters,
                            @Value("${loofie.queries.list-max-concurrent:5}") int listMaxConcurrent,
                            @Value("${loofie.queries.detail-max-concurrent:8}") int detailMaxConcurrent,
+                           @Value("${loofie.queries.delivery-max-concurrent:16}") int deliveryMaxConcurrent,
                            @Value("${loofie.queries.queue-wait:1s}") Duration queueWait,
                            @Value("${loofie.queries.statement-timeout:2s}") Duration statementTimeout) {
         this.repo = repo;
@@ -78,6 +81,7 @@ public class JobQueryService {
         this.readTx.setReadOnly(true);
         this.listPermits = new Semaphore(listMaxConcurrent, true);
         this.detailPermits = new Semaphore(detailMaxConcurrent, true);
+        this.deliveryPermits = new Semaphore(deliveryMaxConcurrent, true);
         this.queueWait = queueWait;
         this.statementTimeout = statementTimeout;
         this.meters = meters;
@@ -120,6 +124,29 @@ public class JobQueryService {
             return new JobDetail(summary(row, now), row.freeRevisionUsed(), row.deliveryIssueType(),
                     row.productionPausedSeconds(), deadlines,
                     repo.assignments(jobId), repo.shipments(jobId), repo.events(jobId));
+        });
+    }
+
+    /**
+     * F6 delivery screen for the job's brand (admin or member) and its current creator; ops may open it too. Anyone
+     * else, including a creator who has left the job, gets the same 404 as a missing job.
+     */
+    public DeliveryView delivery(Actor actor, UUID jobId) {
+        return fenced(deliveryPermits, () -> {
+            JobRow row = repo.findById(jobId).orElseThrow(() -> new JobNotFoundException(jobId));
+            boolean inScope = switch (actor.role().acting()) {
+                case OPS, OPS_LEAD, FOUNDER -> true;
+                case BRAND_ADMIN, BRAND_MEMBER -> row.brandOrgId().equals(actor.orgId());
+                case CREATOR -> actor.userId() != null && actor.userId().equals(row.activeCreatorId());
+                case SYSTEM -> false;
+            };
+            if (!inScope) {
+                throw new JobNotFoundException(jobId);
+            }
+            Map<String, Instant> d = row.deadlines();
+            return new DeliveryView(row.id(), row.status(), row.digitalOnly(), d.get("ship_due_at"),
+                    row.deliveryIssueType(), d.get("issue_response_due_at"), d.get("auto_start_at"),
+                    d.get("production_due_at"), row.productionPausedSeconds(), repo.currentCreatorShipments(jobId));
         });
     }
 

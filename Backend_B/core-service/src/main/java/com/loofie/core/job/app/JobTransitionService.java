@@ -64,6 +64,7 @@ public class JobTransitionService {
     private final CourierRepository couriers;
     private final TrackingNumberRepository trackingNumbers;
     private final JobReadRepository reads;
+    private final DeliveryNotices deliveryNotices;
     private static final org.slf4j.Logger log = org.slf4j.LoggerFactory.getLogger(JobTransitionService.class);
     /** {@code loofie.deadlines.review-working-days}: empty = 120 calendar hours (today); 5 = DECISIONS.md, once signed off. */
     private Integer reviewWorkingDays;
@@ -79,8 +80,9 @@ public class JobTransitionService {
     public JobTransitionService(JobRepository jobs, AssignmentRepository assignments, ShipmentRepository shipments,
                                 JobEventRecorder recorder, WorkingCalendar calendar, Clock clock, MeterRegistry meters,
                                 CourierRepository couriers, TrackingNumberRepository trackingNumbers,
-                                JobReadRepository reads) {
+                                JobReadRepository reads, DeliveryNotices deliveryNotices) {
         this.reads = reads;
+        this.deliveryNotices = deliveryNotices;
         this.couriers = couriers;
         this.trackingNumbers = trackingNumbers;
         this.jobs = jobs;
@@ -115,16 +117,20 @@ public class JobTransitionService {
         if (cmd.refundRequestId() != null) {
             job.releaseRefundHold();
         }
+        Map<String, Object> facts = new LinkedHashMap<>();
         UUID eventId = applyStep(job, rule, cmd.actor(), cmd.reason(), cmd.creatorId(), cmd.details(), correlationId,
-                null);
+                null, facts);
         eventIds.add(eventId);
 
         // Automatic follow-ups (e.g. PRODUCT_RECEIVED -> IN_PRODUCTION) run as SYSTEM in the same transaction.
         for (JobAction next = followUpFor(job, rule); next != null; next = followUpFor(job, rule)) {
             rule = requireRule(job.getStatus(), next);
-            eventId = applyStep(job, rule, Actor.system(), null, null, TransitionDetails.NONE, correlationId, eventId);
+            eventId = applyStep(job, rule, Actor.system(), null, null, TransitionDetails.NONE, correlationId, eventId,
+                    new LinkedHashMap<>());
             eventIds.add(eventId);
         }
+        // F6: whoever must act next is told, after the follow-ups so the new clocks are in the notice.
+        deliveryNotices.after(job, cmd.action(), start, facts, clock.instant());
         return new TransitionResult(job.getId(), start, job.getStatus(), job.getVersion(), eventIds);
     }
 
@@ -203,7 +209,8 @@ public class JobTransitionService {
     }
 
     private UUID applyStep(Job job, TransitionRule rule, Actor actor, String reason, UUID creatorId,
-                           TransitionDetails details, UUID correlationId, UUID causationId) {
+                           TransitionDetails details, UUID correlationId, UUID causationId,
+                           Map<String, Object> factsOut) {
         Instant now = clock.instant();
         JobStatus from = job.getStatus();
 
@@ -231,6 +238,7 @@ public class JobTransitionService {
         UUID eventCreator = correction ? correctedCreator : assignment == null ? null : assignment.getCreatorId();
         Map<String, Object> facts = applyDeliveryFacts(job, rule, actor, details, assignmentId, now);
         facts.putAll(correctionFacts);
+        factsOut.putAll(facts);
         if (rule.action() == JobAction.REQUEST_REVISION) {
             job.markFreeRevisionUsed();
         }
@@ -490,6 +498,8 @@ public class JobTransitionService {
                 }
                 job.recordDeliveryIssue(details.issueType(), now);
             }
+            // The late-damage window of a creator who never tapped Received counts from here.
+            case AUTO_START_PRODUCTION -> job.markAutoStarted(now);
             case RESOLVE_FALSE_CLAIM -> job.clearDeliveryIssue();
             case OPS_RESUME_PRODUCTION -> {
                 facts.put("resumedSeconds", job.getProductionPausedSeconds());
@@ -613,9 +623,11 @@ public class JobTransitionService {
             if (job.isLateDamageReported()) {
                 throw new TransitionGuardException("Damage after receipt can be reported once per job; ask ops");
             }
-            if (received == null || now.isAfter(received.getReceivedAt().plus(JobDeadlines.LATE_DAMAGE_WINDOW))) {
-                throw new TransitionGuardException("Damage can be reported within 24 hours of tapping Received; "
-                        + "after that, ask ops");
+            // The window opens when she got the product: her "Received" tap, or the automatic start if she never tapped.
+            Instant opened = latest(received == null ? null : received.getReceivedAt(), job.getAutoStartedAt());
+            if (opened == null || now.isAfter(opened.plus(JobDeadlines.LATE_DAMAGE_WINDOW))) {
+                throw new TransitionGuardException("Damage can be reported within 24 hours of receiving the product "
+                        + "(tapping Received, or the clock starting on its own); after that, ask ops");
             }
             if (!Shipment.isDamageEvidenceKey(details.evidenceRef())) {
                 throw new TransitionGuardException("Reporting damage needs a photo or short video of it "
@@ -625,8 +637,10 @@ public class JobTransitionService {
         } else if (details.evidenceRef() != null && !Shipment.isDamageEvidenceKey(details.evidenceRef())) {
             throw new TransitionGuardException("The evidence must be an uploaded photo or video key (damage/<id>...)");
         }
-        if (received != null) {
-            received.markDamageReported(now, details.evidenceRef());
+        // The parcel it is about: the one she confirmed, else (auto-started) the latest one, which courier proof covers.
+        Shipment about = received != null ? received : shipments.findTopByJobIdOrderByAttemptDesc(job.getId()).orElse(null);
+        if (about != null) {
+            about.markDamageReported(now, details.evidenceRef());
         }
         job.pauseProduction(now);
         facts.put("afterReceipt", true);
@@ -718,6 +732,13 @@ public class JobTransitionService {
         if (deadline == null || now.isBefore(deadline)) {
             throw new TransitionGuardException("The " + what + " has not passed yet");
         }
+    }
+
+    private static Instant latest(Instant a, Instant b) {
+        if (a == null) {
+            return b;
+        }
+        return b == null || a.isAfter(b) ? a : b;
     }
 
     private static boolean isBlank(String s) {

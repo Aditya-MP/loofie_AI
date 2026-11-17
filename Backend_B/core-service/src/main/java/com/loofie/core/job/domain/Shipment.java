@@ -223,6 +223,15 @@ public class Shipment {
         return trackingNumber;
     }
 
+    public String getCourierCode() {
+        return courierCode;
+    }
+
+    /** The "Other" courier's own tracking link; null for listed couriers (their pattern builds it). */
+    public String getTrackingUrl() {
+        return trackingUrl;
+    }
+
     public Instant getShippedAt() {
         return shippedAt;
     }

@@ -56,6 +56,31 @@ public final class JobViews {
                                Instant damageReportedAt, boolean hasDamageEvidence) {
     }
 
+    /**
+     * F6 for the brand and the current creator: one parcel of the current creator. Evidence keys are storage keys (F7
+     * turns them into short-lived links); no ops-only facts (delivery source, duplicate-number flag).
+     */
+    public record DeliveryShipment(int attempt, String courier, String courierCode, String trackingNumber,
+                                   String trackingLink, Instant shippedAt, Instant courierDeliveredAt,
+                                   Instant receivedAt, String receiptPhotoRef, String handoverPhotoRef,
+                                   Instant damageReportedAt, String damageEvidenceRef) {
+    }
+
+    /**
+     * F6 delivery screen for the brand and the current creator.
+     *
+     * @param shipBy           the brand's ship-by time (while waiting for "Shipped")
+     * @param issueType        what the creator reported, while the issue is open
+     * @param answerBy         the brand's 48 h to answer an open issue
+     * @param autoStartAt      production starts on its own here (24 h after courier proof) unless something is reported
+     * @param productionDueAt  the running production deadline
+     * @param productionPausedSeconds time left while a damage report has the clock stopped
+     */
+    public record DeliveryView(UUID jobId, JobStatus status, boolean digitalOnly, Instant shipBy, String issueType,
+                               Instant answerBy, Instant autoStartAt, Instant productionDueAt,
+                               Long productionPausedSeconds, List<DeliveryShipment> shipments) {
+    }
+
     /** @param productionPausedSeconds production time left while a damage report after receipt has the clock stopped */
     public record JobDetail(JobSummary job, boolean freeRevisionUsed, String deliveryIssueType,
                             Long productionPausedSeconds, List<Deadline> deadlines, List<AssignmentView> assignments, List<ShipmentView> shipments, List<EventView> timeline) {
