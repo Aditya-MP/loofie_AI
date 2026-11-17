@@ -60,6 +60,7 @@ Events the backend sends: `brief_field_edited`, `brief_confirmed`, `shortlist_sh
 - Numbers refresh every 7 days by themselves (`loofie instagram maintain`, run daily).
 - Only professional accounts (Business or Creator) can connect. Personal accounts get a clear
   message to switch.
+- Which Meta login carries this (Meta closed Instagram Login to new apps): section 10, [OPEN].
 - Meta verification (developer app, App Review) costs nothing. Until App Review passes, only
   testers added in the Meta app can log in.
 
@@ -274,8 +275,86 @@ same as the Ready boost: it wins a close call, never beats a clearly better fit.
 **Not in v1:** auto-booking or auto-yes based on the score; hiding low-score creators (ops decides);
 the brand's `video_performance` verdict (too subjective and too few yet: report only).
 
+## 10. Accounts and sign-up (agreed with the backend, 17 Nov)
+
+Instagram is how a creator **connects her profile**, not how she **logs in**. Losing Instagram
+access never locks anyone out, and one phone number = one person.
+
+**Sign-up paths (creator)**
+
+| Path | Steps | Numbers |
+|---|---|---|
+| Continue with Instagram | backend creates a **draft** creator (`INCOMPLETE`, gives the `account_ref`) → `GET /ai/instagram/login-url` → Meta's screen → back to the app → backend **confirms** with `GET /ai/instagram/accounts/{account_ref}` → phone OTP (always) → form with only the missing fields (Instagram ones read-only) → `ACTIVE` | `API_VERIFIED` |
+| Sign up with phone | phone OTP → manual form + Insights screenshots → `ACTIVE`; Instagram can be connected later from her profile | `SELF_REPORTED` until ops checks |
+
+- **The return URL is not proof.** `?instagram=connected&handle=..` is plain text anyone can type.
+  The backend trusts only `GET /ai/instagram/accounts/{account_ref}` (server-to-server, API key).
+- **Abandoned drafts.** Someone connects Instagram and closes the tab before the phone OTP: the
+  draft has no phone and holds her Instagram, so a retry answers `already_linked`. Cleanup job:
+  drafts with no verified phone → `DELETE /ai/instagram/accounts/{ref}?delete_data=true`, then
+  delete the draft. **AI side suggests running it after 1 hour, not 24:** the login link lives 10
+  minutes and an OTP takes 2, so 24 hours only lengthens the lockout. Backend decides. Drafts
+  *with* a phone stay `INCOMPLETE` and land back on the form at the next login.
+- **Under 18:** an 18+ tick at sign-up; under-18 is blocked in v1. The AI service already refuses
+  to store a creator marked `looks_under_18 = yes`.
+
+**Logins (backend)**
+- Creators: phone OTP. Brands: email OTP. Staff: email OTP + TOTP. No passwords anywhere, so no
+  reset, lockout or breach-of-password handling.
+- One "send OTP → verify" flow that logs in or creates the account (no separate sign-up / login
+  endpoints, so nobody can test which numbers are registered).
+- HTTP-only, SameSite cookies + CSRF protection; `phone_verified_at` / `email_verified_at`
+  instead of `is_verified`. Everything under `/api/core/...`; Instagram calls still go
+  server-to-server to the AI service's `/ai/...`.
+- OTP limits: 3 per phone or email per 15 minutes and 10 per day; about 100 per IP per 15 minutes
+  (Jio / Airtel share IPs); +91 only; a daily SMS spend cap with an alert (SMS pumping).
+- **SMS provider with TRAI DLT registration** (e.g. MSG91): OTPs don't deliver in India without
+  it. Start the paperwork now: it takes days.
+
+**Roles and teams (backend)**
+- `account_type` (BRAND / CREATOR / ADMIN) is chosen at sign-up. Detailed roles stay separate:
+  BRAND_ADMIN / BRAND_MEMBER from organisation membership; OPS / OPS_LEAD / FOUNDER set
+  internally. Refund approvals (section 6) are unchanged.
+- Tables: `organizations` (legal name, GSTIN, billing address, pickup state), `org_members`,
+  `invites`. One invites table for brand teammates and staff; the first founder is seeded, everyone
+  else joins by invite.
+
+**Status, privacy and audit (backend, DPDP Act)**
+- `users.status` = ACTIVE / SUSPENDED / DELETED, separate from the creator's marketplace status.
+  A suspension needs a reason, is logged, and the user gets an email they can reply to appeal.
+- DELETED = anonymise at once: name, phone, bio, screenshots, and Instagram data through
+  `DELETE /ai/instagram/accounts/{ref}?delete_data=true`. Invoices, payout and TDS records and logs
+  are kept only as long as the law requires (GST about 6 years, CERT-In logs 180 days), then purged.
+- `consents`: purpose (SERVICE / MARKETING, marketing unticked by default), notice version,
+  granted / withdrawn time. Withdrawing is as easy as giving.
+- `audit_log` for every staff action: suspend, refund approval, metric override, viewing creator
+  data.
+- Meta's deauthorize and data-deletion callbacks already exist in the AI service.
+
+**Before launch (not code)**
+- One-page retention policy; a grievance contact (privacy@ email) in the footer and privacy policy.
+- Breach playbook: CERT-In within 6 hours; the Data Protection Board and affected users without
+  delay.
+- Lawyer review of the consent text, privacy policy and retention policy (about 1 day).
+
+**[OPEN] Which Meta login the Instagram button uses.** Meta closed "Instagram Login" (log in with
+Instagram, no Facebook Page) to apps created after 2025. What's open:
+- **Facebook Login** (built, `IG_FLAVOR=facebook`): works, but her Instagram must be linked to a
+  Facebook Page. Real friction for small creators.
+- **Unified Login** (not built yet): she logs in with Instagram, **no Page needed**; Meta asks for
+  a short business form the first time (name, country, website), and the token belongs to a
+  business portfolio Meta creates for her. Whether views and reach (insights) come through is not
+  confirmed.
+
+Recommendation: build Unified Login next and test it on a real account; keep Facebook Login as the
+fallback. The backend contract (`login-url`, `accounts/{ref}`, return URL) is the same for all three.
+
 ## Change log
 
+- 2026-11-17: Accounts and sign-up agreed with the backend (section 10): Instagram connects a
+  profile, phone OTP logs in, drafts confirmed server-side, abandoned-draft cleanup, roles, DPDP
+  status / consents / audit log, OTP limits, DLT. Instagram login: `facebook` flavor built
+  (Page required), Unified Login (no Page) open; new failure reason `no_page`.
 - 2026-11-15: Data sheet v2 import: headers after a title block, `record_status` (DEMO / REJECTED
   skipped, empty ID-only slots skipped, TO_REVIEW loads as unchecked = `LEGACY_IMPORT` trust, VERIFIED
   = `OPS_CHECKED`), renamed columns, "unsure" = unknown. Caption-guessed language is not stored as

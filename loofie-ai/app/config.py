@@ -38,6 +38,8 @@ class Settings(BaseSettings):
     ig_app_secret: str = ""
     ig_redirect_uri: str = ""  # public https URL of /auth/instagram/callback, registered in the Meta app
     ig_token_key: str = ""  # Fernet key that encrypts stored Instagram tokens
+    ig_flavor: str = ""  # "facebook" | "instagram"; empty = config/instagram.toml
+    ig_fb_config_id: str = ""  # Facebook Login for Business configuration id (facebook flavor)
     app_return_url: str = ""  # creator app page the browser returns to after login
 
 

@@ -422,7 +422,13 @@ def instagram(request: Request) -> InstagramClient:
     if not (s.ig_app_id and s.ig_app_secret and s.ig_redirect_uri and s.ig_token_key):
         raise HTTPException(503, "Instagram login is not configured on the AI service")
     if getattr(request.app.state, "instagram", None) is None:
-        request.app.state.instagram = InstagramClient(s.ig_app_id, s.ig_app_secret, s.ig_redirect_uri)
+        request.app.state.instagram = InstagramClient(
+            s.ig_app_id,
+            s.ig_app_secret,
+            s.ig_redirect_uri,
+            flavor=s.ig_flavor or None,
+            config_id=s.ig_fb_config_id,
+        )
     return request.app.state.instagram
 
 
@@ -441,7 +447,7 @@ def account_out(a: InstagramAccount) -> InstagramAccountOut:
         account_ref=a.account_ref,
         handle=a.username,
         status=a.status,
-        insights_allowed=ig_service.INSIGHTS_SCOPE in (a.permissions or []),
+        insights_allowed=ig_service.has_insights(a.permissions),
         token_expires_at=a.token_expires_at,
         last_synced_at=a.last_synced_at,
         last_error=a.last_error,
@@ -499,7 +505,7 @@ def instagram_callback(
         acct = ig_service.connect(session, ig, code, state, get_settings().ig_token_key, datetime.now(UTC))
     except ig_service.ConnectError as e:
         session.rollback()
-        log.info(json.dumps({"job": "instagram_connect", "failed": e.reason}))
+        log.info(json.dumps({"job": "instagram_connect", "failed": e.reason, "detail": str(e)[:300]}))
         return _back_to_app({"instagram": "failed", "reason": e.reason})
     acct.status = "syncing"
     session.commit()

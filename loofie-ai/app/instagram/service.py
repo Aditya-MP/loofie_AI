@@ -18,12 +18,19 @@ from app.feedback.events import log_event
 from app.importer import provenance
 from app.importer.upsert import upsert
 from app.instagram import ingest, security
-from app.instagram.client import InstagramClient, InstagramError, instagram_config
+from app.instagram.client import InstagramClient, InstagramError, NoLinkedInstagram, instagram_config
 from app.profile.builder import build_and_save
 from app.quality.service import assess_and_save
 
-INSIGHTS_SCOPE = "instagram_business_manage_insights"
-PROFESSIONAL = {"BUSINESS", "MEDIA_CREATOR", "CREATOR"}
+INSIGHTS_SCOPE = "instagram_business_manage_insights"  # Instagram Login
+INSIGHTS_SCOPES = {INSIGHTS_SCOPE, "instagram_manage_insights"}  # ...or Facebook Login
+
+
+def has_insights(permissions: list[str] | None) -> bool:
+    return bool(INSIGHTS_SCOPES & set(permissions or []))
+
+
+PROFESSIONAL = {"BUSINESS", "MEDIA_CREATOR", "CREATOR", "PROFESSIONAL"}
 LIVE = ("connected", "syncing", "active", "error")  # statuses that still hold a usable token
 
 
@@ -65,6 +72,8 @@ def connect(session: Session, client: InstagramClient, code: str, state: str, to
         grant = client.exchange_code(code)
         token, expires_in = client.long_lived(grant.access_token)
         me = client.me(token)
+    except NoLinkedInstagram as e:
+        raise ConnectError("no_page", f"{e}; permissions granted: {sorted(grant.permissions)}") from e
     except InstagramError as e:
         raise ConnectError("instagram_error", str(e)) from e
     if str(me.get("account_type", "")).upper() not in PROFESSIONAL:
@@ -102,9 +111,9 @@ def connect(session: Session, client: InstagramClient, code: str, state: str, to
 
 
 def _fetch(client: InstagramClient, acct: InstagramAccount, token: str) -> tuple[dict, list[dict]]:
-    me = client.me(token)
-    media = client.media(token)
-    if INSIGHTS_SCOPE in (acct.permissions or []):
+    me = client.me(token, prefer=acct.ig_user_id)
+    media = client.media(token, ig_user_id=str(me.get("user_id") or acct.ig_user_id))
+    if has_insights(acct.permissions):
         for m in media:
             # Albums have no insights; stories / ads are skipped by the ingester anyway.
             if ingest.post_type(m) in {"reel", "photo"}:

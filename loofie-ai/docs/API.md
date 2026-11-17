@@ -99,6 +99,8 @@ Response: the profile plus the quality check.
 ## Instagram Login (F1): `Continue with Instagram`
 
 The AI service does the whole login and fetch. The backend only needs a button and a status poll.
+Instagram **connects a profile**; creators **log in** with phone OTP (DECISIONS.md section 10).
+Create the draft creator first: its id is the `account_ref`.
 Only Creator / Business Instagram accounts can log in (Meta's rule). Personal accounts: show the
 "switch to a free Creator account" guide, or the manual profile path.
 
@@ -108,7 +110,7 @@ Creator app                  Backend                         AI service         
 taps "Continue with      →   GET /ai/instagram/login-url
 Instagram"                       ?account_ref=<creator id>  →  signed 10-min link
                          ←   302 to that url
-approves on Instagram    ─────────────────────────────────────────────────────────────→  /oauth/authorize
+approves on Meta's screen ────────────────────────────────────────────────────────────→  Meta login
                          ←────────────────────────── 303 to APP_RETURN_URL  ←  /auth/instagram/callback
 lands on the app page        (?instagram=connected&account_ref=..&handle=..           (fetch runs in
                               or ?instagram=failed&reason=..)                          the background)
@@ -118,7 +120,12 @@ lands on the app page        (?instagram=connected&account_ref=..&handle=..     
 
 `reason` on failure: `denied` (creator cancelled), `expired_link` (link older than 10 minutes:
 start again), `not_professional` (Personal account), `already_linked` (this Instagram account is
-connected to a different Loofie account: send to support), `instagram_error`, `bad_request`.
+connected to a different Loofie account: usually an abandoned draft, see the cleanup rule in
+DECISIONS.md section 10), `no_page` (Facebook login only: no Facebook Page with her Instagram
+linked; show the "link Instagram to a Page" guide), `instagram_error`, `bad_request`.
+
+**Don't trust the return URL.** Anyone can type `?instagram=connected`. Confirm with
+`GET /ai/instagram/accounts/{account_ref}` (server-to-server, API key) before marking anything.
 
 `GET /ai/instagram/accounts/{account_ref}`:
 ```json
@@ -138,7 +145,8 @@ posts are verified but views aren't. Ask them to reconnect and allow it.
 Other calls:
 - `POST /ai/instagram/accounts/{account_ref}/sync`: re-fetch now (ops button). `409` if the login expired.
 - `DELETE /ai/instagram/accounts/{account_ref}`: creator disconnected in the app (data kept).
-  `?delete_data=true`: also delete everything fetched from Instagram.
+  `?delete_data=true`: also delete everything fetched from Instagram. Use it for abandoned
+  drafts and for deleted accounts (DPDP).
 
 The AI service also answers Meta directly at `/auth/instagram/deauthorize`,
 `/auth/instagram/data-deletion` and `/auth/instagram/deletion-status` (required by Meta's App

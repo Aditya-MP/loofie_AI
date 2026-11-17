@@ -73,6 +73,29 @@ same address: run `cloudflared` there with the same tunnel, or point the DNS at 
 
 ## Instagram Login
 
+**What works today (17 Nov, tested with a real account):** a new Meta app can't use Instagram
+Login ("not available for newer apps"), so the service uses **Facebook login**
+(`IG_FLAVOR=facebook`):
+
+1. Meta app of type **Business** created with the **Other** use case (the newer use-case screens
+   hide the old products). Add **Instagram** and **Facebook Login for Business**.
+2. `IG_APP_ID` / `IG_APP_SECRET` = the app's **App ID** and **App secret** (App settings → Basic).
+3. Facebook Login for Business → Settings → **Valid OAuth Redirect URIs** = `IG_REDIRECT_URI`.
+   For a test on this PC use `http://localhost:8100/auth/instagram/callback` (allowed in
+   development mode; don't add `localhost` to App domains, Meta rejects it there). A
+   `trycloudflare.com` address was refused as an app domain.
+4. Leave `IG_FB_CONFIG_ID` blank: the login then asks for `fb_scopes`. A Unified-login
+   configuration id gives a system-user token with no Pages and no insights.
+5. The creator's Instagram must be Creator / Business **and linked to a Facebook Page**
+   (Business Settings → Pages → Connect Instagram), or the login answers `no_page`. The server
+   log says which Pages Meta returned and which permissions were granted.
+
+Reached in the test: login, code → token, long-lived token, permissions
+(`instagram_basic`, `instagram_manage_insights`, `pages_show_list`, `pages_read_engagement`),
+Pages read. Not yet: fetching a real Instagram account (the test Page had none linked).
+
+The older Instagram Login steps below still apply to apps that have it (`IG_FLAVOR=instagram`).
+
 1. In the Meta developer app: add the **Instagram** product → *API setup with Instagram login*.
    Copy the Instagram app ID and secret into `IG_APP_ID` / `IG_APP_SECRET`.
 2. Register these URLs in the app (all on this service's public https address):

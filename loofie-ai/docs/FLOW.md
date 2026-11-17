@@ -15,10 +15,12 @@ Status: ✅ built · 🟡 built, not connected yet · ❌ not built.
 
 | Step | Who | Backend | AI call | # | Status |
 |---|---|---|---|---|---|
-| Sign up with phone OTP | Creator | creates the creator account and its `creator_ref` | none | | ❌ backend F1 |
-| Taps "Continue with Instagram" | Creator | asks for a link, sends the browser to it | `GET /ai/instagram/login-url?account_ref=<creator_ref>` | 07 | ✅ AI · ❌ button |
+| Taps "Continue with Instagram" | Creator | creates a **draft** creator (`INCOMPLETE`, its id = `creator_ref`), asks for a link, sends the browser to it | `GET /ai/instagram/login-url?account_ref=<creator_ref>` | 07 | ✅ AI · ❌ button |
 | Allows on Instagram | Creator | none: Instagram returns the browser to the AI service, which sends it on to `APP_RETURN_URL?instagram=connected` | `/auth/instagram/callback` (public) | | ✅ AI |
-| Waits for the numbers | App | polls every 2-3 s until `active` / `error` / `expired` | `GET /ai/instagram/accounts/<creator_ref>` | 08 | ✅ AI · ❌ poll |
+| Waits for the numbers | App | **confirms server-side** (the return URL is not proof), polls every 2-3 s until `active` / `error` / `expired` | `GET /ai/instagram/accounts/<creator_ref>` | 08 | ✅ AI · ❌ poll |
+| Phone OTP (always) | Creator | verifies the phone; login from now on is phone OTP | none | | ❌ backend |
+| Abandoned before OTP | System | cleanup job: draft with no phone → delete its Instagram data, then the draft | `DELETE /ai/instagram/accounts/<creator_ref>?delete_data=true` | | ✅ AI · ❌ job |
+| Or: "Sign up with phone" | Creator | phone OTP → manual form + Insights screenshots (`SELF_REPORTED`); Instagram can be connected later | `POST /ai/creators/profile` | 01 | ✅ AI · ❌ backend |
 | Types rate, city, languages | Creator | saves them, forwards to AI | `POST /ai/creators/profile` | 01-05 | ✅ AI · ❌ screen |
 | Passport shown | App | shows category, quality, stats | `GET /ai/creators/<handle>` | 06 | ✅ AI |
 

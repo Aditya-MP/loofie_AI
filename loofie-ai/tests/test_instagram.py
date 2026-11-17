@@ -161,6 +161,7 @@ def ig_client(meta):
         SECRET,
         "https://ai.loofie.test/auth/instagram/callback",
         httpx.Client(transport=httpx.MockTransport(meta.handler)),
+        flavor="instagram",  # this fake is Meta's Instagram Login; the Facebook flavor has its own tests
     )
 
 

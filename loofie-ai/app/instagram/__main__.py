@@ -44,7 +44,9 @@ def main() -> int:
         from app.instagram.service import maintain
         from app.ml.embed import get_embedder
 
-        client = InstagramClient(s.ig_app_id, s.ig_app_secret, s.ig_redirect_uri)
+        client = InstagramClient(
+            s.ig_app_id, s.ig_app_secret, s.ig_redirect_uri, flavor=s.ig_flavor or None, config_id=s.ig_fb_config_id
+        )
         counts = maintain(session, get_embedder(), client, s.ig_token_key)
         print(f"Instagram maintenance: {counts}")
         return 1 if counts["failed"] else 0

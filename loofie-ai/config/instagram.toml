@@ -2,7 +2,20 @@
 # and metric name lives here so a change is a config edit, not a code change. [VERIFY] each
 # against developers.facebook.com/docs/instagram-platform before go-live and on every Meta
 # version deprecation notice.
-version = "instagram-ingest-v1"
+version = "instagram-ingest-v2"
+
+# Which Meta login the creator goes through. Meta closed "Instagram Login" to apps created after
+# 2025 (dashboard: "not available for newer apps"), so new apps use "facebook": the creator logs in
+# with Facebook and her Instagram must be linked to a Facebook Page. "instagram" = the older login,
+# kept for apps that still have it. Override per environment with IG_FLAVOR in .env.
+flavor = "facebook"
+
+fb_authorize_url = "https://www.facebook.com"
+fb_graph_url = "https://graph.facebook.com"
+# Used when no IG_FB_CONFIG_ID is set (a Facebook Login for Business configuration carries its own).
+fb_scopes = ["instagram_basic", "instagram_manage_insights", "pages_show_list", "pages_read_engagement"]
+# The IG User node on graph.facebook.com has no user_id / account_type fields.
+fb_profile_fields = ["username", "name", "followers_count", "follows_count", "media_count"]
 
 authorize_url = "https://www.instagram.com/oauth/authorize"
 token_url = "https://api.instagram.com/oauth/access_token"
