@@ -54,9 +54,51 @@ ranked down**. Both break Loofie's promise.
 | `brief_ref` on every job event, brief and shortlist events | F2 briefs, F3 shortlists |
 | Backend A's real URL, key, capacity | Aditya |
 
-## 5. Decisions needed
+## 5. Decisions (approved 2026-11-16)
 
-1. **Ghosting = `CREATOR_UNRESPONSIVE`** (recommended), not a new code?
-2. **Cancellations send no `job_outcome`** (recommended: the creator did not fail; a kill-fee job is not her record)?
-3. **Aditya to confirm** a correction arrives as a same-state `job_state_changed` with `corrects` (his code already
-   takes the latest code per job, so it works today).
+1. Ghosting = `CREATOR_UNRESPONSIVE`, no new code. **Built.**
+2. Cancellations send no `job_outcome` (the creator did not fail). **Built.**
+3. A correction arrives as a same-state `job_state_changed` with `corrects`. Works with Backend A's code today (the
+   contract test proves it); **Aditya still to confirm in writing.**
+
+## 6. Results (2026-11-17)
+
+### Built (commit `c239943`)
+
+| # | What | Where |
+|---|---|---|
+| A1 | `job_outcome` on `CLOSE` and on every replacement (`PRODUCTION_EXPIRED`, `CREATOR_WITHDRAW`, `OPS_RELEASE_CREATOR`, `RESOLVE_REPLACE`, `RESOLVE_REFUND` from `DISPUTED`); `jobs.first_draft_on_time` set once at the first `SUBMIT_DRAFT`, reset for a new creator | `JobTransitionService`, `JobEventRecorder.recordOutcome`, V12 |
+| A2 | `PRODUCTION_EXPIRED` carries `CREATOR_UNRESPONSIVE` | `JobTransitionService.reasonCodeFor` |
+| A3 | `RESOLVE_REPLACE` and dispute refunds need a code; a refund request settling a dispute carries `job_reason_code`, passed to the job on approval | `RefundService`, `refund_requests.job_reason_code` |
+| A4 | `OPS_CORRECT_REASON`: self-loop in every state (terminal ones too), state and clocks untouched, payload `corrects` + `previousReasonCode`; same code again and `FALSE_CLAIM` refused | `TransitionTable`, `JobTransitionService` |
+| A5 | `GET /api/core/ops/outbox/parked`, `POST /api/core/ops/outbox/parked/{id}/requeue` (OPS_LEAD / FOUNDER) | `OutboxAdmin`, `OpsOutboxController` |
+| A6 | Prod profile: `require-https: true`; an `http://` URL or a URL without a key stops startup; no URL = events wait | `AiFeedbackProperties`, `application-prod.yaml` |
+| A7 | `processed_events` dropped | V12 |
+| extra | Inbox `jobId` filter + `notifications_job_idx` (ops: "what was sent about this job?") | `NotificationRepository`, V12 |
+
+### Proof
+
+| Check | Result |
+|---|---|
+| Full suite | 215 tests: 214 pass, 1 skipped (the opt-in contract test, run separately below) |
+| `AiEventsRound2Test` (10) | on time / late / extension / revisions / disputed / replaced per cause; ghosting code; correction keeps state and clocks, refuses `FALSE_CLAIM` and the same code; parked requeue; dispute refund needs a code |
+| Mapper tests | `job_outcome` fields, `corrects` forwarded, null keys left out, no PII; prod guard refuses http and keyless |
+| Contract test against Backend A's real mock | all requests 200, new events accepted |
+| **Backend A's own scoring reads our events as intended** (`GET /ai/creators/{handle}` track record on their mock) | on time: 1 job, 1 on time, 0 faults · ghosting: 1 fault · brand late ship: no fault · accused only (`FALSE_CLAIM` settled for the creator): fault as Backend A defines it · corrected to courier fault: no fault |
+| Query plans, 1M jobs / 2M events | revision count and last-coded-event lookup: Index Scan `job_events_job_version_idx`, 0.02–0.06 ms · inbox by job (500k notifications): Index Scan `notifications_job_idx`, 0.054 ms |
+| Engine 500 rps, 60 s, realistic mix, relay on (fake Backend A, 20 ms), after warm-up | run 1: p95 4 ms, p99 41 ms; run 2: **p95 3 ms, p99 11 ms**; 0 failed both runs; every event sent (4,493), 0 waiting, 0 parked, write-to-send p95 0.49 s. Before round 2: p95 2 ms, write-to-send 0.49 s — same within laptop noise. Gate p95 ≤ 300 ms: **PASS** |
+
+### Known limits (not hidden)
+
+- Perf data events carry no assignment or reason code, so the plans above prove the index is used, not counts on
+  busy jobs. A job has tens of events at most, so the per-job index scan stays small.
+- Laptop numbers only; **production hosting not measured.**
+- Backend A's real URL, key and capacity still unknown (section 4), so delivery has only been proven against their
+  mock and our fake.
+
+### Done?
+
+**Done** for what Backend B can deliver now: it serves the matcher (a fair track record: ghosting counts, courier
+and brand faults do not, wrong calls can be corrected) and meets the backend standard (tests, contract, plans, load).
+Still open, each with an owner in section 4: `rating`, `rebooked`, brief events, Backend A's live connection, and
+Aditya's written OK on the correction format.
