@@ -25,6 +25,7 @@ import com.loofie.core.creator.domain.CreatorExceptions.CreatorNotFoundException
 import com.loofie.core.creator.domain.CreatorForm;
 import com.loofie.core.creator.domain.CreatorProfile;
 import com.loofie.core.creator.domain.CreatorProfile.MarketplaceStatus;
+import com.loofie.core.creator.domain.CreatorProfile.ReviewStatus;
 import com.loofie.core.creator.domain.Evidence;
 import com.loofie.core.creator.domain.InstagramGateway;
 import com.loofie.core.creator.domain.MetricValue;
@@ -40,6 +41,7 @@ import com.loofie.core.job.domain.ActorRole;
 import com.loofie.core.messaging.BackendACreatorCalls;
 import com.loofie.core.messaging.EventEnvelope;
 import com.loofie.core.messaging.Outbox;
+import com.loofie.core.notification.app.NotificationService;
 import com.loofie.core.storage.Uploads;
 
 /**
@@ -83,6 +85,8 @@ public class CreatorProfileService {
                               InstagramView instagram, List<NumberView> numbers, List<EvidenceView> evidence,
                               CreatorProfile.Level level, MarketplaceStatus marketplaceStatus,
                               String marketplaceReason, boolean completed, Instant completedAt, List<String> missing,
+                              ReviewStatus reviewStatus, String reviewNote, Instant reviewRequestedAt,
+                              String reviewMessage,
                               boolean bookable, boolean verifiedUnavailable, Options options) {
     }
 
@@ -93,12 +97,15 @@ public class CreatorProfileService {
     private final AuditLog audit;
     private final Outbox outbox;
     private final CreatorProperties props;
+    private final NotificationService notifications;
     private final TransactionTemplate tx;
     private final Clock clock;
 
     public CreatorProfileService(CreatorProfileRepository profiles, EvidenceRepository evidence,
                                  InstagramGateway instagram, AccountDirectory accounts, AuditLog audit, Outbox outbox,
-                                 CreatorProperties props, TransactionTemplate tx, Clock clock) {
+                                 CreatorProperties props, TransactionTemplate tx, Clock clock,
+                                 NotificationService notifications) {
+        this.notifications = notifications;
         this.profiles = profiles;
         this.evidence = evidence;
         this.instagram = instagram;
@@ -145,7 +152,7 @@ public class CreatorProfileService {
                 profiles.upsertMetric(me, new MetricValue(Metric.AVG_VIEWS_10, form.avgViews(), Source.SELF_REPORTED,
                         today), me, now);
             }
-            settle(me, actor, true);
+            settle(me, actor, true, true);
         });
         return view(me, true);
     }
@@ -173,6 +180,17 @@ public class CreatorProfileService {
      */
     @Transactional(propagation = Propagation.MANDATORY)
     public void settle(UUID creatorId, Actor actor, boolean changed) {
+        settle(creatorId, actor, changed, false);
+    }
+
+    /**
+     * As {@link #settle(UUID, Actor, boolean)}, plus the profile review (agreed 2026-11-18): a newly complete profile
+     * is APPROVED at once when Instagram verifies her numbers, otherwise PENDING for ops (24-48 h); Instagram verified
+     * later approves a waiting profile; and when ops asked for changes, {@code resubmit} (she saved the form or added a
+     * screenshot) puts it back in the queue.
+     */
+    @Transactional(propagation = Propagation.MANDATORY)
+    public void settle(UUID creatorId, Actor actor, boolean changed, boolean resubmit) {
         CreatorProfile p = profiles.find(creatorId).orElseThrow();
         Instant now = clock.instant();
         boolean newlyCompleted = false;
@@ -184,9 +202,40 @@ public class CreatorProfileService {
             p = profiles.find(creatorId).orElseThrow();
             newlyCompleted = true;
         }
+        if (p.completed()) {
+            if (p.instagramVerified() && !p.approved()) {
+                profiles.setReview(creatorId, ReviewStatus.APPROVED, null, null, now);
+                audit.record(actor, AuditLog.PROFILE_APPROVED, creatorId, null, Map.of("by", "INSTAGRAM"));
+                if (!newlyCompleted) {
+                    notifications.toCreator(creatorId, NOTICE_APPROVED, null, Map.of("by", "INSTAGRAM"), now);
+                }
+            } else if (newlyCompleted && !p.instagramVerified()) {
+                profiles.setReview(creatorId, ReviewStatus.PENDING, null, null, now);
+            } else if (resubmit && p.reviewStatus() == ReviewStatus.CHANGES_REQUESTED) {
+                profiles.setReview(creatorId, ReviewStatus.PENDING, null, null, now);
+                audit.record(actor, AuditLog.PROFILE_RESUBMITTED, creatorId, null, Map.of());
+            }
+            p = profiles.find(creatorId).orElseThrow();
+        }
         if (p.completed() && (newlyCompleted || changed)) {
             pushToBackendA(p, now);
         }
+    }
+
+    /** In-app notices to the creator about her profile review. */
+    public static final String NOTICE_APPROVED = "PROFILE_APPROVED";
+    public static final String NOTICE_CHANGES_REQUESTED = "PROFILE_CHANGES_REQUESTED";
+
+    /** What to show her about the review (the app may use its own words). */
+    static String reviewMessage(CreatorProfile p) {
+        return switch (p.reviewStatus()) {
+            case NONE -> "Complete your profile to send it for review";
+            case PENDING -> "Your profile is being reviewed. This usually takes 24 to 48 hours; you can use your "
+                    + "dashboard meanwhile, and brands will see you once it is approved";
+            case APPROVED -> "Profile approved";
+            case CHANGES_REQUESTED -> "Loofie asked for changes: " + p.reviewNote() + ". Update your profile or add a "
+                    + "screenshot to send it again";
+        };
     }
 
     /** What is still needed, in form order. Empty = complete. */
@@ -242,13 +291,14 @@ public class CreatorProfileService {
                 .filter(e -> e.status() != Evidence.Status.REMOVED)
                 .map(e -> new EvidenceView(e.id(), e.kind(), e.status(), e.reviewNote(), e.createdAt())).toList();
         List<String> missing = p.completed() ? List.of() : missing(p);
-        boolean bookable = p.completed() && p.marketplaceStatus() == MarketplaceStatus.LISTED
+        boolean bookable = p.completed() && p.approved() && p.marketplaceStatus() == MarketplaceStatus.LISTED
                 && accounts.active(creatorId);
         return new ProfileView(creatorId, p.displayName(), p.city(), p.state(), p.languages(), p.categories(),
                 p.formats(), p.ratePerReelRupees(), p.partnershipAds(), p.turnaroundDays(), p.bio(), p.sampleLinks(),
                 new InstagramView(p.instagramHandle(), p.instagramStatus(), p.instagramInsightsAllowed(),
                         p.instagramCheckedAt()), numbers, ev, p.level(), p.marketplaceStatus(),
-                p.marketplaceReason(), p.completed(), p.completedAt(), missing, bookable, verifiedUnavailable,
+                p.marketplaceReason(), p.completed(), p.completedAt(), missing, p.reviewStatus(), p.reviewNote(),
+                p.reviewRequestedAt(), reviewMessage(p), bookable, verifiedUnavailable,
                 options());
     }
 

@@ -31,6 +31,7 @@ public class CreatorProfileRepository {
             user_id, display_name, city, state, languages, categories, formats, rate_per_reel_rupees, partnership_ads,
             turnaround_days, bio, sample_links, instagram_handle, instagram_status, instagram_insights_allowed,
             instagram_checked_at, level, level_reason, marketplace_status, marketplace_reason, completed_at,
+            review_status, review_note, review_requested_at,
             created_at, updated_at, version""";
 
     private final JdbcClient jdbc;
@@ -143,11 +144,49 @@ public class CreatorProfileRepository {
         jdbc.sql("DELETE FROM creator_metrics WHERE creator_id = :id").param("id", creatorId).update();
     }
 
-    /** Passport complete and LISTED (the account side is asked of identity, which owns users). */
+    /**
+     * Sets the profile review. PENDING starts the 24 / 48 h clock again (and clears its alerts); APPROVED and
+     * CHANGES_REQUESTED record who decided ({@code by} null = approved by Instagram verification).
+     */
+    public void setReview(UUID creatorId, CreatorProfile.ReviewStatus status, String note, UUID by, Instant now) {
+        boolean pending = status == CreatorProfile.ReviewStatus.PENDING;
+        jdbc.sql("""
+                UPDATE creator_profiles SET review_status = :status, review_note = :note,
+                    reviewed_by = CASE WHEN CAST(:pending AS boolean) THEN reviewed_by ELSE CAST(:by AS uuid) END,
+                    reviewed_at = CASE WHEN CAST(:pending AS boolean) THEN reviewed_at ELSE :now END,
+                    review_requested_at = CASE WHEN CAST(:pending AS boolean) THEN :now ELSE review_requested_at END,
+                    review_alerted_at = CASE WHEN CAST(:pending AS boolean) THEN NULL ELSE review_alerted_at END,
+                    review_escalated_at = CASE WHEN CAST(:pending AS boolean) THEN NULL ELSE review_escalated_at END,
+                    updated_at = :now, version = version + 1
+                WHERE user_id = :id""")
+                .param("id", creatorId).param("status", status.name()).param("note", note).param("by", by)
+                .param("pending", pending).param("now", ts(now)).update();
+    }
+
+    /** Profiles waiting for ops, oldest first. */
+    public List<CreatorProfile> pendingReview(Instant after, int limit) {
+        return jdbc.sql("SELECT " + COLUMNS + " FROM creator_profiles WHERE review_status = 'PENDING' "
+                        + "AND review_requested_at > :after ORDER BY review_requested_at LIMIT :limit")
+                .param("after", ts(after)).param("limit", limit).query(CreatorProfileRepository::map).list();
+    }
+
+    /**
+     * Marks and returns the pending profiles that crossed the 24 h (ops) or 48 h (founder) line and were not told
+     * about yet, in one statement each, so two instances never alert twice.
+     */
+    public List<UUID> claimOverdue(boolean escalation, Instant waitingSince, Instant now) {
+        String col = escalation ? "review_escalated_at" : "review_alerted_at";
+        return jdbc.sql("UPDATE creator_profiles SET " + col + " = :now WHERE review_status = 'PENDING' AND "
+                        + col + " IS NULL AND review_requested_at <= :since RETURNING user_id")
+                .param("now", ts(now)).param("since", ts(waitingSince)).query(UUID.class).list();
+    }
+
+    /** Passport complete, approved by ops (or Instagram) and LISTED; the account side is asked of identity. */
     public boolean listed(UUID creatorId) {
         return jdbc.sql("""
                 SELECT EXISTS (SELECT 1 FROM creator_profiles
-                               WHERE user_id = :id AND completed_at IS NOT NULL AND marketplace_status = 'LISTED')""")
+                               WHERE user_id = :id AND completed_at IS NOT NULL AND marketplace_status = 'LISTED'
+                                 AND review_status = 'APPROVED')""")
                 .param("id", creatorId).query(Boolean.class).single();
     }
 
@@ -163,7 +202,9 @@ public class CreatorProfileRepository {
                 (Boolean) rs.getObject("instagram_insights_allowed"), instant(rs.getTimestamp("instagram_checked_at")),
                 Level.valueOf(rs.getString("level")), rs.getString("level_reason"),
                 MarketplaceStatus.valueOf(rs.getString("marketplace_status")), rs.getString("marketplace_reason"),
-                instant(rs.getTimestamp("completed_at")), instant(rs.getTimestamp("created_at")),
+                instant(rs.getTimestamp("completed_at")),
+                CreatorProfile.ReviewStatus.valueOf(rs.getString("review_status")), rs.getString("review_note"),
+                instant(rs.getTimestamp("review_requested_at")), instant(rs.getTimestamp("created_at")),
                 instant(rs.getTimestamp("updated_at")), rs.getLong("version"));
     }
 

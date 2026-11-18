@@ -50,6 +50,8 @@ class CreatorPassportTest {
     @Autowired JdbcClient jdbc;
     @Autowired FakeAiService fakeAi;
     @Autowired OutboxRelay relay;
+    @Autowired com.loofie.core.creator.app.ProfileReviewWatch watch;
+    @Autowired com.loofie.core.support.MutableClock clock;
 
     private String ip;
 
@@ -88,9 +90,17 @@ class CreatorPassportTest {
                 201);
         assertThat(done.get("completed").asBoolean()).isTrue();
         assertThat(done.get("missing")).isEmpty();
-        assertThat(done.get("bookable").asBoolean()).isTrue();
+        // complete: dashboard yes, but not offered to brands until ops approves (agreed 2026-11-18)
+        assertThat(done.get("reviewStatus").asString()).isEqualTo("PENDING");
+        assertThat(done.get("reviewMessage").asString()).contains("24 to 48 hours");
+        assertThat(done.get("bookable").asBoolean()).isFalse();
         assertThat(done.get("evidence").get(0).get("status").asString()).isEqualTo("PENDING");
         assertThat(me(s).get("user").get("onboardingCompleted").asBoolean()).isTrue();
+        JsonNode approved = body(ops(put("/api/core/ops/creators/" + s.userId() + "/review"), Map.of("approve", true),
+                "OPS", UUID.randomUUID().toString()), 200);
+        assertThat(approved.get("reviewStatus").asString()).isEqualTo("APPROVED");
+        assertThat(approved.get("bookable").asBoolean()).isTrue();
+        assertThat(approved.get("evidence").get(0).get("status").asString()).isEqualTo("ACCEPTED");
         assertThat(auditCount(s.userId(), "CREATOR_PROFILE_COMPLETED")).isEqualTo(1);
 
         // the profile goes to Backend A through the outbox, as self-reported numbers
@@ -151,6 +161,8 @@ class CreatorPassportTest {
     @Test
     void pausingTakesHerOffTheMarketplaceAndResumingPutsHerBack() throws Exception {
         Session s = completedManualCreator("pause." + rnd(99999));
+        ops(put("/api/core/ops/creators/" + s.userId() + "/review"), Map.of("approve", true), "OPS",
+                UUID.randomUUID().toString());
         JsonNode paused = body(call(put("/api/core/creator/listing"), Map.of("listed", false), s), 200);
         assertThat(paused.get("marketplaceStatus").asString()).isEqualTo("HIDDEN");
         assertThat(paused.get("bookable").asBoolean()).isFalse();
@@ -255,6 +267,10 @@ class CreatorPassportTest {
         assertThat(active.get("status").asString()).isEqualTo("ACTIVE");
         assertThat(active.get("handle").asString()).isEqualTo("mira.skin");
         assertThat(active.get("profileCompleted").asBoolean()).isTrue();
+        // Instagram-verified: approved at once, no ops wait
+        JsonNode instant = body(call(get("/api/core/creator/profile"), null, s), 200);
+        assertThat(instant.get("reviewStatus").asString()).isEqualTo("APPROVED");
+        assertThat(instant.get("bookable").asBoolean()).isTrue();
         // the app polls every 2 s: a poll that changes nothing sends Backend A nothing
         long pushes = creatorOutboxRows(ref);
         assertThat(pushes).isEqualTo(1);
@@ -337,6 +353,8 @@ class CreatorPassportTest {
         assertThat(body(ops(put("/api/core/ops/creators/" + me + "/level"), Map.of("level", "VERIFIED", "reason",
                 "3 collaboration proofs"), "OPS", opsId), 200).get("level").asString()).isEqualTo("VERIFIED");
 
+        assertThat(body(ops(put("/api/core/ops/creators/" + me + "/review"), Map.of("approve", true), "OPS", opsId),
+                200).get("bookable").asBoolean()).isTrue();
         JsonNode blocked = body(ops(put("/api/core/ops/creators/" + me + "/block"), Map.of("blocked", true, "reason",
                 "Fake screenshots"), "OPS", opsId), 200);
         assertThat(blocked.get("bookable").asBoolean()).isFalse();
@@ -367,6 +385,97 @@ class CreatorPassportTest {
         JsonNode p = body(call(get("/api/core/creator/profile"), null, s), 200);
         assertThat(p.get("evidence").get(0).get("status").asString()).isEqualTo("REJECTED");
         assertThat(p.get("evidence").get(0).get("reviewNote").asString()).contains("cropped");
+    }
+
+    // ------------------------------------------------------------------------------------------------ profile review
+
+    @Test
+    void opsAsksForChangesSheResubmitsAndOpsApproves() throws Exception {
+        Session s = completedManualCreator("review." + rnd(99999));
+        UUID me = s.userId();
+        String opsId = UUID.randomUUID().toString();
+        String path = "/api/core/ops/creators/" + me + "/review";
+
+        assertThat(problem(ops(put(path), Map.of("approve", false), "OPS", opsId), 422)).isEqualTo("invalid-request");
+        assertThat(problem(call(put(path), Map.of("approve", true), s), 403)).isEqualTo("actor-not-allowed");
+        JsonNode changes = body(ops(put(path), Map.of("approve", false, "note",
+                "Followers in the screenshot do not match what you typed"), "OPS", opsId), 200);
+        assertThat(changes.get("reviewStatus").asString()).isEqualTo("CHANGES_REQUESTED");
+        assertThat(changes.get("bookable").asBoolean()).isFalse();
+
+        JsonNode mine = body(call(get("/api/core/creator/profile"), null, s), 200);
+        assertThat(mine.get("reviewMessage").asString()).contains("do not match");
+        assertThat(notices("CREATOR", me, "PROFILE_CHANGES_REQUESTED")).isEqualTo(1);
+        // not waiting for review now
+        assertThat(problem(ops(put(path), Map.of("approve", true), "OPS", opsId), 422)).isEqualTo("invalid-request");
+
+        // she fixes her numbers: back in the queue
+        Map<String, Object> fixed = fullForm("review.fixed", 7600L, 2500L);
+        assertThat(body(call(put("/api/core/creator/profile"), fixed, s), 200).get("reviewStatus").asString())
+                .isEqualTo("PENDING");
+        assertThat(auditCount(me, "CREATOR_PROFILE_RESUBMITTED")).isEqualTo(1);
+        JsonNode queue = body(ops(get("/api/core/ops/creators/review-queue?limit=200"), null, "OPS", opsId), 200);
+        assertThat(queue.findValuesAsString("creatorId")).contains(me.toString());
+
+        JsonNode ok = body(ops(put(path), Map.of("approve", true), "OPS", opsId), 200);
+        assertThat(ok.get("bookable").asBoolean()).isTrue();
+        assertThat(notices("CREATOR", me, "PROFILE_APPROVED")).isEqualTo(1);
+        assertThat(auditCount(me, "CREATOR_PROFILE_APPROVED")).isEqualTo(1);
+        assertThat(auditCount(me, "CREATOR_PROFILE_CHANGES_REQUESTED")).isEqualTo(1);
+    }
+
+    @Test
+    void connectingInstagramWhileWaitingApprovesAtOnce() throws Exception {
+        Session s = completedManualCreator("waiting." + rnd(99999));
+        String ref = s.userId().toString();
+        fakeAi.connection(ref, "active", "waiting.ig", true);
+        body(call(get("/api/core/creator/instagram"), null, s), 200);
+        JsonNode p = body(call(get("/api/core/creator/profile"), null, s), 200);
+        assertThat(p.get("reviewStatus").asString()).isEqualTo("APPROVED");
+        assertThat(p.get("bookable").asBoolean()).isTrue();
+        assertThat(notices("CREATOR", s.userId(), "PROFILE_APPROVED")).isEqualTo(1);
+    }
+
+    @Test
+    void theReviewPromiseIsWatchedOpsAt24HoursFounderAt48() throws Exception {
+        Session s = completedManualCreator("sla." + rnd(99999));
+        UUID me = s.userId();
+        java.time.Instant start = clock.instant();
+        try {
+            clock.advance(java.time.Duration.ofHours(25));
+            com.loofie.core.creator.app.ProfileReviewWatch.Result first = watch.runOnce();
+            assertThat(first.toOps()).isGreaterThanOrEqualTo(1);
+            assertThat(opsNoticeMentions("OPS", "PROFILE_REVIEW_OVERDUE", me)).isEqualTo(1);
+            // once per wait, not on every run
+            watch.runOnce();
+            assertThat(opsNoticeMentions("OPS", "PROFILE_REVIEW_OVERDUE", me)).isEqualTo(1);
+
+            clock.advance(java.time.Duration.ofHours(24));
+            watch.runOnce();
+            assertThat(opsNoticeMentions("FOUNDER", "PROFILE_REVIEW_ESCALATED", me)).isEqualTo(1);
+            JsonNode queue = body(ops(get("/api/core/ops/creators/review-queue?limit=200"), null, "OPS",
+                    UUID.randomUUID().toString()), 200);
+            for (JsonNode q : queue) {
+                if (q.get("creatorId").asString().equals(me.toString())) {
+                    assertThat(q.get("waitingHours").asLong()).isGreaterThanOrEqualTo(49);
+                    assertThat(q.get("screenshots").asLong()).isEqualTo(1);
+                }
+            }
+        } finally {
+            clock.set(start);
+        }
+    }
+
+    private long notices(String type, UUID recipient, String kind) {
+        return jdbc.sql("SELECT count(*) FROM notifications WHERE recipient_type = :t AND recipient_id = :r "
+                        + "AND kind = :k").param("t", type).param("r", recipient).param("k", kind)
+                .query(Long.class).single();
+    }
+
+    private long opsNoticeMentions(String type, String kind, UUID creator) {
+        return jdbc.sql("SELECT count(*) FROM notifications WHERE recipient_type = :t AND kind = :k "
+                        + "AND jsonb_exists(payload -> 'creatorIds', :id)").param("t", type).param("k", kind)
+                .param("id", creator.toString()).query(Long.class).single();
     }
 
     // ------------------------------------------------------------------------------------------------ helpers

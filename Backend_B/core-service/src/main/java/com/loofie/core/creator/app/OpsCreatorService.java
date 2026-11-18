@@ -41,15 +41,23 @@ public class OpsCreatorService {
     public record EvidenceLink(UUID evidenceId, URI url, Instant expiresAt) {
     }
 
+    /** A profile waiting for ops; {@code waitingHours} against the 24-48 h promise. */
+    public record ReviewItem(UUID creatorId, String displayName, String instagramHandle, Instant requestedAt,
+                             long waitingHours, long screenshots) {
+    }
+
     private final CreatorProfileRepository profiles;
     private final EvidenceRepository evidence;
     private final CreatorProfileService profileService;
     private final Uploads uploads;
     private final AuditLog audit;
     private final Clock clock;
+    private final com.loofie.core.notification.app.NotificationService notifications;
 
     public OpsCreatorService(CreatorProfileRepository profiles, EvidenceRepository evidence,
-                             CreatorProfileService profileService, Uploads uploads, AuditLog audit, Clock clock) {
+                             CreatorProfileService profileService, Uploads uploads, AuditLog audit, Clock clock,
+                             com.loofie.core.notification.app.NotificationService notifications) {
+        this.notifications = notifications;
         this.profiles = profiles;
         this.evidence = evidence;
         this.profileService = profileService;
@@ -64,6 +72,60 @@ public class OpsCreatorService {
         CreatorProfileService.ProfileView v = profileService.view(require(creatorId).creatorId(), true);
         audit.record(actor, AuditLog.CREATOR_VIEWED, creatorId, null, Map.of());
         return v;
+    }
+
+    /** Profiles waiting for review, oldest first (the 24-48 h promise). */
+    public List<ReviewItem> reviewQueue(Actor actor, Instant after, int limit) {
+        requireOps(actor);
+        if (limit < 1 || limit > 200) {
+            throw new InvalidRequestException("limit must be 1 to 200");
+        }
+        Instant now = clock.instant();
+        return profiles.pendingReview(after == null ? Instant.EPOCH : after, limit).stream()
+                .map(p -> new ReviewItem(p.creatorId(), p.displayName(), p.instagramHandle(), p.reviewRequestedAt(),
+                        java.time.Duration.between(p.reviewRequestedAt(), now).toHours(),
+                        evidence.live(p.creatorId(), Evidence.Kind.INSIGHTS)))
+                .toList();
+    }
+
+    /**
+     * Approves a waiting profile (she can now be offered to brands; her pending Insights screenshots count as checked)
+     * or asks for changes with a note she sees. She is told either way.
+     */
+    @Transactional
+    public CreatorProfileService.ProfileView reviewProfile(Actor actor, UUID creatorId, boolean approve, String note) {
+        requireOps(actor);
+        String n = note == null || note.isBlank() ? null : note.trim();
+        if (!approve && n == null) {
+            throw new InvalidRequestException("Say what she should change; she sees this note");
+        }
+        if (n != null && n.length() > 300) {
+            throw new InvalidRequestException("Note: at most 300 characters");
+        }
+        CreatorProfile p = lock(creatorId);
+        if (p.reviewStatus() != CreatorProfile.ReviewStatus.PENDING) {
+            throw new InvalidRequestException(p.reviewStatus() == CreatorProfile.ReviewStatus.NONE
+                    ? "The profile is not complete yet" : "The profile is not waiting for review (it is "
+                    + p.reviewStatus().name().toLowerCase().replace('_', ' ') + ")");
+        }
+        Instant now = clock.instant();
+        if (approve) {
+            profiles.setReview(creatorId, CreatorProfile.ReviewStatus.APPROVED, n, actor.userId(), now);
+            for (Evidence e : evidence.forCreator(creatorId)) {
+                if (e.status() == Evidence.Status.PENDING && e.kind() == Evidence.Kind.INSIGHTS) {
+                    evidence.review(e.id(), Evidence.Status.ACCEPTED, null, actor.userId(), now);
+                }
+            }
+            audit.record(actor, AuditLog.PROFILE_APPROVED, creatorId, n, Map.of("by", "OPS", "waitedHours",
+                    java.time.Duration.between(p.reviewRequestedAt(), now).toHours()));
+            notifications.toCreator(creatorId, CreatorProfileService.NOTICE_APPROVED, null, Map.of("by", "OPS"), now);
+        } else {
+            profiles.setReview(creatorId, CreatorProfile.ReviewStatus.CHANGES_REQUESTED, n, actor.userId(), now);
+            audit.record(actor, AuditLog.PROFILE_CHANGES_REQUESTED, creatorId, n, Map.of());
+            notifications.toCreator(creatorId, CreatorProfileService.NOTICE_CHANGES_REQUESTED, null,
+                    Map.of("note", n), now);
+        }
+        return profileService.view(creatorId, false);
     }
 
     /** Screenshots waiting for a look, oldest first. */

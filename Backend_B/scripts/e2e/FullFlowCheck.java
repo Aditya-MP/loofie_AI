@@ -149,8 +149,9 @@ public class FullFlowCheck {
         check("the browser uploads straight to storage with the signed URL", put == 200);
         Res attached = creator2.post("/api/core/creator/evidence", "{\"uploadKey\":\"" + ticket.str("key")
                 + "\",\"kind\":\"INSIGHTS\"}");
-        check("screenshot attached: passport complete and bookable", attached.status() == 201
-                && attached.body().contains("\"completed\":true") && attached.body().contains("\"bookable\":true"));
+        check("screenshot attached: profile complete, pending review, not offered to brands yet",
+                attached.status() == 201 && attached.body().contains("\"completed\":true")
+                && attached.body().contains("\"reviewStatus\":\"PENDING\"") && attached.body().contains("\"bookable\":false"));
         check("/me now says onboarding completed", creator2.get("/api/core/auth/me").bool("onboardingCompleted"));
 
         section("3. Brand admin signup with email OTP, then company");

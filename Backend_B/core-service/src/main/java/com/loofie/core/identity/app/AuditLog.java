@@ -59,6 +59,9 @@ public class AuditLog {
     public static final String LEVEL_CHANGED = "CREATOR_LEVEL_CHANGED";
     public static final String MARKETPLACE_BLOCKED = "CREATOR_BLOCKED";
     public static final String MARKETPLACE_UNBLOCKED = "CREATOR_UNBLOCKED";
+    public static final String PROFILE_APPROVED = "CREATOR_PROFILE_APPROVED";
+    public static final String PROFILE_CHANGES_REQUESTED = "CREATOR_PROFILE_CHANGES_REQUESTED";
+    public static final String PROFILE_RESUBMITTED = "CREATOR_PROFILE_RESUBMITTED";
     // Round C part 2: account deletion
     public static final String ACCOUNT_DELETED = "ACCOUNT_DELETED";
     public static final String ACCOUNT_DELETED_BY_OPS = "ACCOUNT_DELETED_BY_OPS";

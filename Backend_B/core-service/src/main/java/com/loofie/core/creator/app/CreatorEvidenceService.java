@@ -74,7 +74,7 @@ public class CreatorEvidenceService {
             }
             evidence.insert(new Evidence(Ids.newId(), me, key.trim(), kind, Evidence.Status.PENDING, null, null,
                     null, clock.instant()));
-            profileService.settle(me, actor, false); // a screenshot changes nothing Backend A holds
+            profileService.settle(me, actor, false, true); // nothing new for Backend A; a resubmission for ops
         });
         return profileService.view(me, false);
     }

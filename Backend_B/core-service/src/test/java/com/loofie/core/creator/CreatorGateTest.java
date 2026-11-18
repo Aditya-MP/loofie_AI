@@ -53,8 +53,15 @@ class CreatorGateTest {
         assertThatThrownBy(() -> engine.transition(job1, JobAction.ACCEPT, Actor.creator(creator), null))
                 .isInstanceOf(TransitionGuardException.class);
 
-        // listed: accepted
+        // listed but still waiting for ops review: not offered, cannot accept (agreed 2026-11-18)
         jdbc.sql("UPDATE creator_profiles SET marketplace_status = 'LISTED' WHERE user_id = :id").param("id", creator)
+                .update();
+        assertThat(directory.bookable(creator)).isFalse();
+        assertThatThrownBy(() -> engine.transition(job1, JobAction.ACCEPT, Actor.creator(creator), null))
+                .isInstanceOf(TransitionGuardException.class);
+
+        // approved and listed: accepted
+        jdbc.sql("UPDATE creator_profiles SET review_status = 'APPROVED' WHERE user_id = :id").param("id", creator)
                 .update();
         assertThat(directory.bookable(creator)).isTrue();
         engine.transition(job1, JobAction.ACCEPT, Actor.creator(creator), null);
@@ -93,9 +100,9 @@ class CreatorGateTest {
         jdbc.sql("""
                 INSERT INTO creator_profiles (user_id, display_name, city, state, languages, categories, formats,
                     rate_per_reel_rupees, partnership_ads, turnaround_days, sample_links, instagram_handle,
-                    marketplace_status, completed_at, created_at, updated_at)
+                    marketplace_status, review_status, completed_at, created_at, updated_at)
                 VALUES (:id, 'Gate Test', 'Pune', 'MH', :langs, :cats, :formats, 2000, true, 5, :links, 'gate.test',
-                        :status, now(), now(), now())""")
+                        :status, 'PENDING', now(), now(), now())""")
                 .param("id", creator).param("langs", List.of("Hindi").toArray(String[]::new))
                 .param("cats", List.of("other").toArray(String[]::new))
                 .param("formats", List.of("REEL").toArray(String[]::new))

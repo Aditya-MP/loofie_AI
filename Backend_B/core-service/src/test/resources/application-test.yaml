@@ -27,3 +27,4 @@ loofie:
     allow-local: true
   creators:
     require-bookable-to-accept: false # job tests use made-up creator ids; CreatorGateTest switches it on
+    review-watch-enabled: false       # tests call ProfileReviewWatch.runOnce() directly

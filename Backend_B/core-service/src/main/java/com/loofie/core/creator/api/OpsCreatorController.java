@@ -42,6 +42,24 @@ class OpsCreatorController {
         this.ops = ops;
     }
 
+    record ProfileReviewRequest(Boolean approve, String note) {
+    }
+
+    /** Profiles waiting for review, oldest first, with hours waited (promise: 24-48 h). */
+    @GetMapping("/review-queue")
+    List<OpsCreatorService.ReviewItem> reviewQueue(Actor actor, @RequestParam(required = false) Instant after,
+                                                   @RequestParam(defaultValue = "50") int limit) {
+        return ops.reviewQueue(actor, after, limit);
+    }
+
+    /** Approve (she can be offered to brands) or ask for changes (note required, she sees it). */
+    @PutMapping("/{creatorId}/review")
+    CreatorProfileService.ProfileView review(Actor actor, @PathVariable UUID creatorId,
+                                             @RequestBody ProfileReviewRequest body) {
+        return ops.reviewProfile(actor, creatorId, body != null && Boolean.TRUE.equals(body.approve()),
+                body == null ? null : body.note());
+    }
+
     @GetMapping("/evidence-queue")
     List<OpsCreatorService.QueueItem> queue(Actor actor, @RequestParam(required = false) Instant after,
                                             @RequestParam(defaultValue = "50") int limit) {

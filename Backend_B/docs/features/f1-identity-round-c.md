@@ -177,7 +177,7 @@ tooling as rounds A-B (warm-up, readiness, safepoint log).
 | **C1** | File storage for screenshots (none exists) | **Build a small S3-compatible signed-upload module now** (AWS S3 Mumbai or Cloudflare R2), with a local fake; F6 photos and F7 videos reuse it. Needs the hosting owner to create a bucket and keys. Alternative: accept keys only and leave uploads to F7, which leaves the manual path unusable until then. |
 | **C2** | Where passport numbers live | Backend B keeps the business fields (rate, formats, turnaround, categories, city, languages, links, level, status) and the self-reported / ops-checked numbers with their source; **API_VERIFIED numbers stay in Backend A** and are read from it. No copy to drift. |
 | **C3** | Category list | Use Backend A's list so matching and filters agree. Today it is only `beauty_skincare`, `personal_care`, `other`; the pilot niche (open question 1 in Foundation v2) decides more. |
-| **C4** | Marketplace visibility of self-reported creators | Listed at once with the `SELF_REPORTED` label (ops curates every shortlist in v1 anyway); the screenshot check happens in the ops queue. Alternative: hidden until ops checks, which slows supply. |
+| **C4** | Marketplace visibility of self-reported creators | ~~Listed at once with the `SELF_REPORTED` label~~ **Replaced 2026-11-18 (Aditya, approved by Rishabh): a manual-path profile waits for ops approval (24-48 h) and is not offered to brands until approved; Instagram-verified profiles are approved at once.** See section 16. |
 | **C5** | Level VERIFIED | Ops sets it with a reason (two on-time jobs or three collaboration proofs). Automatic promotion after two on-time jobs waits for F5 job-outcome data in a later pass. |
 | **C6** | Job engine gate | A creator who is not bookable (incomplete, HIDDEN, BLOCKED, deleted) cannot accept an invitation: the job engine calls `CreatorDirectory.bookable` on accept. |
 | **C7** | Deletion re-confirmation | Fresh OTP to her own phone / email (not just the session). |
@@ -332,3 +332,51 @@ same phone signs up again); no errors in the app log.
 - A pending invitation blocks deletion (she declines it first); the message says so in general terms.
 - `rate_counters` for her contact are deleted with the account, so a deleted number starts with a fresh OTP allowance.
 - Session rows (revoked) and OTP rows elsewhere follow the existing retention (7 days / 1 day).
+
+## 16. Profile review (agreed 2026-11-18, replaces C4)
+
+**Rule.** Two ways to verify a creator: Instagram connect (instant) or manual numbers + Insights screenshots. A manual
+profile, once complete, gives her the dashboard at once but stays **pending review**; ops reviews within **24-48
+hours**; only then is she offered to brands or able to accept a job. Called **"profile approved"**, never "verified",
+because VERIFIED is the level (two on-time jobs or three collaboration proofs, lifts the ₹5,000 cap).
+
+**States** (`creator_profiles.review_status`, V18): `NONE` (not complete) → `PENDING` (manual, waiting) →
+`APPROVED` or `CHANGES_REQUESTED` (note she sees) → her next form save or screenshot puts it back to `PENDING`.
+Instagram verified at completion, or connected later while waiting, → `APPROVED` at once. Existing complete profiles
+were migrated: Instagram-active → APPROVED, the rest → PENDING.
+
+**Bookable** (`CreatorDirectory`, F3 filters and the job engine's ACCEPT gate) = account active + complete + **approved**
++ listed. F3 does not exist yet; when it does, it must read bookable creators only (index `creator_profiles_bookable_idx`
+now includes `review_status = 'APPROVED'`).
+
+**Ops.** `GET /api/core/ops/creators/review-queue` (oldest first, hours waited, screenshot count);
+`PUT /api/core/ops/creators/{id}/review {approve, note}`: approve (her pending Insights screenshots count as checked)
+or ask for changes (note required). Audited (`CREATOR_PROFILE_APPROVED / _CHANGES_REQUESTED / _RESUBMITTED`); she gets
+an in-app notice either way (`PROFILE_APPROVED`, `PROFILE_CHANGES_REQUESTED`).
+
+**The 24-48 h promise is watched** (`ProfileReviewWatch`, every 30 min on one instance): a profile waiting 24 h → one
+ops notice (`PROFILE_REVIEW_OVERDUE`), 48 h → the founder (`PROFILE_REVIEW_ESCALATED`); each once per wait, several
+profiles in one notice; a resubmission starts a new wait.
+
+**Tests: 324 run, 0 failures, 2 skipped.** New in `CreatorPassportTest`: changes requested (note required, creators
+403, she sees the note and a notice, cannot be approved while not waiting, resubmits by saving, approved, audited) ·
+connecting Instagram while waiting approves at once with a notice · the watch: ops at 25 h, not twice, founder at 49 h,
+queue shows hours waited. Updated: manual completion is PENDING and not bookable until approved; Instagram completion
+is APPROVED; `CreatorGateTest`: complete + listed + pending cannot accept, approved can.
+
+**Load.** The first re-run after this change collapsed (passport reads p95 11.5 s) and a later fresh-data run had a
+slow warm-up and slow polls (p95 385 ms); two other runs passed. Investigated with thread dumps, database snapshots,
+CPU and GC/safepoint logs on every run: three consecutive instrumented runs on freshly seeded data (both scheduled jobs
+running during the measured phase; leases show the review watch fired inside run C's measured window) were clean:
+
+| Run (fresh 50,000 creators) | Passport read p95, 300 rps | Instagram poll added, 100 rps | Errors | Worst safepoint | CPU |
+|---|---|---|---|---|---|
+| A | 2 ms | +6 ms | 0 | 0 ms | 9-21 % |
+| B | 2 ms | +5 ms | 0 | 0 ms | 6-22 % |
+| C | 2 ms | +6 ms | 0 | 0 ms | 7-28 % |
+
+The earlier stalls were not captured with diagnostics,
+so their cause is **not identified**; the two suspects tested (the new scheduled jobs; freshly bulk-loaded data) did
+not reproduce them.
+If a stall shows up again, `creator-investigate.sh` (scratchpad runner: thread dumps, pg snapshots, CPU per phase)
+captures it. **End-to-end: 64 of 64** (a completed manual profile is pending and not offered to brands).

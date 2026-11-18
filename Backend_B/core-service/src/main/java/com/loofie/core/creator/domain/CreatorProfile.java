@@ -14,6 +14,7 @@ public record CreatorProfile(UUID creatorId, String displayName, String city, St
                              String instagramHandle, InstagramStatus instagramStatus, Boolean instagramInsightsAllowed,
                              Instant instagramCheckedAt, Level level, String levelReason,
                              MarketplaceStatus marketplaceStatus, String marketplaceReason, Instant completedAt,
+                             ReviewStatus reviewStatus, String reviewNote, Instant reviewRequestedAt,
                              Instant createdAt, Instant updatedAt, long version) {
 
     public enum Format { REEL, STATIC, STORY, CAROUSEL }
@@ -23,6 +24,12 @@ public record CreatorProfile(UUID creatorId, String displayName, String city, St
 
     /** Separate from account status (product brief 14.5): HIDDEN = she paused herself; BLOCKED = ops, with a reason. */
     public enum MarketplaceStatus { LISTED, HIDDEN, BLOCKED }
+
+    /**
+     * Ops review of the profile (agreed 2026-11-18): a manual-path creator is offered to brands only once APPROVED;
+     * Instagram-verified profiles are APPROVED at once. Not the NEW / VERIFIED level. NONE = not complete yet.
+     */
+    public enum ReviewStatus { NONE, PENDING, APPROVED, CHANGES_REQUESTED }
 
     /** As last read from Backend A. NOT_CONNECTED until she starts Instagram connect. */
     public enum InstagramStatus {
@@ -47,7 +54,12 @@ public record CreatorProfile(UUID creatorId, String displayName, String city, St
     public static CreatorProfile empty(UUID creatorId, Instant now) {
         return new CreatorProfile(creatorId, null, null, null, List.of(), List.of(), List.of(), null, null, null, null,
                 List.of(), null, InstagramStatus.NOT_CONNECTED, null, null, Level.NEW, null,
-                MarketplaceStatus.LISTED, null, null, now, now, 0);
+                MarketplaceStatus.LISTED, null, null, ReviewStatus.NONE, null, null, now, now, 0);
+    }
+
+    /** Ops (or Instagram verification) approved the profile: she may be offered to brands. */
+    public boolean approved() {
+        return reviewStatus == ReviewStatus.APPROVED;
     }
 
     public boolean completed() {
@@ -64,6 +76,6 @@ public record CreatorProfile(UUID creatorId, String displayName, String city, St
                 f.formats(), f.ratePerReelRupees(), f.partnershipAds(), f.turnaroundDays(), f.bio(), f.sampleLinks(),
                 instagramVerified() ? instagramHandle : f.instagramHandle(), instagramStatus,
                 instagramInsightsAllowed, instagramCheckedAt, level, levelReason, marketplaceStatus,
-                marketplaceReason, completedAt, createdAt, now, version);
+                marketplaceReason, completedAt, reviewStatus, reviewNote, reviewRequestedAt, createdAt, now, version);
     }
 }
