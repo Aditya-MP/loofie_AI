@@ -40,7 +40,7 @@ public record AiFeedbackProperties(String baseUrl, String apiKey, Duration conne
         }
     }
 
-    boolean configured() {
+    public boolean configured() {
         return baseUrl != null && !baseUrl.isBlank() && apiKey != null && !apiKey.isBlank();
     }
 }

@@ -126,6 +126,33 @@ public class FullFlowCheck {
         check("the used code cannot be used again", creator2.post("/api/core/auth/otp/verify",
                 "{\"challengeId\":\"" + ch2 + "\",\"code\":\"" + code(phone) + "\"}").status() >= 400);
 
+        section("2b. Creator passport: manual path with a real upload (round C)");
+        Res p0 = creator2.get("/api/core/creator/profile");
+        check("new creator: passport not complete, form fields listed as missing", p0.status() == 200
+                && p0.body().contains("\"completed\":false") && p0.body().contains("\"insightsScreenshot\""));
+        String passport = "{\"displayName\":\"E2E Creator\",\"city\":\"Pune\",\"state\":\"MH\",\"languages\":[\"Hindi\"],"
+                + "\"categories\":[\"beauty_skincare\"],\"formats\":[\"REEL\"],\"ratePerReelRupees\":2500,"
+                + "\"partnershipAds\":true,\"turnaroundDays\":5,\"sampleLinks\":[\"https://www.instagram.com/reel/E2E/\"],"
+                + "\"instagramHandle\":\"e2e.creator." + run + "\",\"followers\":9100,\"avgViews\":2300}";
+        check("passport form without CSRF is refused",
+                creator2.call("PUT", "/api/core/creator/profile", passport, false).status() == 403);
+        Res filled = creator2.call("PUT", "/api/core/creator/profile", passport, true);
+        check("form saved; only the Insights screenshot is missing", filled.status() == 200
+                && filled.body().contains("\"missing\":[\"insightsScreenshot\"]"));
+        Res ticket = creator2.post("/api/core/creator/uploads", "{\"contentType\":\"image/png\"}");
+        String uploadUrl = ticket.str("url");
+        check("upload ticket: signed PUT URL for one image", ticket.status() == 201 && uploadUrl != null
+                && uploadUrl.contains("sig="));
+        int put = HttpClient.newHttpClient().send(HttpRequest.newBuilder(URI.create(uploadUrl))
+                .header("Content-Type", "image/png").PUT(HttpRequest.BodyPublishers.ofByteArray(new byte[2048]))
+                .build(), HttpResponse.BodyHandlers.discarding()).statusCode();
+        check("the browser uploads straight to storage with the signed URL", put == 200);
+        Res attached = creator2.post("/api/core/creator/evidence", "{\"uploadKey\":\"" + ticket.str("key")
+                + "\",\"kind\":\"INSIGHTS\"}");
+        check("screenshot attached: passport complete and bookable", attached.status() == 201
+                && attached.body().contains("\"completed\":true") && attached.body().contains("\"bookable\":true"));
+        check("/me now says onboarding completed", creator2.get("/api/core/auth/me").bool("onboardingCompleted"));
+
         section("3. Brand admin signup with email OTP, then company");
         Browser admin = new Browser("brand-admin");
         String ach = sendOtp(admin, "EMAIL", adminEmail);
@@ -232,6 +259,24 @@ public class FullFlowCheck {
                 member.get("/api/core/ops/organizations/" + orgId).status() == 403);
         check("log out everywhere", founder.post("/api/core/auth/logout-all", null).status() == 204
                 && founder.get("/api/core/auth/me").status() == 401);
+
+        section("6b. Account deletion (round C)");
+        Res delStart = creator2.post("/api/core/account/delete/start", null);
+        check("deletion asks for a fresh code to her own phone", delStart.status() == 202
+                && delStart.str("challengeId") != null);
+        Res wrongDel = creator2.post("/api/core/account/delete", "{\"challengeId\":\"" + delStart.str("challengeId")
+                + "\",\"code\":\"000000\"}");
+        check("a wrong code deletes nothing", wrongDel.status() == 400
+                && creator2.get("/api/core/auth/me").status() == 200);
+        Res del = creator2.post("/api/core/account/delete", "{\"challengeId\":\"" + delStart.str("challengeId")
+                + "\",\"code\":\"" + code(phone) + "\"}");
+        check("the right code deletes the account; the session is gone", del.status() == 204
+                && creator2.get("/api/core/auth/me").status() == 401);
+        Browser reborn = new Browser("same-phone-again");
+        String rch = sendOtp(reborn, "PHONE", phone);
+        Res rv = reborn.post("/api/core/auth/otp/verify", "{\"challengeId\":\"" + rch + "\",\"code\":\"" + code(phone)
+                + "\"}");
+        check("the same phone can sign up again as a new account", "SIGNUP_DETAILS_REQUIRED".equals(rv.str("next")));
 
         section("7. Abuse limit");
         Browser spam = new Browser("spam");

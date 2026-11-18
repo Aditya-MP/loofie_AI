@@ -58,7 +58,98 @@ public class FakeAiService {
         this.server = HttpServer.create(new InetSocketAddress("localhost", 0), 200);
         server.setExecutor(Executors.newVirtualThreadPerTaskExecutor());
         server.createContext("/ai/feedback", this::handle);
+        server.createContext("/ai/instagram/", this::creatorSide);
+        server.createContext("/ai/creators/", this::creatorSide);
         server.start();
+    }
+
+    // ---------------------------------------------------------------- round C: Instagram and creator profile calls
+
+    /** One call to the Instagram / profile endpoints, as received. */
+    public record CreatorCall(String method, String path, String query, String apiKey, JsonNode body) {
+    }
+
+    private final List<CreatorCall> creatorCalls = new CopyOnWriteArrayList<>();
+    private final Map<String, String> connections = new ConcurrentHashMap<>();
+    private final Map<String, String> verifiedProfiles = new ConcurrentHashMap<>();
+    private volatile boolean creatorSideDown;
+
+    /** What {@code GET /ai/instagram/accounts/{ref}} answers for this ref (Backend A's JSON); unset = 404. */
+    public void connection(String ref, String status, String handle, boolean insightsAllowed) {
+        connections.put(ref, "{\"account_ref\":\"" + ref + "\",\"handle\":\"" + handle + "\",\"status\":\"" + status
+                + "\",\"insights_allowed\":" + insightsAllowed + ",\"token_expires_at\":\"2027-01-13T10:00:00Z\","
+                + "\"last_synced_at\":\"2026-11-16T04:30:05Z\",\"last_error\":null}");
+    }
+
+    /** What {@code GET /ai/creators/{handle}} answers: verified followers and median views. */
+    public void verifiedProfile(String handle, long followers, long medianViews) {
+        verifiedProfiles.put(handle, "{\"handle\":\"" + handle + "\",\"stats\":{\"followers\":" + followers
+                + ",\"median_views\":" + medianViews + "},\"metric_sources\":{\"followers\":{\"source\":\"API_VERIFIED\","
+                + "\"captured_on\":\"2026-11-16\"},\"median_views\":{\"source\":\"API_VERIFIED\",\"captured_on\":"
+                + "\"2026-11-16\"}}}");
+    }
+
+    /** Every Instagram / profile endpoint answers 503 while down. */
+    public void creatorSideDown(boolean down) {
+        this.creatorSideDown = down;
+    }
+
+    public List<CreatorCall> creatorCalls() {
+        return List.copyOf(creatorCalls);
+    }
+
+    public void resetCreatorSide() {
+        creatorCalls.clear();
+        connections.clear();
+        verifiedProfiles.clear();
+        creatorSideDown = false;
+    }
+
+    private void creatorSide(HttpExchange ex) throws IOException {
+        try {
+            String method = ex.getRequestMethod();
+            String path = ex.getRequestURI().getPath();
+            String query = ex.getRequestURI().getRawQuery();
+            byte[] in = ex.getRequestBody().readAllBytes();
+            creatorCalls.add(new CreatorCall(method, path, query, ex.getRequestHeaders().getFirst("X-API-Key"),
+                    in.length == 0 ? null : json.readTree(in)));
+            if (!API_KEY.equals(ex.getRequestHeaders().getFirst("X-API-Key"))) {
+                reply(ex, 401, "{\"detail\":\"bad key\"}");
+            } else if (creatorSideDown) {
+                reply(ex, 503, "{\"detail\":\"down\"}");
+            } else if (path.equals("/ai/instagram/login-url")) {
+                String ref = query.substring(query.indexOf("account_ref=") + "account_ref=".length());
+                reply(ex, 200, "{\"url\":\"https://www.instagram.com/oauth/authorize?client_id=1&state=" + ref
+                        + "\",\"expires_in\":600}");
+            } else if (path.startsWith("/ai/instagram/accounts/")) {
+                String ref = path.substring("/ai/instagram/accounts/".length());
+                if (method.equals("DELETE")) {
+                    boolean had = connections.remove(ref) != null;
+                    reply(ex, had ? 200 : 404, had ? "{\"status\":\"revoked\"}" : "{\"detail\":\"not found\"}");
+                } else {
+                    String c = connections.get(ref);
+                    reply(ex, c == null ? 404 : 200, c == null ? "{\"detail\":\"not found\"}" : c);
+                }
+            } else if (path.equals("/ai/creators/profile") && method.equals("POST")) {
+                reply(ex, 200, "{\"handle\":\"x\",\"quality\":null}");
+            } else if (path.startsWith("/ai/creators/")) {
+                String p = verifiedProfiles.get(path.substring("/ai/creators/".length()));
+                reply(ex, p == null ? 404 : 200, p == null ? "{\"detail\":\"no profile\"}" : p);
+            } else {
+                reply(ex, 404, "{}");
+            }
+        } finally {
+            ex.close();
+        }
+    }
+
+    private static void reply(HttpExchange ex, int status, String body) throws IOException {
+        byte[] bytes = body.getBytes(StandardCharsets.UTF_8);
+        ex.getResponseHeaders().add("Content-Type", "application/json");
+        ex.sendResponseHeaders(status, bytes.length);
+        try (OutputStream out = ex.getResponseBody()) {
+            out.write(bytes);
+        }
     }
 
     public String url() {

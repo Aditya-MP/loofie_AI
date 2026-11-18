@@ -38,13 +38,19 @@ class AccountController {
     record ConfirmResponse(AuthController.UserView user, String csrfToken, Instant sessionExpiresAt) {
     }
 
+    record DeleteRequest(UUID challengeId, String code) {
+    }
+
     private final AccountService accounts;
     private final SessionAuthenticator authenticator;
     private final SessionCookies cookies;
     private final com.loofie.core.identity.app.AuthService authService;
+    private final com.loofie.core.identity.app.AccountDeletionService deletion;
 
     AccountController(AccountService accounts, SessionAuthenticator authenticator, SessionCookies cookies,
-                      com.loofie.core.identity.app.AuthService authService) {
+                      com.loofie.core.identity.app.AuthService authService,
+                      com.loofie.core.identity.app.AccountDeletionService deletion) {
+        this.deletion = deletion;
         this.authService = authService;
         this.accounts = accounts;
         this.authenticator = authenticator;
@@ -84,5 +90,26 @@ class AccountController {
         cookies.write(response, done.session());
         return new ConfirmResponse(AuthController.UserView.of(done.account(), authService.membership(done.account().id())), done.session().csrfToken(),
                 done.session().expiresAt());
+    }
+
+    /**
+     * Step 1 of deleting the account: says what is in the way (409) or sends a code to her own phone / email
+     * (decision C7: a session alone is not enough).
+     */
+    @PostMapping("/delete/start")
+    ResponseEntity<com.loofie.core.identity.app.AccountDeletionService.Started> startDelete(HttpServletRequest request) {
+        return ResponseEntity.status(HttpStatus.ACCEPTED).body(deletion.start(authenticator.requireFull(request),
+                SessionCookies.ip(request)));
+    }
+
+    /** Step 2: the code. The account is deleted, every session ends and this browser's cookie is cleared. */
+    @PostMapping("/delete")
+    ResponseEntity<Void> delete(@RequestBody DeleteRequest body, HttpServletRequest request,
+                                HttpServletResponse response) {
+        SessionView s = authenticator.requireFull(request);
+        deletion.confirm(s, body == null ? null : body.challengeId(), body == null ? null : body.code());
+        authenticator.clear(request);
+        cookies.clear(response);
+        return ResponseEntity.noContent().build();
     }
 }

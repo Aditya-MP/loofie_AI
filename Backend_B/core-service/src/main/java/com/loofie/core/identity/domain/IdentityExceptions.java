@@ -105,4 +105,21 @@ public final class IdentityExceptions {
             super("No such account");
         }
     }
+
+    /**
+     * 409: the account cannot be deleted yet (open jobs, money not settled, the last admin of a team). The jobs, if any,
+     * are listed so the person or ops can see what is in the way.
+     */
+    public static class DeletionBlockedException extends RuntimeException {
+        private final java.util.List<java.util.UUID> jobIds;
+
+        public DeletionBlockedException(String message, java.util.List<java.util.UUID> jobIds) {
+            super(message);
+            this.jobIds = java.util.List.copyOf(jobIds);
+        }
+
+        public java.util.List<java.util.UUID> jobIds() {
+            return jobIds;
+        }
+    }
 }

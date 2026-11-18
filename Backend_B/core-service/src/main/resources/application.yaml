@@ -82,6 +82,20 @@ loofie:
     idempotency-keys: 24h
     notifications: 90d
     audit-log: 365d             # F1 audit log: CERT-In needs 180 days, DPDP 1 year
+  storage:
+    # F1 round C (decision C1): S3-compatible file storage for screenshots (later F6 photos, F7 videos).
+    # none = uploads answer 503 until the bucket exists; s3 = AWS S3 Mumbai or Cloudflare R2.
+    mode: ${LOOFIE_STORAGE_MODE:none}
+    endpoint: ${LOOFIE_STORAGE_ENDPOINT:}     # https://s3.ap-south-1.amazonaws.com or https://<account>.r2.cloudflarestorage.com
+    region: ${LOOFIE_STORAGE_REGION:ap-south-1} # R2: auto
+    bucket: ${LOOFIE_STORAGE_BUCKET:}
+    path-style: ${LOOFIE_STORAGE_PATH_STYLE:false} # true for R2 / MinIO
+    access-key: ${LOOFIE_STORAGE_ACCESS_KEY:}
+    secret-key: ${LOOFIE_STORAGE_SECRET_KEY:}
+  creators:
+    # F1 round C. Categories = Backend A's list (decision C3); the pilot niche adds more.
+    categories: [beauty_skincare, personal_care, other]
+    require-bookable-to-accept: true # decision C6: incomplete, paused, blocked or deleted creators cannot accept work
   identity:
     # F1 round A (docs/features/f1-identity-round-a.md). Limits agreed 2026-11-17.
     sender: none                # none = SMS/email refused with a 503 until a provider exists; local/tests: log

@@ -91,6 +91,13 @@ class IdentityExceptionHandler {
         return problem(HttpStatus.NOT_FOUND, "company-not-found", e.getMessage());
     }
 
+    @ExceptionHandler(com.loofie.core.identity.domain.IdentityExceptions.DeletionBlockedException.class)
+    ProblemDetail deletionBlocked(com.loofie.core.identity.domain.IdentityExceptions.DeletionBlockedException e) {
+        ProblemDetail p = problem(HttpStatus.CONFLICT, "deletion-blocked", e.getMessage());
+        p.setProperty("jobIds", e.jobIds());
+        return p;
+    }
+
     @ExceptionHandler(AccountNotFoundException.class)
     ProblemDetail notFound(AccountNotFoundException e) {
         return problem(HttpStatus.NOT_FOUND, "account-not-found", e.getMessage());

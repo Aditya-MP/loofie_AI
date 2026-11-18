@@ -16,3 +16,9 @@ loofie:
       - http://localhost:3000
       - http://localhost:5173
     app-base-url: http://localhost:3000
+  storage:
+    mode: local                 # files in a temp folder, served by this app (/api/core/dev/storage/...)
+    allow-local: true
+    local-base-url: http://localhost:8081
+  creators:
+    require-bookable-to-accept: false # dev headers use made-up creator ids with no passport

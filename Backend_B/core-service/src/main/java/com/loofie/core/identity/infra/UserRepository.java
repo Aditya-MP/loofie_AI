@@ -105,6 +105,34 @@ public class UserRepository {
                 """).param("id", id).param("step", step).param("confirm", confirm).param("now", ts(now)).update() == 1;
     }
 
+    /**
+     * Account deletion: DELETED, phone and email cleared (the number can sign up again), authenticator gone. The row
+     * stays so jobs, events and the audit log keep pointing at an id; it says nothing about the person any more.
+     */
+    public void erase(UUID id, String reason, UUID by, Instant now) {
+        jdbc.sql("""
+                UPDATE users SET status = 'DELETED', phone = NULL, email = NULL, phone_verified_at = NULL,
+                       email_verified_at = NULL, totp_secret_enc = NULL, totp_confirmed_at = NULL, totp_last_step = NULL,
+                       status_reason = :reason, status_changed_by = :by, status_changed_at = :now, updated_at = :now
+                WHERE id = :id""")
+                .param("id", id).param("reason", reason).param("by", by).param("now", ts(now)).update();
+    }
+
+    /** Codes sent to this person (or to the contact being erased): the destinations are personal data. */
+    public int deleteOtpChallenges(UUID userId, String contact) {
+        return jdbc.sql("DELETE FROM otp_challenges WHERE user_id = :id OR destination = :contact")
+                .param("id", userId).param("contact", contact == null ? "" : contact).update();
+    }
+
+    /** Rate-limit counters keyed by this contact ("otp-dest:<phone>"). */
+    public int deleteRateCounters(String contact) {
+        if (contact == null) {
+            return 0;
+        }
+        return jdbc.sql("DELETE FROM rate_counters WHERE key = 'otp-dest:' || :c OR key = 'otp-dest-day:' || :c")
+                .param("c", contact).update();
+    }
+
     public void setStatus(UUID id, AccountStatus status, String reason, UUID by, Instant now) {
         jdbc.sql("""
                 UPDATE users SET status = :status, status_reason = :reason, status_changed_by = :by,

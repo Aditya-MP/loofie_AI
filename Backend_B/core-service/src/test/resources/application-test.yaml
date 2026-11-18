@@ -21,3 +21,9 @@ loofie:
     enabled: false                  # tests call RetentionJob.runOnce() directly
   refunds:
     daily-summary: false            # tests call RefundSummary.sendYesterday() directly
+  storage:
+    mode: local                     # real signed-URL flow against a temp folder
+    cleanup-enabled: false          # tests call UploadCleanup.runOnce() directly
+    allow-local: true
+  creators:
+    require-bookable-to-accept: false # job tests use made-up creator ids; CreatorGateTest switches it on

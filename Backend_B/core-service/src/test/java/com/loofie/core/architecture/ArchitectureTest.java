@@ -59,6 +59,14 @@ class ArchitectureTest {
             .should().dependOnClassesThat().resideInAPackage("com.loofie.core.identity.infra..")
             .because("other features see a user only through ActorResolver / SessionAuthenticator");
 
+    /** F1 round C: the passport is read through CreatorDirectory / CreatorProfileService, never its tables. */
+    @ArchTest
+    static final ArchRule noCrossFeatureCreatorRepositoryAccess = noClasses()
+            .that().resideOutsideOfPackage("com.loofie.core.creator..")
+            .and().resideOutsideOfPackage("com.loofie.core.housekeeping..")
+            .should().dependOnClassesThat().resideInAPackage("com.loofie.core.creator.infra..")
+            .because("other features ask CreatorDirectory (the job engine via the CreatorEligibility port)");
+
     /** Layers point one way: api -> app -> domain, and infra serves app. Never backwards. */
     @ArchTest
     static final ArchRule infraDoesNotDependOnUpperLayers = noClasses()

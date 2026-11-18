@@ -154,6 +154,20 @@ class ApiExceptionHandler extends ResponseEntityExceptionHandler {
                         "The service is busy; retry in a few seconds"));
     }
 
+    /** File storage or Backend A is down or not configured here: say which, and when to retry. */
+    @ExceptionHandler(com.loofie.core.common.DependencyUnavailableException.class)
+    ResponseEntity<ProblemDetail> dependency(com.loofie.core.common.DependencyUnavailableException e) {
+        log.warn("Dependency unavailable: {}", e.toString());
+        return ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE).header(HttpHeaders.RETRY_AFTER, "30")
+                .body(problem(HttpStatus.SERVICE_UNAVAILABLE, "dependency-unavailable", e.getMessage()));
+    }
+
+    /** An upload key that is not this person's, was never uploaded, is too big or the wrong type. */
+    @ExceptionHandler(com.loofie.core.storage.Uploads.UploadRefusedException.class)
+    ProblemDetail uploadRefused(com.loofie.core.storage.Uploads.UploadRefusedException e) {
+        return problem(HttpStatus.UNPROCESSABLE_CONTENT, "upload-refused", e.getMessage());
+    }
+
     /** Anything else is a bug: log it with the id the client sees, never send internals back. */
     @ExceptionHandler(Exception.class)
     ProblemDetail unexpected(Exception e) {

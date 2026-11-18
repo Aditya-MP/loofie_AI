@@ -39,6 +39,16 @@ public class RateLimits {
         this.props = props;
     }
 
+    /**
+     * A per-user allowance in its own window, for features outside login (round C: Instagram status polls, upload
+     * tickets, connect links). {@code what} names the counter; the message is shown as is with 429 + Retry-After.
+     */
+    public void perUser(String what, UUID userId, int limit, Duration window, Instant now, String message) {
+        long s = window.toSeconds();
+        Instant start = Instant.ofEpochSecond(Math.floorDiv(now.getEpochSecond(), s) * s);
+        hit(what + ":" + userId, start, limit, now, window, message);
+    }
+
     public Hits otpSend(String destination, String ip, Instant now) {
         hit("otp-ip:" + ip, window(now), props.otpPerIp15m(), now, WINDOW,
                 "Too many codes requested from this network. Try again in a few minutes.");

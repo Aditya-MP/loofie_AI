@@ -129,6 +129,15 @@ public class JobReadRepository {
                 .param("creator", creatorId).query(UUID.class).list();
     }
 
+    /** A company's jobs that are not finished (account deletion of its last member, F1 round C). */
+    public List<UUID> activeJobIdsForOrg(UUID orgId) {
+        return jdbc.sql("""
+                SELECT id FROM jobs WHERE brand_org_id = :org AND status NOT IN ('CLOSED', 'REFUNDED', 'CANCELLED')
+                ORDER BY id LIMIT 500
+                """)
+                .param("org", orgId).query(UUID.class).list();
+    }
+
     /** The current creator's parcels (none when the job has no active creator), for the brand / creator screen. */
     public List<DeliveryShipment> currentCreatorShipments(UUID jobId) {
         return jdbc.sql("""

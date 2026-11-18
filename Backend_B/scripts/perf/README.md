@@ -13,6 +13,9 @@ Measure before optimising. These load a realistic data set and measure the hot q
 | `auth-seed.sql` | F1: 100,000 creators with one live session each (cookie `perf-session-<i>-padpadpad`) in `core_test`. |
 | `brand-seed.sql` | F1 round B: companies with an admin session each (cookie `perf-brand-session-<i>-padpadpad`) and accepted jobs spread over them. |
 | `BrandLoadTest.java` | F1 round B: brand inbox (dev headers vs session cookies) and "Shipped" with cookie + CSRF. Start the app and wait for `/actuator/health/readiness` = 200 (the startup query warm-up runs before it), then a gentle warm-up and a 20 s pause before measuring. |
+| `creator-seed.sql` | F1 round C: complete creator passports with a session each (cookie `perf-creator-session-<i>-padpad`), two self-reported numbers and one screenshot. |
+| `CreatorLoadTest.java` + `FakeBackendA.java` | F1 round C: passport reads, and the Instagram status poll through Backend B against a fake Backend A called directly (start `FakeBackendA.java` on :8100 and the app with `AI_FEEDBACK_URL=http://localhost:8100 AI_FEEDBACK_API_KEY=perf-key`). Use fresh creators for each measured run: a poll changes her status once. |
+| `deletion-seed.sql` + `DeletionLoadTest.java` | F1 round C part 2: creators with 20 sessions and 3 screenshots, deleted through the ops endpoint (dev headers, OPS_LEAD). Run `creator-seed.sql` first. Gate p95 <= 200 ms, all 204. |
 | `AuthLoadTest.java` | F1: what login adds per request (same endpoint, dev headers vs session cookies) and OTP send / verify / signup. Reads codes from the app log (fake sender). Run the app with the per-IP OTP limits raised, since all load comes from one IP. |
 
 ```bash

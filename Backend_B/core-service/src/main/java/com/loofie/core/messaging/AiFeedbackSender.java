@@ -44,11 +44,19 @@ public class AiFeedbackSender implements EventSender {
     private final JsonMapper json;
     private final HttpClient http;
     private final URI endpoint;
+    private final BackendACreatorCalls creatorCalls;
 
     public AiFeedbackSender(AiFeedbackProperties props, AiFeedbackMapper mapper, JsonMapper json) {
+        this(props, mapper, json, new BackendACreatorCalls(json));
+    }
+
+    @org.springframework.beans.factory.annotation.Autowired
+    public AiFeedbackSender(AiFeedbackProperties props, AiFeedbackMapper mapper, JsonMapper json,
+                            BackendACreatorCalls creatorCalls) {
         this.props = props;
         this.mapper = mapper;
         this.json = json;
+        this.creatorCalls = creatorCalls;
         this.http = HttpClient.newBuilder()
                 .connectTimeout(props.connectTimeout())
                 .version(HttpClient.Version.HTTP_1_1) // plain keep-alive connections; no h2c upgrade surprises
@@ -68,6 +76,9 @@ public class AiFeedbackSender implements EventSender {
 
     @Override
     public CompletableFuture<Delivery> send(Message m) {
+        if (Outbox.CREATOR_STREAM.equals(m.stream())) {
+            return sendCreatorCall(m);
+        }
         Optional<Map<String, Object>> body = mapper.toRequest(m.eventType(), m.envelope());
         if (body.isEmpty()) {
             return CompletableFuture.completedFuture(Delivery.SKIPPED);
@@ -83,6 +94,36 @@ public class AiFeedbackSender implements EventSender {
                 .handle((response, error) -> {
                     if (error != null) {
                         throw classify(error);
+                    }
+                    return outcome(response.statusCode(), response.body());
+                });
+    }
+
+    /** Creator stream rows: one Backend A call each (profile push, Instagram data delete). Same answer rules. */
+    private CompletableFuture<Delivery> sendCreatorCall(Message m) {
+        Optional<BackendACreatorCalls.Call> call = creatorCalls.toCall(m.eventType(), m.envelope());
+        if (call.isEmpty()) {
+            return CompletableFuture.completedFuture(Delivery.SKIPPED);
+        }
+        BackendACreatorCalls.Call c = call.get();
+        HttpRequest.Builder b = HttpRequest.newBuilder(URI.create(props.baseUrl().replaceAll("/+$", "") + c.path()))
+                .timeout(props.requestTimeout())
+                .header("X-API-Key", props.apiKey())
+                .header("X-Request-ID", m.id().toString());
+        if (c.body() == null) {
+            b.method(c.method(), HttpRequest.BodyPublishers.noBody());
+        } else {
+            b.header("Content-Type", "application/json")
+                    .method(c.method(), HttpRequest.BodyPublishers.ofString(json.writeValueAsString(c.body())));
+        }
+        boolean delete = "DELETE".equals(c.method());
+        return http.sendAsync(b.build(), HttpResponse.BodyHandlers.ofString())
+                .handle((response, error) -> {
+                    if (error != null) {
+                        throw classify(error);
+                    }
+                    if (delete && response.statusCode() == 404) {
+                        return Delivery.DELIVERED; // nothing stored there: as deleted as it gets
                     }
                     return outcome(response.statusCode(), response.body());
                 });

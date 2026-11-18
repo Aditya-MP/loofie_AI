@@ -36,12 +36,22 @@ class OpsIdentityController {
     private final StaffService staff;
     private final AccountAdminService admin;
     private final com.loofie.core.identity.app.CompanyService companies;
+    private final com.loofie.core.identity.app.AccountDeletionService deletion;
 
     OpsIdentityController(StaffService staff, AccountAdminService admin,
-                          com.loofie.core.identity.app.CompanyService companies) {
+                          com.loofie.core.identity.app.CompanyService companies,
+                          com.loofie.core.identity.app.AccountDeletionService deletion) {
         this.staff = staff;
         this.admin = admin;
         this.companies = companies;
+        this.deletion = deletion;
+    }
+
+    /** Grievance request: a founder or ops lead deletes an account (reason required, same blockers, audited). */
+    @PostMapping("/accounts/{userId}/delete")
+    ResponseEntity<Void> delete(Actor actor, @PathVariable UUID userId, @RequestBody ReasonRequest body) {
+        deletion.deleteByOps(actor, userId, body == null ? null : body.reason());
+        return ResponseEntity.noContent().build();
     }
 
     @PostMapping("/staff/invites")

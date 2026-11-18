@@ -48,4 +48,13 @@ public class TestSupportConfig {
         return new AiFeedbackSender(new AiFeedbackProperties(fake.url(), FakeAiService.API_KEY, Duration.ofSeconds(1),
                 Duration.ofSeconds(2)), mapper, json);
     }
+
+    /** Round C: the Instagram / profile client talks to the same fake Backend A. */
+    @Bean
+    @Primary
+    com.loofie.core.creator.domain.InstagramGateway testInstagramGateway(FakeAiService fake, JsonMapper json,
+                                                                         java.time.Clock clock) {
+        return new com.loofie.core.creator.infra.BackendAInstagramClient(new AiFeedbackProperties(fake.url(),
+                FakeAiService.API_KEY, Duration.ofSeconds(1), Duration.ofSeconds(2)), json, clock);
+    }
 }

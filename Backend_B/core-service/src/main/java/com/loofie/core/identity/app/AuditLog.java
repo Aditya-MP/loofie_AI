@@ -47,6 +47,21 @@ public class AuditLog {
     public static final String MEMBER_ROLE_CHANGED = "MEMBER_ROLE_CHANGED";
     public static final String MEMBER_REMOVED = "MEMBER_REMOVED";
     public static final String MEMBER_LEFT = "MEMBER_LEFT";
+    // Round C: creator passport
+    public static final String PROFILE_COMPLETED = "CREATOR_PROFILE_COMPLETED";
+    public static final String INSTAGRAM_CONNECTED = "INSTAGRAM_CONNECTED";
+    public static final String INSTAGRAM_DISCONNECTED = "INSTAGRAM_DISCONNECTED";
+    public static final String CREATOR_VIEWED = "CREATOR_VIEWED";
+    public static final String EVIDENCE_VIEWED = "EVIDENCE_VIEWED";
+    public static final String EVIDENCE_ACCEPTED = "EVIDENCE_ACCEPTED";
+    public static final String EVIDENCE_REJECTED = "EVIDENCE_REJECTED";
+    public static final String METRIC_CHECKED = "METRIC_OPS_CHECKED";
+    public static final String LEVEL_CHANGED = "CREATOR_LEVEL_CHANGED";
+    public static final String MARKETPLACE_BLOCKED = "CREATOR_BLOCKED";
+    public static final String MARKETPLACE_UNBLOCKED = "CREATOR_UNBLOCKED";
+    // Round C part 2: account deletion
+    public static final String ACCOUNT_DELETED = "ACCOUNT_DELETED";
+    public static final String ACCOUNT_DELETED_BY_OPS = "ACCOUNT_DELETED_BY_OPS";
 
     private final AuditRepository repo;
     private final JsonMapper json;

@@ -21,6 +21,9 @@ public class Outbox {
     /** The stream every job event goes to (kept from the Kafka topic name; the column is {@code topic}). */
     public static final String JOB_STREAM = "core.job.v1";
 
+    /** Creator data for Backend A (profile pushes, Instagram data deletion); keyed by creator id. */
+    public static final String CREATOR_STREAM = "core.creator.v1";
+
     private final JdbcClient jdbc;
     private final JsonMapper json;
 

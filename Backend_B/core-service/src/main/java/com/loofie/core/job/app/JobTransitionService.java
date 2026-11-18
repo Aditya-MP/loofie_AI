@@ -20,6 +20,7 @@ import com.loofie.core.common.Ids;
 import com.loofie.core.job.domain.Actor;
 import com.loofie.core.job.domain.ActorRole;
 import com.loofie.core.job.domain.Assignment;
+import com.loofie.core.job.domain.CreatorEligibility;
 import com.loofie.core.job.domain.Courier;
 import com.loofie.core.job.domain.DeliverySource;
 import com.loofie.core.job.domain.Job;
@@ -65,6 +66,7 @@ public class JobTransitionService {
     private final TrackingNumberRepository trackingNumbers;
     private final JobReadRepository reads;
     private final DeliveryNotices deliveryNotices;
+    private final CreatorEligibility eligibility;
     private static final org.slf4j.Logger log = org.slf4j.LoggerFactory.getLogger(JobTransitionService.class);
     /** {@code loofie.deadlines.review-working-days}: empty = 120 calendar hours (today); 5 = DECISIONS.md, once signed off. */
     private Integer reviewWorkingDays;
@@ -80,7 +82,9 @@ public class JobTransitionService {
     public JobTransitionService(JobRepository jobs, AssignmentRepository assignments, ShipmentRepository shipments,
                                 JobEventRecorder recorder, WorkingCalendar calendar, Clock clock, MeterRegistry meters,
                                 CourierRepository couriers, TrackingNumberRepository trackingNumbers,
-                                JobReadRepository reads, DeliveryNotices deliveryNotices) {
+                                JobReadRepository reads, DeliveryNotices deliveryNotices,
+                                CreatorEligibility eligibility) {
+        this.eligibility = eligibility;
         this.reads = reads;
         this.deliveryNotices = deliveryNotices;
         this.couriers = couriers;
@@ -215,6 +219,11 @@ public class JobTransitionService {
         JobStatus from = job.getStatus();
 
         checkGuards(job, rule, details, now);
+        if (rule.action() == JobAction.ACCEPT && actor.role() == ActorRole.CREATOR
+                && !eligibility.mayAcceptWork(actor.userId())) {
+            throw new TransitionGuardException("Complete your profile (and make sure it is not paused) before "
+                    + "accepting jobs");
+        }
         ReasonCode reasonCode = reasonCodeFor(job, rule, details);
         boolean correction = rule.action() == JobAction.OPS_CORRECT_REASON;
         Map<String, Object> correctionFacts = new LinkedHashMap<>();

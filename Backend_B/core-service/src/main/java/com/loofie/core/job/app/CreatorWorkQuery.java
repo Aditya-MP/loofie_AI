@@ -8,7 +8,7 @@ import org.springframework.stereotype.Component;
 import com.loofie.core.identity.app.CreatorWork;
 import com.loofie.core.job.infra.JobReadRepository;
 
-/** Answers identity's question about a creator's open jobs (suspension notice to ops). */
+/** Answers identity's question about a creator's open jobs (suspension notice to ops, account deletion). */
 @Component
 class CreatorWorkQuery implements CreatorWork {
 
