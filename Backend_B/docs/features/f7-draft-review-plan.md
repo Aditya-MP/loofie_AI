@@ -56,8 +56,8 @@ id (a leaked preview is traceable); master download audited; signed links expire
 
 Upload bytes never pass through the app. Transcoding a 60 s 1080×1920 video to 720p takes roughly 10-40 s of CPU; the
 queue makes it independent of request load; a crashed worker's job is retried (lease timeout); the review clock starts
-only at `PREVIEW_READY`, so processing delays never eat the brand's time. Gate (proposed): 20 drafts queued at once are
-all previewed without errors, API p95 unaffected while transcoding; submit / review endpoints p95 ≤ 50 ms at 100 rps.
+only at `PREVIEW_READY`, so processing delays never eat the brand's time. Gate: 20 drafts queued at once are
+all previewed without errors, API p95 unaffected while transcoding; screens p95 ≤ 50 ms, submit / review p95 ≤ 300 ms (agreed 2026-11-18) at 100 rps.
 
 ## 8. Database (V19, proposed)
 

@@ -31,7 +31,10 @@ import java.util.concurrent.atomic.LongAdder;
 public class DraftLoadTest {
 
     static final String BASE = "http://localhost:8081";
+    /** Screens (reads). */
     static final long P95_LIMIT_MS = 50;
+    /** Writes (submit, review): the gate every write endpoint uses (F5, F6, refunds), agreed 2026-11-18. */
+    static final long WRITE_P95_LIMIT_MS = 300;
 
     record Job(String id, String brand, String creator, String status, String draft) {
     }
@@ -206,7 +209,8 @@ public class DraftLoadTest {
         Collections.sort(s);
         long failed = statuses.entrySet().stream().filter(e -> !e.getKey().equals(String.valueOf(expect)))
                 .mapToLong(e -> e.getValue().sum()).sum();
-        boolean pass = pct(s, 95) <= P95_LIMIT_MS && failed == 0;
+        long limit = name.startsWith("SUBMIT") || name.startsWith("REVIEW") ? WRITE_P95_LIMIT_MS : P95_LIMIT_MS;
+        boolean pass = pct(s, 95) <= limit && failed == 0;
         System.out.printf("%-17s n=%5d at %d rps  p50=%3dms p95=%3dms p99=%3dms max=%4dms  %s  GATE %s%n", name, s.size(),
                 rps, pct(s, 50), pct(s, 95), pct(s, 99), s.getLast(), statuses, pass ? "PASS" : "FAIL");
         return pass;

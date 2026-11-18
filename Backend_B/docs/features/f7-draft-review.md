@@ -108,20 +108,22 @@ through the draft package.
 Tools: `scripts/perf/DraftLoadTest.java`, `scripts/perf/draft-seed.sql`. Method as in earlier rounds: a discarded
 warm-up, then measured on fresh jobs.
 
-**Run 1, endpoints (1,000 of each at 100 rps, warm):** 4,000 requests, 0 errors.
+**Gates (agreed 2026-11-18):** screens p95 ≤ 50 ms; writes (submit, review) p95 ≤ 300 ms, the same gate as every
+other write endpoint (F5, F6, refunds). The plan's 50 ms for writes is replaced.
 
-| Endpoint | p50 | p95 | p99 | Plan gate 50 ms | Project write gate 300 ms |
-|---|---|---|---|---|---|
-| Brand view | 5 ms | 9 ms | 15 ms | pass | – |
-| Creator view | 4 ms | 8 ms | 13 ms | pass | – |
-| Submit | 13 ms | 126 ms | 220 ms | **miss** | pass |
-| Review (approve) | 15 ms | 75 ms | 125 ms | **miss** | pass |
+**Run 1, endpoints (1,000 of each at 100 rps, warm):** 4,000 requests, 0 errors, **all gates pass**. Two runs:
+
+| Endpoint | Gate | Run A p50 / p95 / p99 | Run B (final) p50 / p95 / p99 | Result |
+|---|---|---|---|---|
+| Brand view | 50 ms | 5 / 9 / 15 ms | 5 / 11 / 25 ms | pass |
+| Creator view | 50 ms | 4 / 8 / 13 ms | 4 / 10 / 29 ms | pass |
+| Submit | 300 ms | 13 / 126 / 220 ms | 14 / 61 / 137 ms | pass |
+| Review (approve) | 300 ms | 15 / 75 / 125 ms | 15 / 45 / 82 ms | pass |
 
 Submit's tail is the store check: it must confirm the file is really there (outside any transaction). With the local
 dev store that is a file read that Windows Defender delays by about 20 ms for a new file (JFR: 18-24 ms per read); in
 production it is an S3 HEAD. Review does about 12 writes in one transaction (state, log, outbox, notice, review,
-retention). Both are within the 300 ms gate every other write endpoint uses; the 50 ms in the plan was too tight for
-writes and I recommend 300 ms for them.
+retention). Both are well inside the 300 ms write gate.
 
 **Run 2, processing (20 real 60 s 1080x1920 videos, 42.6 MB each, queued at once, 2 at a time):** 20 / 20 READY,
 0 failed, 0 stuck, 24.5 s per video wall time (about 2.7 cores per ffmpeg, measured). **Gate passes.**
@@ -154,6 +156,5 @@ gradual traffic ramp on deploy.
 | Paid revision (D5) | Waits for Backend A's checkout |
 | Production image with ffmpeg, ffprobe and a TrueType font; storage bucket | Hosting decision (same as round C) |
 | The creator has no deadline while REVISION_REQUESTED (engine, from F5) | Founder: how long for a fix? |
-| Write-endpoint gate: 300 ms (as F5/F6/refunds) instead of the plan's 50 ms | Rishabh |
 | API-during-transcoding gate re-measured on the real server (laptop stalls also without transcoding) | Hosting |
 | Deploy with a warm-up / gradual ramp (cold JVM bursts give short 503s, all endpoints) | Hosting |
