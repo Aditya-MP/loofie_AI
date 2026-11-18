@@ -264,3 +264,21 @@ an exhausted pool), not the laptop alone.
 | No way for a company to close itself | Support / ops for now; a "close company" flow if asked |
 | `jobs.brand_org_id` has no foreign key to `organizations` | Existing test data uses made-up companies; add the key once tests create real companies |
 | Running jobs keep the pickup state they started with (E2) | By design |
+
+## 16. Change 2026-11-18: GSTIN optional for briefs and checkout
+
+Product decision: small and unregistered D2C brands can use Loofie without a GSTIN. They still pay 18% GST, on a B2C
+invoice, and cannot claim input tax credit. This replaces E3 ("GSTIN before the first brief").
+
+- `BrandDirectory.readyForBriefs(orgId)` now means "the company is set up" (`OrganizationRepository.exists`), and the
+  company view always shows `readyForBriefs: true`. The field stays so that existing callers keep working.
+- Nothing else changes: GSTIN format and checksum, one GSTIN per company, the admin can still add it later (once), and
+  ops can correct it. A brand that registers later adds its GSTIN; invoices from then on can be B2B.
+- **For Backend A / Finance (they own briefs, checkout and invoices):**
+  - drop any "GSTIN required" check of your own;
+  - when `gstin` is null, issue a B2C invoice: place of supply = the billing state, which is always present; legal
+    name and billing address are on the invoice;
+  - decide the invoice type when the invoice is made, not when the brief is made (the brand may add a GSTIN in
+    between).
+- Tests: `BrandFlowTest` asserts that a company without a GSTIN is ready and that an unknown company is not; the
+  end-to-end check expects `readyForBriefs: true` before the GSTIN.

@@ -181,8 +181,8 @@ public class FullFlowCheck {
                 && orgId != null && ame.bool("onboardingCompleted"));
         check("brand inbox now works", admin.get("/api/core/notifications").status() == 200);
         Res comp = admin.get("/api/core/brand/company");
-        check("company view: not ready for briefs without GSTIN", comp.status() == 200
-                && comp.body().contains("\"readyForBriefs\":false"));
+        check("company view: ready for briefs without GSTIN (B2C invoices)", comp.status() == 200
+                && comp.body().contains("\"readyForBriefs\":true"));
         check("wrong GSTIN check character is refused (422)", admin.call("PUT", "/api/core/brand/company/gstin",
                 "{\"gstin\":\"27AAPFU0939F1ZA\"}", true).status() == 422);
         check("second company for the same person is refused",

@@ -81,8 +81,8 @@ public class OrganizationRepository {
                 .query(String.class).optional().orElse(null);
     }
 
-    public boolean hasGstin(UUID orgId) {
-        return jdbc.sql("SELECT EXISTS (SELECT 1 FROM organizations WHERE id = :id AND gstin IS NOT NULL)")
+    public boolean exists(UUID orgId) {
+        return jdbc.sql("SELECT EXISTS (SELECT 1 FROM organizations WHERE id = :id)")
                 .param("id", orgId).query(Boolean.class).single();
     }
 

@@ -32,8 +32,8 @@ import com.loofie.core.job.domain.JobExceptions.ActorNotAllowedException;
 
 /**
  * A brand's company (flow 4): created by the first person right after signup, who becomes BRAND_ADMIN. Admins edit
- * it; every member reads it. GSTIN is optional at first and needed before the first brief (E3); it is set once, and
- * after that only ops changes it (with a recorded reason).
+ * it; every member reads it. GSTIN is optional, also for briefs and checkout (unregistered brands get B2C invoices;
+ * changed 2026-11-18). Once given it is set once, and after that only ops changes it (with a recorded reason).
  */
 @Service
 public class CompanyService {
@@ -167,7 +167,7 @@ public class CompanyService {
 
     private CompanyView view(UUID orgId, boolean withInvites) {
         Organization o = organizations.find(orgId).orElseThrow(CompanyNotFoundException::new);
-        return new CompanyView(o, o.gstin() != null, organizations.members(orgId),
+        return new CompanyView(o, true, organizations.members(orgId),
                 withInvites ? invites.open(orgId, clock.instant()) : List.of());
     }
 

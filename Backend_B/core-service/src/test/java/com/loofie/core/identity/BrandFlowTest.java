@@ -102,7 +102,10 @@ class BrandFlowTest {
         assertThat(call(get("/api/core/notifications"), null, b.session()).getStatus()).isEqualTo(200);
         JsonNode company = body(call(get("/api/core/brand/company"), null, b.session()), 200);
         assertThat(company.get("company").get("pickupState").asString()).isEqualTo("MH");
-        assertThat(company.get("readyForBriefs").asBoolean()).as("no GSTIN yet").isFalse();
+        assertThat(company.get("company").get("gstin").isNull()).isTrue();
+        assertThat(company.get("readyForBriefs").asBoolean()).as("GSTIN is optional: B2C invoices").isTrue();
+        assertThat(brands.readyForBriefs(b.orgId())).as("no GSTIN, still ready").isTrue();
+        assertThat(brands.readyForBriefs(UUID.randomUUID())).as("no company, not ready").isFalse();
         assertThat(company.get("members")).hasSize(1);
         // A second company for the same person is refused.
         assertThat(problem(call(post("/api/core/brand/company"), companyForm("KA", null), b.session()), 422))
