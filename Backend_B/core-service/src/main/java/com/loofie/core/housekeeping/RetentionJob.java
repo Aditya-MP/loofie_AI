@@ -114,8 +114,8 @@ public class RetentionJob {
                     SELECT key, window_start FROM rate_counters WHERE window_start < :before LIMIT :limit)
                 """, now.minus(Duration.ofDays(2)));
         n += deleteInBatches("""
-                DELETE FROM staff_invites WHERE id IN (
-                    SELECT id FROM staff_invites WHERE accepted_at IS NULL AND expires_at < :before LIMIT :limit)
+                DELETE FROM invites WHERE id IN (
+                    SELECT id FROM invites WHERE accepted_at IS NULL AND expires_at < :before LIMIT :limit)
                 """, now.minus(Duration.ofDays(30)));
         n += deleteInBatches("""
                 DELETE FROM audit_log WHERE id IN (

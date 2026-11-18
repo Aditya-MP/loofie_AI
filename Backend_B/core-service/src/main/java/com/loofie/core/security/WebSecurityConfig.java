@@ -51,6 +51,8 @@ class WebSecurityConfig {
         RequestMatcher stateChangingWithSession = request -> !SAFE.contains(request.getMethod())
                 && authenticator.current(request).isPresent();
         http
+                .addFilterBefore(new SessionPreloadFilter(authenticator),
+                        org.springframework.security.web.csrf.CsrfFilter.class)
                 .authorizeHttpRequests(a -> a.anyRequest().permitAll())
                 .csrf(c -> c.csrfTokenRepository(new SessionCsrfTokens(authenticator, sessions))
                         .csrfTokenRequestHandler(new CsrfTokenRequestAttributeHandler())

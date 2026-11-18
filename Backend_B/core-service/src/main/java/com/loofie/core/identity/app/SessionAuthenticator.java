@@ -81,8 +81,14 @@ public class SessionAuthenticator {
         return switch (s.accountType()) {
             case CREATOR -> Actor.creator(s.userId());
             case ADMIN -> new Actor(s.staffRole(), s.userId(), null);
-            // Brand roles come from organisation membership, which arrives in F1 round B.
-            case BRAND -> throw new ActorNotAllowedException("Set up your company on Loofie before using this");
+            // Round B: role and company from org_members, read on this request.
+            case BRAND -> {
+                if (s.orgId() == null) {
+                    throw new ActorNotAllowedException("Set up your company on Loofie, or accept a teammate invite, "
+                            + "before using this");
+                }
+                yield new Actor(s.brandRole(), s.userId(), s.orgId());
+            }
         };
     }
 

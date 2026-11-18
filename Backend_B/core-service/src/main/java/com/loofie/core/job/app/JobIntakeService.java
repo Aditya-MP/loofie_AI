@@ -12,6 +12,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import com.loofie.core.common.Ids;
 import com.loofie.core.job.domain.Actor;
+import com.loofie.core.job.domain.BrandProfiles;
 import com.loofie.core.job.domain.Job;
 import com.loofie.core.job.domain.JobAction;
 import com.loofie.core.job.domain.JobExceptions.ActorNotAllowedException;
@@ -33,11 +34,13 @@ public class JobIntakeService {
 
     private final JobRepository jobs;
     private final JobEventRecorder recorder;
+    private final BrandProfiles brands;
     private final Clock clock;
 
-    public JobIntakeService(JobRepository jobs, JobEventRecorder recorder, Clock clock) {
+    public JobIntakeService(JobRepository jobs, JobEventRecorder recorder, BrandProfiles brands, Clock clock) {
         this.jobs = jobs;
         this.recorder = recorder;
+        this.brands = brands;
         this.clock = clock;
     }
 
@@ -48,9 +51,11 @@ public class JobIntakeService {
             throw new ActorNotAllowedException(actor.role() + " may not submit this order");
         }
         Instant now = clock.instant();
+        String pickupState = brands.pickupState(brandOrgId); // copied onto each job (E2)
         List<UUID> ids = new ArrayList<>();
         for (NewJob n : newJobs) {
-            Job job = Job.forNewOrder(Ids.newId(), orderId, brandOrgId, n.digitalOnly(), n.creatorFeePaise(), now);
+            Job job = Job.forNewOrder(Ids.newId(), orderId, brandOrgId, pickupState, n.digitalOnly(),
+                    n.creatorFeePaise(), now);
             jobs.saveAndFlush(job);
             recorder.recordStateChange(job, null, null, JobStatus.DRAFT_BRIEF, JobAction.SUBMIT_ORDER, actor, null, null, null, null, now,
                     correlationId, null);

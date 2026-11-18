@@ -62,6 +62,18 @@ public class UserRepository {
                 .param("now", ts(now)).update() == 1;
     }
 
+    /** Brand: belongs to a company. (Creators: round C.) */
+    public void markOnboarded(UUID id, Instant now) {
+        jdbc.sql("UPDATE users SET onboarding_completed = true, updated_at = :now WHERE id = :id")
+                .param("id", id).param("now", ts(now)).update();
+    }
+
+    /** Brand: left or was removed from its company, so the company form shows again. */
+    public void markNotOnboarded(UUID id, Instant now) {
+        jdbc.sql("UPDATE users SET onboarding_completed = false, updated_at = :now WHERE id = :id")
+                .param("id", id).param("now", ts(now)).update();
+    }
+
     public void markVerified(UUID id, Channel channel, Instant now) {
         String col = channel == Channel.PHONE ? "phone_verified_at" : "email_verified_at";
         jdbc.sql("UPDATE users SET " + col + " = :now, updated_at = :now WHERE id = :id AND " + col + " IS NULL")

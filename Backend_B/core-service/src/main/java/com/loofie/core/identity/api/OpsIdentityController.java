@@ -35,10 +35,13 @@ class OpsIdentityController {
 
     private final StaffService staff;
     private final AccountAdminService admin;
+    private final com.loofie.core.identity.app.CompanyService companies;
 
-    OpsIdentityController(StaffService staff, AccountAdminService admin) {
+    OpsIdentityController(StaffService staff, AccountAdminService admin,
+                          com.loofie.core.identity.app.CompanyService companies) {
         this.staff = staff;
         this.admin = admin;
+        this.companies = companies;
     }
 
     @PostMapping("/staff/invites")
@@ -78,9 +81,28 @@ class OpsIdentityController {
     }
 
     @GetMapping("/audit-log")
-    List<com.loofie.core.identity.domain.AuditEntry> auditLog(Actor actor, @RequestParam(required = false) UUID targetUserId,
-                                         @RequestParam(required = false) Instant before,
-                                         @RequestParam(defaultValue = "50") int limit) {
-        return admin.auditLog(actor, targetUserId, before, limit);
+    List<com.loofie.core.identity.domain.AuditEntry> auditLog(Actor actor,
+                                                              @RequestParam(required = false) UUID targetUserId,
+                                                              @RequestParam(required = false) UUID targetOrgId,
+                                                              @RequestParam(required = false) Instant before,
+                                                              @RequestParam(defaultValue = "50") int limit) {
+        return admin.auditLog(actor, targetUserId, targetOrgId, before, limit);
+    }
+
+    record GstinRequest(String gstin, Boolean shared, String reason) {
+    }
+
+    /** A brand's company, members and open invites (recorded in the audit log). */
+    @GetMapping("/organizations/{orgId}")
+    com.loofie.core.identity.app.CompanyService.CompanyView organization(Actor actor, @PathVariable UUID orgId) {
+        return companies.opsView(actor, orgId);
+    }
+
+    /** Set or correct a GSTIN; {@code shared: true} lets a second company use one already taken (with a reason). */
+    @org.springframework.web.bind.annotation.PutMapping("/organizations/{orgId}/gstin")
+    com.loofie.core.identity.app.CompanyService.CompanyView gstin(Actor actor, @PathVariable UUID orgId,
+                                                                  @RequestBody GstinRequest body) {
+        return companies.opsSetGstin(actor, orgId, body == null ? null : body.gstin(),
+                body != null && Boolean.TRUE.equals(body.shared()), body == null ? null : body.reason());
     }
 }

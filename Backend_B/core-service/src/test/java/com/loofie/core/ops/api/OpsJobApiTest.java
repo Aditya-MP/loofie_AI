@@ -254,7 +254,7 @@ class OpsJobApiTest {
                 .andExpect(status().isCreated())
                 .andExpect(jsonPath("$.outcome", is("CREATED")))
                 .andExpect(jsonPath("$.stateCode", is("WB")))
-                .andExpect(jsonPath("$.stateHolidaysInUse", is(false)))
+                .andExpect(jsonPath("$.stateHolidaysInUse", is(true)))
                 .andExpect(jsonPath("$.runningClocksNotChanged").isNumber());
 
         mvc.perform(asOps(get("/api/core/ops/holidays/changes")).param("year", "2028"))

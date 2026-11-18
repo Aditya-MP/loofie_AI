@@ -81,6 +81,16 @@ class IdentityExceptionHandler {
         return problem(HttpStatus.CONFLICT, "contact-taken", e.getMessage());
     }
 
+    @ExceptionHandler(com.loofie.core.identity.domain.IdentityExceptions.GstinTakenException.class)
+    ProblemDetail gstinTaken(RuntimeException e) {
+        return problem(HttpStatus.CONFLICT, "gstin-taken", e.getMessage());
+    }
+
+    @ExceptionHandler(com.loofie.core.identity.domain.IdentityExceptions.CompanyNotFoundException.class)
+    ProblemDetail companyNotFound(RuntimeException e) {
+        return problem(HttpStatus.NOT_FOUND, "company-not-found", e.getMessage());
+    }
+
     @ExceptionHandler(AccountNotFoundException.class)
     ProblemDetail notFound(AccountNotFoundException e) {
         return problem(HttpStatus.NOT_FOUND, "account-not-found", e.getMessage());

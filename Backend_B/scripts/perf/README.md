@@ -11,6 +11,8 @@ Measure before optimising. These load a realistic data set and measure the hot q
 | `FakeAiServer.java` | Stand-in for Backend A's `/ai/feedback`: answers 200 after a fixed delay, prints requests/s and the most open at once. |
 | `relay-backlog.sql` | 60,000 waiting job events (20,000 jobs x 3) for measuring how fast the outbox relay drains. |
 | `auth-seed.sql` | F1: 100,000 creators with one live session each (cookie `perf-session-<i>-padpadpad`) in `core_test`. |
+| `brand-seed.sql` | F1 round B: companies with an admin session each (cookie `perf-brand-session-<i>-padpadpad`) and accepted jobs spread over them. |
+| `BrandLoadTest.java` | F1 round B: brand inbox (dev headers vs session cookies) and "Shipped" with cookie + CSRF. Start the app and wait for `/actuator/health/readiness` = 200 (the startup query warm-up runs before it), then a gentle warm-up and a 20 s pause before measuring. |
 | `AuthLoadTest.java` | F1: what login adds per request (same endpoint, dev headers vs session cookies) and OTP send / verify / signup. Reads codes from the app log (fake sender). Run the app with the per-IP OTP limits raised, since all load comes from one IP. |
 
 ```bash

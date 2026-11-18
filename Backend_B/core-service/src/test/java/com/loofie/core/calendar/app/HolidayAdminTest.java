@@ -117,8 +117,8 @@ class HolidayAdminTest {
         assertThat(past.runningClocksNotChanged()).as("a past day is inside no running clock").isZero();
 
         EditResult state = admin.upsert(ops, LocalDate.of(2026, 11, 20), "WB", "Test state closure");
-        assertThat(state.stateHolidaysInUse()).isFalse();
-        assertThat(state.note()).contains("do not affect any deadline yet");
+        assertThat(state.stateHolidaysInUse()).isTrue();
+        assertThat(state.note()).contains("pickup state is WB");
 
         admin.delete(ops, LocalDate.of(2026, 11, 20), "");
         admin.delete(ops, LocalDate.of(2026, 11, 20), "WB");

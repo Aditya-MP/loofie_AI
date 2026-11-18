@@ -35,6 +35,18 @@ public class AuditLog {
     public static final String TOTP_RESET = "TOTP_RESET";
     public static final String RECOVERY_CODE_USED = "RECOVERY_CODE_USED";
     public static final String FOUNDER_BOOTSTRAPPED = "FOUNDER_BOOTSTRAPPED";
+    // Round B: companies and teams
+    public static final String ORG_CREATED = "ORG_CREATED";
+    public static final String ORG_UPDATED = "ORG_UPDATED";
+    public static final String ORG_VIEWED = "ORG_VIEWED";
+    public static final String GSTIN_SET = "GSTIN_SET";
+    public static final String GSTIN_SET_BY_OPS = "GSTIN_SET_BY_OPS";
+    public static final String MEMBER_INVITED = "MEMBER_INVITED";
+    public static final String INVITE_REVOKED = "INVITE_REVOKED";
+    public static final String MEMBER_JOINED = "MEMBER_JOINED";
+    public static final String MEMBER_ROLE_CHANGED = "MEMBER_ROLE_CHANGED";
+    public static final String MEMBER_REMOVED = "MEMBER_REMOVED";
+    public static final String MEMBER_LEFT = "MEMBER_LEFT";
 
     private final AuditRepository repo;
     private final JsonMapper json;
@@ -48,18 +60,36 @@ public class AuditLog {
 
     @Transactional(propagation = Propagation.MANDATORY)
     public void record(Actor actor, String action, UUID target, String reason, Map<String, Object> details) {
-        record(actor.userId(), actor.role().name(), action, target, reason, details);
+        record(actor.userId(), actor.role().name(), action, target, null, reason, details);
+    }
+
+    @Transactional(propagation = Propagation.MANDATORY)
+    public void record(Actor actor, String action, UUID targetUser, UUID targetOrg, String reason,
+                       Map<String, Object> details) {
+        record(actor.userId(), actor.role().name(), action, targetUser, targetOrg, reason, details);
     }
 
     @Transactional(propagation = Propagation.MANDATORY)
     public void record(UUID actorId, String actorRole, String action, UUID target, String reason,
                        Map<String, Object> details) {
-        repo.insert(new com.loofie.core.identity.domain.AuditEntry(Ids.newId(), clock.instant(), actorId, actorRole, action, target, reason,
+        record(actorId, actorRole, action, target, null, reason, details);
+    }
+
+    @Transactional(propagation = Propagation.MANDATORY)
+    public void record(UUID actorId, String actorRole, String action, UUID targetUser, UUID targetOrg, String reason,
+                       Map<String, Object> details) {
+        repo.insert(new com.loofie.core.identity.domain.AuditEntry(Ids.newId(), clock.instant(), actorId, actorRole,
+                action, targetUser, targetOrg, reason,
                 details == null || details.isEmpty() ? null : json.writeValueAsString(details),
                 RequestIdFilter.current()));
     }
 
     public List<com.loofie.core.identity.domain.AuditEntry> list(UUID target, Instant before, int limit) {
-        return repo.list(target, before, limit);
+        return repo.list(target, null, before, limit);
+    }
+
+    public List<com.loofie.core.identity.domain.AuditEntry> list(UUID targetUser, UUID targetOrg, Instant before,
+                                                                  int limit) {
+        return repo.list(targetUser, targetOrg, before, limit);
     }
 }

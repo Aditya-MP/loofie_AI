@@ -119,6 +119,13 @@ public class Job {
     @Column(name = "refund_hold", nullable = false)
     private boolean refundHold;
 
+    /**
+     * The brand's pickup state when the job was created (F1 round B, E2): brand-side working-day clocks skip that
+     * state's holidays. Null = unknown, national holidays only. A brand moving later changes new jobs only.
+     */
+    @Column(name = "brand_pickup_state", updatable = false)
+    private String brandPickupState;
+
     @Column(name = "created_at", nullable = false, updatable = false)
     private Instant createdAt;
 
@@ -134,6 +141,12 @@ public class Job {
 
     /** A new job enters core already in AWAITING_PAYMENT; the DRAFT_BRIEF step is logged by intake. */
     public static Job forNewOrder(UUID id, UUID orderId, UUID brandOrgId, boolean digitalOnly, long creatorFeePaise, Instant now) {
+        return forNewOrder(id, orderId, brandOrgId, null, digitalOnly, creatorFeePaise, now);
+    }
+
+    /** @param brandPickupState the brand's pickup state now, or null when unknown */
+    public static Job forNewOrder(UUID id, UUID orderId, UUID brandOrgId, String brandPickupState, boolean digitalOnly,
+                                  long creatorFeePaise, Instant now) {
         if (creatorFeePaise < 0) {
             throw new IllegalArgumentException("creatorFeePaise must be >= 0");
         }
@@ -141,6 +154,7 @@ public class Job {
         job.id = Objects.requireNonNull(id);
         job.orderId = Objects.requireNonNull(orderId);
         job.brandOrgId = Objects.requireNonNull(brandOrgId);
+        job.brandPickupState = brandPickupState;
         job.status = JobStatus.AWAITING_PAYMENT;
         job.digitalOnly = digitalOnly;
         job.creatorFeePaise = creatorFeePaise;
@@ -262,6 +276,10 @@ public class Job {
 
     public void markAutoStarted(Instant at) {
         autoStartedAt = at;
+    }
+
+    public String getBrandPickupState() {
+        return brandPickupState;
     }
 
     public Instant getAutoStartedAt() {

@@ -126,7 +126,9 @@ public class HolidayYearImport {
                 + (reaching > 0 ? " Running deadlines are not moved; new deadlines use the new list." : "")
                 + (items.stream().anyMatch(i -> !i.stateCode().equals(Holiday.NATIONAL))
                         && !HolidayAdminService.STATE_HOLIDAYS_IN_USE
-                        ? " State holidays are saved but do not affect deadlines until brand pickup states exist." : "");
+                        ? " State holidays are saved but do not affect deadlines until brand pickup states exist."
+                        : items.stream().anyMatch(i -> !i.stateCode().equals(Holiday.NATIONAL))
+                        ? " State holidays count for brands whose pickup state matches." : "");
         return new Result(year, !dryRun, added, renamed, removed, unchanged, items,
                 HolidayAdminService.STATE_HOLIDAYS_IN_USE, note);
     }

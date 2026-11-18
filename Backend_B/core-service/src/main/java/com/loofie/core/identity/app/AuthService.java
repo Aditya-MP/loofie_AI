@@ -26,7 +26,7 @@ import com.loofie.core.identity.domain.OtpPurpose;
 import com.loofie.core.identity.domain.SessionKind;
 import com.loofie.core.identity.domain.SessionView;
 import com.loofie.core.identity.domain.Totp;
-import com.loofie.core.identity.infra.StaffInviteRepository;
+import com.loofie.core.identity.infra.InviteRepository;
 import com.loofie.core.identity.infra.UserRepository;
 import com.loofie.core.job.domain.ActorRole;
 
@@ -62,20 +62,23 @@ public class AuthService {
     private final OtpService otp;
     private final SessionService sessions;
     private final UserRepository users;
-    private final StaffInviteRepository invites;
+    private final InviteRepository invites;
+    private final com.loofie.core.identity.infra.OrganizationRepository organizations;
     private final IdentityCrypto crypto;
     private final RateLimits limits;
     private final AuditLog audit;
     private final IdentityProperties props;
     private final Clock clock;
 
-    public AuthService(OtpService otp, SessionService sessions, UserRepository users, StaffInviteRepository invites,
+    public AuthService(OtpService otp, SessionService sessions, UserRepository users, InviteRepository invites,
+                       com.loofie.core.identity.infra.OrganizationRepository organizations,
                        IdentityCrypto crypto, RateLimits limits, AuditLog audit, IdentityProperties props,
                        Clock clock) {
         this.otp = otp;
         this.sessions = sessions;
         this.users = users;
         this.invites = invites;
+        this.organizations = organizations;
         this.crypto = crypto;
         this.limits = limits;
         this.audit = audit;
@@ -133,34 +136,53 @@ public class AuthService {
         return Result.of(Next.DONE, account, sessions.issue(account, SessionKind.FULL, ip, userAgent));
     }
 
-    /** A staff invite link, after the email OTP: creates the staff account and asks for authenticator setup. */
+    /**
+     * An invite link opened by someone new, after the email OTP. A staff invite creates the staff account and asks for
+     * authenticator setup; a brand invite creates a brand account already in the company (flow 5). Someone who already
+     * has a brand account accepts while logged in instead ({@link TeamService#acceptAsExistingUser}).
+     */
     @Transactional(noRollbackFor = {CodeExpiredException.class})
-    public Result acceptStaffInvite(UUID challengeId, String inviteToken, SignupConsents consents, String ip,
-                                    String userAgent) {
+    public Result acceptInvite(UUID challengeId, String inviteToken, SignupConsents consents, String ip,
+                               String userAgent) {
         OtpChallenge c = otp.requireVerified(challengeId, OtpPurpose.LOGIN);
-        if (inviteToken == null || inviteToken.isBlank()) {
-            throw new InvalidRequestException("The invite link is incomplete");
-        }
         Instant now = clock.instant();
-        StaffInviteRepository.Invite invite = invites.findForUpdate(IdentityCrypto.sha256(inviteToken.trim()))
-                .filter(i -> i.acceptedAt() == null && now.isBefore(i.expiresAt()))
-                .orElseThrow(() -> new InvalidRequestException("This invite has expired or was already used. Ask "
-                        + "for a new one."));
+        InviteRepository.Invite invite = usableInvite(invites, inviteToken, now);
         if (c.channel() != Channel.EMAIL || !invite.email().equals(c.destination())) {
             throw new InvalidRequestException("Log in with the email address the invite was sent to");
         }
         requireConsents(consents);
+        boolean staff = invite.orgId() == null;
         UUID id = Ids.newId();
-        if (!users.insertIfAbsent(id, AccountType.ADMIN, invite.role(), Channel.EMAIL, c.destination(), now, now,
-                now)) {
-            throw new ContactTakenException("This email already has a Loofie account. Use another email for staff.");
+        if (!users.insertIfAbsent(id, staff ? AccountType.ADMIN : AccountType.BRAND,
+                staff ? ActorRole.valueOf(invite.role()) : null, Channel.EMAIL, c.destination(), now, now, now)) {
+            throw new ContactTakenException(staff
+                    ? "This email already has a Loofie account. Use another email for staff."
+                    : "This email already has a Loofie account. Log in, then open the invite link again.");
         }
-        recordConsents(id, new SignupConsents(true, true, false), now, ip);
+        recordConsents(id, consents, now, ip);
         invites.markAccepted(invite.id(), id, now);
         otp.consume(c.id());
-        audit.record(id, invite.role().name(), AuditLog.STAFF_JOINED, id, null,
-                Map.of("inviteId", invite.id(), "invitedBy", invite.invitedBy(), "role", invite.role().name()));
-        return startEnrolment(users.find(id).orElseThrow(), ip, userAgent);
+        Map<String, Object> details = Map.of("inviteId", invite.id(), "invitedBy", invite.invitedBy(), "role",
+                invite.role());
+        if (staff) {
+            audit.record(id, invite.role(), AuditLog.STAFF_JOINED, id, null, details);
+            return startEnrolment(users.find(id).orElseThrow(), ip, userAgent);
+        }
+        organizations.addMember(invite.orgId(), id, invite.role(), invite.invitedBy(), now);
+        users.markOnboarded(id, now);
+        audit.record(id, invite.role(), AuditLog.MEMBER_JOINED, id, invite.orgId(), null, details);
+        Account account = users.find(id).orElseThrow();
+        return Result.of(Next.DONE, account, sessions.issue(account, SessionKind.FULL, ip, userAgent));
+    }
+
+    /** An invite that can still be accepted; the row stays locked until the caller's transaction ends. */
+    static InviteRepository.Invite usableInvite(InviteRepository invites, String token, Instant now) {
+        if (token == null || token.isBlank()) {
+            throw new InvalidRequestException("The invite link is incomplete");
+        }
+        return invites.findForUpdate(IdentityCrypto.sha256(token.trim())).filter(i -> i.usable(now))
+                .orElseThrow(() -> new InvalidRequestException("This invite has expired, was cancelled or was "
+                        + "already used. Ask for a new one."));
     }
 
     /** Staff: first authenticator code after scanning the secret. Gives the recovery codes, once. */
@@ -236,6 +258,11 @@ public class AuthService {
     public Account account(UUID userId) {
         return users.find(userId).orElseThrow(() -> new com.loofie.core.identity.domain.IdentityExceptions
                 .AccountNotFoundException());
+    }
+
+    /** A brand user's company and role, if any. */
+    public java.util.Optional<com.loofie.core.identity.domain.Organization.Membership> membership(UUID userId) {
+        return organizations.membership(userId);
     }
 
     public String csrfToken(SessionView s) {

@@ -23,6 +23,7 @@ import com.loofie.core.identity.domain.Account;
 import com.loofie.core.identity.domain.AccountType;
 import com.loofie.core.identity.domain.Channel;
 import com.loofie.core.identity.domain.IdentityExceptions.InvalidRequestException;
+import com.loofie.core.identity.domain.Organization;
 import com.loofie.core.identity.domain.SessionKind;
 import com.loofie.core.identity.domain.SessionView;
 import com.loofie.core.security.UnauthenticatedException;
@@ -54,18 +55,28 @@ class AuthController {
     record MfaRequest(String code, String recoveryCode) {
     }
 
-    record UserView(UUID id, AccountType accountType, String role, String status, boolean onboardingCompleted,
-                    String phone, String email) {
+    /**
+     * @param role  CREATOR, a staff role, or BRAND_ADMIN / BRAND_MEMBER; null for a brand user without a company yet
+     * @param orgId the brand user's company, or null (then onboardingCompleted is false: show the company form)
+     */
+    record UserView(UUID id, AccountType accountType, String role, UUID orgId, String status,
+                    boolean onboardingCompleted, String phone, String email) {
 
-        static UserView of(Account a) {
+        static UserView of(Account a, java.util.Optional<Organization.Membership> membership) {
             String role = switch (a.type()) {
                 case CREATOR -> "CREATOR";
                 case ADMIN -> a.staffRole().name();
-                case BRAND -> null; // BRAND_ADMIN / BRAND_MEMBER come with the organisation (round B)
+                case BRAND -> membership.map(Organization.Membership::role).orElse(null);
             };
-            return new UserView(a.id(), a.type(), role, a.status().name(), a.onboardingCompleted(), a.phone(),
+            UUID org = a.type() == AccountType.BRAND ? membership.map(Organization.Membership::orgId).orElse(null)
+                    : null;
+            return new UserView(a.id(), a.type(), role, org, a.status().name(), a.onboardingCompleted(), a.phone(),
                     a.email());
         }
+    }
+
+    UserView user(Account a) {
+        return UserView.of(a, a.type() == AccountType.BRAND ? auth.membership(a.id()) : java.util.Optional.empty());
     }
 
     /**
@@ -119,11 +130,12 @@ class AuthController {
                 SessionCookies.userAgent(request)), request, response);
     }
 
-    @PostMapping("/staff/accept")
+    /** Staff and brand teammate invites, for someone new (after the email OTP). */
+    @PostMapping({"/staff/accept", "/invites/accept"})
     LoginResponse acceptInvite(@RequestBody StaffAcceptRequest body, HttpServletRequest request,
                                HttpServletResponse response) {
         requireChallenge(body == null ? null : body.challengeId());
-        return answer(auth.acceptStaffInvite(body.challengeId(), body.inviteToken(), new AuthService.SignupConsents(
+        return answer(auth.acceptInvite(body.challengeId(), body.inviteToken(), new AuthService.SignupConsents(
                 yes(body.acceptTerms()), yes(body.confirmAdult()), false), SessionCookies.ip(request),
                 SessionCookies.userAgent(request)), request, response);
     }
@@ -156,7 +168,7 @@ class AuthController {
             case MFA_ENROL -> "MFA_ENROL_REQUIRED";
         };
         Account a = auth.account(s.userId());
-        return new LoginResponse(next, s.kind() == SessionKind.FULL ? UserView.of(a) : null,
+        return new LoginResponse(next, s.kind() == SessionKind.FULL ? user(a) : null,
                 authenticatorCsrf(s), s.expiresAt(), null, null, null, List.of());
     }
 
@@ -189,7 +201,7 @@ class AuthController {
             cookies.write(response, issued);
         }
         boolean full = issued != null && issued.kind() == SessionKind.FULL;
-        return new LoginResponse(r.next().name(), full && r.account() != null ? UserView.of(r.account()) : null,
+        return new LoginResponse(r.next().name(), full && r.account() != null ? user(r.account()) : null,
                 issued == null ? null : issued.csrfToken(), issued == null ? null : issued.expiresAt(),
                 r.signupType(), r.totpSecret(), r.otpauthUri(), r.recoveryCodes());
     }

@@ -22,7 +22,7 @@ import com.loofie.core.identity.domain.IdentityExceptions.AccountNotFoundExcepti
 import com.loofie.core.identity.domain.IdentityExceptions.ContactTakenException;
 import com.loofie.core.identity.domain.IdentityExceptions.InvalidRequestException;
 import com.loofie.core.identity.domain.MessageSender;
-import com.loofie.core.identity.infra.StaffInviteRepository;
+import com.loofie.core.identity.infra.InviteRepository;
 import com.loofie.core.identity.infra.UserRepository;
 import com.loofie.core.job.domain.Actor;
 import com.loofie.core.job.domain.ActorRole;
@@ -42,7 +42,7 @@ public class StaffService {
     }
 
     private final UserRepository users;
-    private final StaffInviteRepository invites;
+    private final InviteRepository invites;
     private final SessionService sessions;
     private final AuditLog audit;
     private final IdentityCrypto crypto;
@@ -51,7 +51,7 @@ public class StaffService {
     private final TransactionTemplate tx;
     private final Clock clock;
 
-    public StaffService(UserRepository users, StaffInviteRepository invites, SessionService sessions, AuditLog audit,
+    public StaffService(UserRepository users, InviteRepository invites, SessionService sessions, AuditLog audit,
                         IdentityCrypto crypto, MessageSender sender, IdentityProperties props, TransactionTemplate tx,
                         Clock clock) {
         this.users = users;
@@ -79,7 +79,7 @@ public class StaffService {
             Instant now = clock.instant();
             UUID id = Ids.newId();
             Instant expires = now.plus(props.inviteTtl());
-            invites.insert(id, email, role, IdentityCrypto.sha256(token), actor.userId(), now, expires);
+            invites.insert(id, email, role.name(), null, IdentityCrypto.sha256(token), actor.userId(), now, expires);
             audit.record(actor, AuditLog.STAFF_INVITED, null, null, Map.of("inviteId", id, "email",
                     Contacts.mask(email), "role", role.name()));
             return new Invite(id, email, role, expires, props.appBaseUrl() + "/staff/invite#" + token, false);

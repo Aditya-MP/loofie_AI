@@ -41,8 +41,11 @@ class AccountController {
     private final AccountService accounts;
     private final SessionAuthenticator authenticator;
     private final SessionCookies cookies;
+    private final com.loofie.core.identity.app.AuthService authService;
 
-    AccountController(AccountService accounts, SessionAuthenticator authenticator, SessionCookies cookies) {
+    AccountController(AccountService accounts, SessionAuthenticator authenticator, SessionCookies cookies,
+                      com.loofie.core.identity.app.AuthService authService) {
+        this.authService = authService;
         this.accounts = accounts;
         this.authenticator = authenticator;
         this.cookies = cookies;
@@ -79,7 +82,7 @@ class AccountController {
                 body.newChallengeId(), body.newCode(), SessionCookies.ip(request), SessionCookies.userAgent(request));
         authenticator.clear(request);
         cookies.write(response, done.session());
-        return new ConfirmResponse(AuthController.UserView.of(done.account()), done.session().csrfToken(),
+        return new ConfirmResponse(AuthController.UserView.of(done.account(), authService.membership(done.account().id())), done.session().csrfToken(),
                 done.session().expiresAt());
     }
 }

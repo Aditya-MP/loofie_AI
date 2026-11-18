@@ -60,9 +60,9 @@ public final class JobDeadlines {
             case CREATOR_INVITED -> accept = enteredAt.plus(ACCEPT_WINDOW);
             case CREATOR_ACCEPTED -> {
                 if (!job.isDigitalOnly()) {
-                    // TODO(open-q): pass the brand's pickup state once brand profiles exist (national only for now).
-                    shipReminder = calendar.endOfWorkingDays(enteredAt, SHIP_REMINDER_WORKING_DAYS, null);
-                    shipDue = calendar.endOfWorkingDays(enteredAt, SHIP_WITHIN_WORKING_DAYS, null);
+                    // Brand-side clock: national holidays plus the brand's pickup-state holidays (F1 round B).
+                    shipReminder = calendar.endOfWorkingDays(enteredAt, SHIP_REMINDER_WORKING_DAYS, job.getBrandPickupState());
+                    shipDue = calendar.endOfWorkingDays(enteredAt, SHIP_WITHIN_WORKING_DAYS, job.getBrandPickupState());
                 }
             }
             case PRODUCT_SHIPPED -> {
@@ -91,7 +91,7 @@ public final class JobDeadlines {
                 production = enteredAt.plus(left != null ? left : PRODUCTION_WINDOW);
             }
             case IN_REVIEW -> review = reviewWorkingDays == null ? enteredAt.plus(REVIEW_WINDOW)
-                    : calendar.endOfWorkingDays(enteredAt, reviewWorkingDays, null); // brand-side clock: working days
+                    : calendar.endOfWorkingDays(enteredAt, reviewWorkingDays, job.getBrandPickupState()); // brand-side clock
             case REPLACEMENT_NEEDED -> replacement = enteredAt.plus(REPLACEMENT_WINDOW);
             // Ops-side clock: working days, national holidays (ops is not tied to a brand state).
             case DISPUTED -> disputeReview = calendar.endOfWorkingDays(enteredAt, DISPUTE_REVIEW_WORKING_DAYS, null);

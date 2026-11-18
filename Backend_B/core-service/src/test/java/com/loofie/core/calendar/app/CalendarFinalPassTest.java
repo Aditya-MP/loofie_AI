@@ -139,7 +139,8 @@ class CalendarFinalPassTest {
                 new Row(LocalDate.of(YEAR, 4, 14), "wb", "Poila Boishakh"),
                 new Row(LocalDate.of(YEAR, 4, 15), "OR", "Odia New Year")), false);
         assertThat(r.changes()).extracting(Item::stateCode).containsExactly("WB", "OD");
-        assertThat(r.note()).contains("do not affect deadlines");
+        assertThat(r.stateHolidaysInUse()).isTrue();
+        assertThat(r.note()).contains("count for brands whose pickup state matches");
 
         for (Actor notOps : List.of(Actor.brandAdmin(UUID.randomUUID(), UUID.randomUUID()),
                 Actor.creator(UUID.randomUUID()), Actor.system())) {

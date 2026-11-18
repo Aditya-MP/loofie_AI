@@ -32,7 +32,7 @@ public class HolidayAdminService {
      * State holidays only apply once a brand's pickup state is known (brand profiles, F1). Until then every clock
      * counts national holidays only ({@code JobDeadlines} passes no state). Flip this when F1 passes the state.
      */
-    static final boolean STATE_HOLIDAYS_IN_USE = false;
+    static final boolean STATE_HOLIDAYS_IN_USE = true; // F1 round B: each job carries its brand's pickup state
 
     /** What an edit did, and what it did not reach. */
     public record EditResult(Outcome outcome, String stateCode, long runningClocksNotChanged,
@@ -90,9 +90,11 @@ public class HolidayAdminService {
                     + "until brand profiles exist. Only national holidays count today.";
         } else if (notChanged > 0) {
             note = notChanged + " running shipping or dispute deadlines end after this date and were set before it; "
-                    + "they are not moved. New deadlines skip it.";
+                    + "they are not moved. New deadlines skip it" + (stateHoliday
+                    ? " for brands whose pickup state is " + state + "." : ".");
         } else {
-            note = "New deadlines skip this date.";
+            note = stateHoliday ? "New deadlines skip this date for brands whose pickup state is " + state + "."
+                    : "New deadlines skip this date.";
         }
         return new EditResult(outcome, state, notChanged, STATE_HOLIDAYS_IN_USE, note);
     }

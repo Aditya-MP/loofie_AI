@@ -152,10 +152,11 @@ public class AccountAdminService {
         return summary(a);
     }
 
-    public List<com.loofie.core.identity.domain.AuditEntry> auditLog(Actor actor, UUID target, Instant before, int limit) {
+    public List<com.loofie.core.identity.domain.AuditEntry> auditLog(Actor actor, UUID target, UUID targetOrg,
+                                                                     Instant before, int limit) {
         StaffRules.requireSenior(actor);
         int n = Math.max(1, Math.min(limit <= 0 ? 50 : limit, MAX_AUDIT_PAGE));
-        return audit.list(target, before == null ? clock.instant().plusSeconds(1) : before, n);
+        return audit.list(target, targetOrg, before == null ? clock.instant().plusSeconds(1) : before, n);
     }
 
     static AccountSummary summary(Account a) {

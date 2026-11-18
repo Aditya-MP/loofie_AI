@@ -84,6 +84,21 @@ public final class IdentityExceptions {
         }
     }
 
+    /** 409: another company already uses this GSTIN. */
+    public static class GstinTakenException extends RuntimeException {
+        public GstinTakenException() {
+            super("This GSTIN already belongs to a company on Loofie. Ask that company's admin to invite you, or "
+                    + "contact support if your companies really share one GSTIN.");
+        }
+    }
+
+    /** 404: no such company, or not yours. */
+    public static class CompanyNotFoundException extends RuntimeException {
+        public CompanyNotFoundException() {
+            super("No such company");
+        }
+    }
+
     /** 404. */
     public static class AccountNotFoundException extends RuntimeException {
         public AccountNotFoundException() {
