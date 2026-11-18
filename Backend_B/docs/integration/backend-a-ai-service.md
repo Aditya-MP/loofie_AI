@@ -146,3 +146,16 @@ Leave PostgreSQL 14 running if Aditya's service is run locally.
 - Checked with your mock's own scoring (`track_record.build`) at `e682442`: on time → 1 job / 1 on time / 0 faults;
   ghosted → 1 fault; replaced for brand late shipping → nothing; `FALSE_CLAIM` → 1 fault, corrected → cleared.
 - Still not sent: `rating`, `rebooked` (no rating or rebook feature yet), `brief_ref` (no briefs yet).
+
+## F7 additions (2026-11-18)
+
+- **`rating` is now sent** (your contract example 21): `actor_type: brand`, payload `{creator_ref, job_id, stars}`,
+  once per job, when the brand rates within 7 days of approval. The brand's comment stays in core (free text never
+  leaves). Still not sent: `rebooked`, `brief_ref`.
+- **Draft events need nothing new from you:** a delivered video is the usual `job_state_changed` pair
+  `IN_PRODUCTION → DRAFT_SUBMITTED` (actor creator) and `DRAFT_SUBMITTED → IN_REVIEW` (system), now sent only after the
+  video passed its checks and has its preview. Failed uploads send nothing.
+- **Ask (D1, part of the F4 handover):** when a job is created, send us a copy of what the video is checked against:
+  the checklist items (`key`, `label`: hook, each must-say point, CTA / code, disclosure), `min_seconds`,
+  `max_seconds`, and `ad_rights_days`. Until then ops enters it (`PUT /api/core/ops/jobs/{id}/brief`) or the defaults
+  apply (5 standard items, 15-90 s, 90 days).

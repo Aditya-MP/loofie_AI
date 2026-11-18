@@ -63,7 +63,7 @@ class DeadlineWorkerTest {
     void brandSilentOnADraftIsRemindedThenAutoApproved() {
         Seeded seeded = fixtures.jobIn(JobStatus.DRAFT_SUBMITTED);
         UUID jobId = seeded.jobId();
-        engine.transition(jobId, JobAction.PREVIEW_READY, Actor.system(), null);
+        engine.transition(com.loofie.core.job.app.TransitionCommand.of(jobId, JobAction.PREVIEW_READY, Actor.system(), null).with(fixtures.checkedDraft(jobId)));
         Instant reviewDue = job(jobId).getReviewDueAt();
 
         drain();
@@ -197,7 +197,7 @@ class DeadlineWorkerTest {
     @Test
     void timerActionsAreRefusedBeforeTheirDeadline() {
         Seeded seeded = fixtures.jobIn(JobStatus.DRAFT_SUBMITTED);
-        engine.transition(seeded.jobId(), JobAction.PREVIEW_READY, Actor.system(), null);
+        engine.transition(com.loofie.core.job.app.TransitionCommand.of(seeded.jobId(), JobAction.PREVIEW_READY, Actor.system(), null).with(fixtures.checkedDraft(seeded.jobId())));
 
         assertThatThrownBy(() -> engine.transition(seeded.jobId(), JobAction.AUTO_APPROVE, Actor.system(), null))
                 .isInstanceOf(TransitionGuardException.class).hasMessageContaining("review window");
@@ -295,7 +295,7 @@ class DeadlineWorkerTest {
     @Test
     void aFreshWorkerAfterARestartPicksUpWhateverBecameDue() {
         Seeded seeded = fixtures.jobIn(JobStatus.DRAFT_SUBMITTED);
-        engine.transition(seeded.jobId(), JobAction.PREVIEW_READY, Actor.system(), null);
+        engine.transition(com.loofie.core.job.app.TransitionCommand.of(seeded.jobId(), JobAction.PREVIEW_READY, Actor.system(), null).with(fixtures.checkedDraft(seeded.jobId())));
         clock.set(job(seeded.jobId()).getReviewDueAt().plus(Duration.ofHours(3))); // "down" when it fell due
 
         DeadlineWorker afterRestart = new DeadlineWorker(deadlineRepo, engine, noticeService, clock,

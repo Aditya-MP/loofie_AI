@@ -51,16 +51,28 @@ public class F6LoadTest {
         List<Job> receiveAll = new ArrayList<>(receive);
         receiveAll.addAll(damaged);
 
+        // F7 D8: photos are real uploads on the register, issued to the creator (prepared outside the measured phases).
+        Map<String, String> receipts = new ConcurrentHashMap<>();
+        Map<String, String> damage = new ConcurrentHashMap<>();
+        try (var prep = Executors.newFixedThreadPool(16)) {
+            for (Job j : receiveAll) {
+                prep.submit(() -> receipts.put(j.id(), uploadPhoto(http, j, "RECEIPT_PHOTO")));
+            }
+            for (Job j : damaged) {
+                prep.submit(() -> damage.put(j.id(), uploadPhoto(http, j, "DAMAGE_EVIDENCE")));
+            }
+        }
+
         boolean ok = phase("MARK_SHIPPED", rps, jobs, http, j -> post(j, brand(j),
                 "{\"action\":\"MARK_SHIPPED\",\"courierCode\":\"DELHIVERY\",\"trackingNumber\":\"DL" + j.id().replace("-", "") + "\"}"));
         ok &= phase("CONFIRM_RECEIVED", rps, receiveAll, http, j -> post(j, creator(j),
-                "{\"action\":\"CONFIRM_RECEIVED\",\"photoRef\":\"receipts/" + UUID.randomUUID() + ".jpg\"}"));
+                "{\"action\":\"CONFIRM_RECEIVED\",\"photoRef\":\"" + receipts.get(j.id()) + "\"}"));
         ok &= phase("REPORT_NOT_RECEIVED", rps, missing, http, j -> post(j, creator(j),
                 "{\"action\":\"REPORT_DELIVERY_ISSUE\",\"issueType\":\"NOT_RECEIVED\"}"));
         ok &= phase("COURIER_DELIVERED", rps, proof, http, j -> post(j, ops(),
                 "{\"action\":\"COURIER_DELIVERED\",\"reason\":\"tracking page\",\"deliverySource\":\"TRACKING_PAGE\"}"));
         ok &= phase("REPORT_DAMAGE", rps, damaged, http, j -> post(j, creator(j),
-                "{\"action\":\"REPORT_DELIVERY_ISSUE\",\"issueType\":\"DAMAGED\",\"evidenceRef\":\"damage/" + UUID.randomUUID() + ".jpg\"}"));
+                "{\"action\":\"REPORT_DELIVERY_ISSUE\",\"issueType\":\"DAMAGED\",\"evidenceRef\":\"" + damage.get(j.id()) + "\"}"));
         ok &= phase("RESHIP", rps, missing, http, j -> post(j, brand(j),
                 "{\"action\":\"RESHIP\",\"courierCode\":\"BLUE_DART\",\"trackingNumber\":\"BD" + j.id().replace("-", "") + "\"}"));
         ok &= phase("GET_DELIVERY_VIEW", rps, jobs, http, j -> brand(j).apply(HttpRequest.newBuilder(
@@ -83,6 +95,29 @@ public class F6LoadTest {
 
     static Who ops() {
         return b -> b.header("X-Dev-Role", "OPS").header("X-Dev-User-Id", UUID.randomUUID().toString());
+    }
+
+    /** An upload link from the app, then the file straight to storage; returns the key. */
+    static String uploadPhoto(HttpClient http, Job j, String purpose) {
+        try {
+            HttpResponse<String> t = http.send(creator(j).apply(HttpRequest.newBuilder(URI.create(BASE
+                            + "/api/core/jobs/" + j.id() + "/uploads"))).header("Content-Type", "application/json")
+                    .POST(HttpRequest.BodyPublishers.ofString("{\"purpose\":\"" + purpose
+                            + "\",\"contentType\":\"image/jpeg\"}")).build(), HttpResponse.BodyHandlers.ofString());
+            String key = field(t.body(), "key");
+            http.send(HttpRequest.newBuilder(URI.create(field(t.body(), "url"))).header("Content-Type", "image/jpeg")
+                    .PUT(HttpRequest.BodyPublishers.ofByteArray(new byte[4096])).build(),
+                    HttpResponse.BodyHandlers.discarding());
+            return key;
+        } catch (Exception e) {
+            throw new IllegalStateException(e);
+        }
+    }
+
+    /** One string field of a flat JSON answer (no JSON library in a single-file script). */
+    static String field(String json, String name) {
+        int i = json.indexOf("\"" + name + "\":\"") + name.length() + 4;
+        return json.substring(i, json.indexOf('"', i)).replace("\\u0026", "&");
     }
 
     static HttpRequest post(Job j, Who who, String body) {

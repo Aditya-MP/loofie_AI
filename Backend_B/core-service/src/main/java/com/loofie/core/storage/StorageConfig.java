@@ -61,5 +61,15 @@ class StorageConfig {
         public void delete(String key) {
             throw new StoreUnavailableException(MESSAGE, null);
         }
+
+        @Override
+        public void download(String key, java.nio.file.Path target) {
+            throw new StoreUnavailableException(MESSAGE, null);
+        }
+
+        @Override
+        public void upload(String key, java.nio.file.Path source, String contentType) {
+            throw new StoreUnavailableException(MESSAGE, null);
+        }
     }
 }

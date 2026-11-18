@@ -67,6 +67,13 @@ class ArchitectureTest {
             .should().dependOnClassesThat().resideInAPackage("com.loofie.core.creator.infra..")
             .because("other features ask CreatorDirectory (the job engine via the CreatorEligibility port)");
 
+    /** F7: videos, briefs and reviews are reached through the draft app services or the DraftGate port. */
+    @ArchTest
+    static final ArchRule noCrossFeatureDraftRepositoryAccess = noClasses()
+            .that().resideOutsideOfPackage("com.loofie.core.draft..")
+            .should().dependOnClassesThat().resideInAPackage("com.loofie.core.draft.infra..")
+            .because("the job engine asks DraftGate; other features use the draft app services");
+
     /** Layers point one way: api -> app -> domain, and infra serves app. Never backwards. */
     @ArchTest
     static final ArchRule infraDoesNotDependOnUpperLayers = noClasses()

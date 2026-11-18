@@ -80,8 +80,8 @@ class JobTransitionServiceTest {
         assertThat(job(jobId).getProductionDueAt()).isEqualTo(clock.instant().plus(JobDeadlines.PRODUCTION_WINDOW));
         assertThat(job(jobId).getReceiptOpsCheckAt()).isNull();
 
-        engine.transition(jobId, JobAction.SUBMIT_DRAFT, creatorActor, null);
-        engine.transition(jobId, JobAction.PREVIEW_READY, Actor.system(), null);
+        engine.transition(com.loofie.core.job.app.TransitionCommand.of(jobId, JobAction.SUBMIT_DRAFT, creatorActor, null).with(fixtures.checkedDraft(jobId)));
+        engine.transition(com.loofie.core.job.app.TransitionCommand.of(jobId, JobAction.PREVIEW_READY, Actor.system(), null).with(fixtures.checkedDraft(jobId)));
         assertThat(job(jobId).getReviewDueAt()).isEqualTo(clock.instant().plus(JobDeadlines.REVIEW_WINDOW));
 
         engine.transition(jobId, JobAction.APPROVE, brand, null);
@@ -296,8 +296,8 @@ class JobTransitionServiceTest {
                 .isInstanceOf(TransitionGuardException.class);
 
         engine.transition(seeded.jobId(), JobAction.REQUEST_REVISION, owner, null);
-        engine.transition(seeded.jobId(), JobAction.RESUBMIT, creator, null);
-        engine.transition(seeded.jobId(), JobAction.PREVIEW_READY, Actor.system(), null);
+        engine.transition(com.loofie.core.job.app.TransitionCommand.of(seeded.jobId(), JobAction.RESUBMIT, creator, null).with(fixtures.checkedDraft(seeded.jobId())));
+        engine.transition(com.loofie.core.job.app.TransitionCommand.of(seeded.jobId(), JobAction.PREVIEW_READY, Actor.system(), null).with(fixtures.checkedDraft(seeded.jobId())));
 
         assertThatThrownBy(() -> engine.transition(seeded.jobId(), JobAction.REQUEST_REVISION, owner, null))
                 .isInstanceOf(TransitionGuardException.class);

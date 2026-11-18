@@ -125,7 +125,7 @@ class OpsJobApiTest {
     @Test
     void overdueFilterFindsJobsPastTheirDeadline() throws Exception {
         Seeded job = fixtures.jobIn(JobStatus.DRAFT_SUBMITTED);
-        engine.transition(job.jobId(), JobAction.PREVIEW_READY, Actor.system(), null); // review clock starts
+        engine.transition(com.loofie.core.job.app.TransitionCommand.of(job.jobId(), JobAction.PREVIEW_READY, Actor.system(), null).with(fixtures.checkedDraft(job.jobId()))); // review clock starts
 
         mvc.perform(asOps(get("/api/core/ops/jobs")).param("brandOrgId", job.brandOrgId().toString()).param("overdue", "true"))
                 .andExpect(jsonPath("$.total", is(0)));

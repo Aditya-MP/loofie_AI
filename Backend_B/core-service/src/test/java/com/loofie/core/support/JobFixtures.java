@@ -22,9 +22,43 @@ public class JobFixtures {
     }
 
     private final JdbcClient jdbc;
+    private final java.time.Clock clock;
 
-    public JobFixtures(JdbcClient jdbc) {
+    public JobFixtures(JdbcClient jdbc, java.time.Clock clock) {
         this.jdbc = jdbc;
+        this.clock = clock;
+    }
+
+    /**
+     * F7: a video that passed its checks and has its preview, as the media worker hands it to the engine. Reuses the
+     * job's video in processing if there is one. Uploaded now (the test clock): "on time" is judged by this.
+     */
+    public com.loofie.core.job.app.TransitionDetails checkedDraft(UUID jobId) {
+        UUID existing = jdbc.sql("SELECT id FROM job_drafts WHERE job_id = ? AND status = 'PREVIEWING'")
+                .param(jobId).query(UUID.class).optional().orElse(null);
+        if (existing != null) {
+            return com.loofie.core.job.app.TransitionDetails.draft(existing);
+        }
+        UUID creator = jdbc.sql("SELECT creator_id FROM assignments WHERE job_id = ? AND status = 'ACTIVE'")
+                .param(jobId).query(UUID.class).optional().orElse(Ids.newId());
+        int attempt = jdbc.sql("SELECT COALESCE(MAX(attempt), 0) + 1 FROM job_drafts WHERE job_id = ?").param(jobId)
+                .query(Integer.class).single();
+        UUID id = Ids.newId();
+        OffsetDateTime now = OffsetDateTime.ofInstant(clock.instant(), ZoneOffset.UTC);
+        jdbc.sql("""
+                INSERT INTO job_drafts (id, job_id, creator_id, attempt, kind, master_key, master_bytes, preview_key,
+                                        status, submitted_at, next_try_at, lease_until, updated_at)
+                VALUES (?, ?, ?, ?, 'FIRST', ?, 1000, ?, 'PREVIEWING', ?, ?, ?, ?)""")
+                .params(id, jobId, creator, attempt, "drafts/" + creator + "/" + id + ".mp4",
+                        "previews/" + creator + "/" + id + ".mp4", now, now.plusYears(10), now.plusYears(10), now)
+                .update();
+        return com.loofie.core.job.app.TransitionDetails.draft(id);
+    }
+
+    /** Marks the job's video in processing as delivered (what the worker does after PREVIEW_READY). */
+    public void draftDelivered(UUID jobId) {
+        jdbc.sql("UPDATE job_drafts SET status = 'READY', ready_at = submitted_at WHERE job_id = ? "
+                        + "AND status = 'PREVIEWING'").param(jobId).update();
     }
 
     public Seeded jobIn(JobStatus status) {

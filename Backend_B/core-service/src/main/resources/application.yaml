@@ -92,6 +92,21 @@ loofie:
     path-style: ${LOOFIE_STORAGE_PATH_STYLE:false} # true for R2 / MinIO
     access-key: ${LOOFIE_STORAGE_ACCESS_KEY:}
     secret-key: ${LOOFIE_STORAGE_SECRET_KEY:}
+  media:
+    # F7 (D2): FFmpeg inside core-service as a queued background worker. The production image must include ffmpeg,
+    # ffprobe and a TrueType font (DejaVuSans by default on Linux). If any is missing the worker does not start and
+    # uploaded videos wait in the queue (nothing is lost); the log says what is missing.
+    ffmpeg: ${LOOFIE_FFMPEG:ffmpeg}
+    ffprobe: ${LOOFIE_FFPROBE:ffprobe}
+    font-file: ${LOOFIE_MEDIA_FONT:}
+    threads: 2                  # a 60 s 1080x1920 video previews in about 17 s on 2 threads
+    max-concurrent: 1           # videos at once per instance (CPU heavy)
+    poll-interval: 3s
+    probe-timeout: 30s
+    transcode-timeout: 10m
+    lease: 20m                  # a video claimed by a crashed worker is taken again after this
+    worker-enabled: true
+    retention-interval: 30m     # D9 sweep: removes videos whose retention ended
   creators:
     # F1 round C. Categories = Backend A's list (decision C3); the pilot niche adds more.
     categories: [beauty_skincare, personal_care, other]

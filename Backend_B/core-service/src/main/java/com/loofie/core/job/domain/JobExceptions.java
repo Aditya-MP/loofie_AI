@@ -69,4 +69,11 @@ public final class JobExceptions {
             super(message);
         }
     }
+
+    /** Not now, but soon and through no fault: a timer waits (e.g. a video uploaded in time is still being checked). */
+    public static class TransitionDeferredException extends TransitionGuardException {
+        public TransitionDeferredException(String message) {
+            super(message);
+        }
+    }
 }

@@ -20,7 +20,7 @@ import org.springframework.web.bind.annotation.RestController;
 
 import com.loofie.core.common.web.Idempotency;
 import com.loofie.core.common.web.RequestIdFilter;
-import com.loofie.core.job.app.JobTransitionService;
+import com.loofie.core.job.app.JobActions;
 import com.loofie.core.job.app.TransitionCommand;
 import com.loofie.core.job.app.TransitionDetails;
 import com.loofie.core.job.app.TransitionResult;
@@ -59,7 +59,7 @@ class JobTransitionController {
                              @Size(max = 512) String evidenceRef) {
     }
 
-    private final JobTransitionService engine;
+    private final JobActions engine;
     private final Idempotency idempotency;
     private final JsonMapper json;
     private final boolean requireKeyForAll;
@@ -68,7 +68,7 @@ class JobTransitionController {
      * @param requireKeyForAll {@code loofie.api.require-idempotency-key}: when true every transition needs an
      *                         {@code Idempotency-Key}. Off until the apps send one; then switch it on in prod.
      */
-    JobTransitionController(JobTransitionService engine, Idempotency idempotency, JsonMapper json,
+    JobTransitionController(JobActions engine, Idempotency idempotency, JsonMapper json,
                             @Value("${loofie.api.require-idempotency-key:false}") boolean requireKeyForAll) {
         this.engine = engine;
         this.idempotency = idempotency;
@@ -90,13 +90,13 @@ class JobTransitionController {
             if (requireKeyForAll || body.action() == JobAction.OPS_EXTEND) {
                 throw new Idempotency.KeyRequiredException(body.action().name());
             }
-            return ResponseEntity.ok(engine.transition(cmd));
+            return ResponseEntity.ok(engine.run(cmd));
         }
         String scope = actor.role().name() + ":" + actor.userId();
         String hash = Idempotency.hash("POST /api/core/jobs/{jobId}/transitions", jobId.toString(),
                 json.writeValueAsString(body));
         Idempotency.Outcome<TransitionResult> outcome = idempotency.run(scope, key, hash, TransitionResult.class,
-                () -> engine.transition(cmd));
+                () -> engine.run(cmd));
         return ResponseEntity.ok()
                 .header("Idempotent-Replayed", String.valueOf(outcome.replayed()))
                 .body(outcome.value());

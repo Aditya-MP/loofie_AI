@@ -152,8 +152,8 @@ class BackendAContractTest {
             Actor ops = Actor.ops(UUID.randomUUID());
             Seeded onTime = fixtures.jobIn(JobStatus.IN_PRODUCTION);
             fixtures.setDeadline(onTime.jobId(), "production_due_at", clock.instant().plus(Duration.ofHours(10)));
-            engine.transition(onTime.jobId(), JobAction.SUBMIT_DRAFT, Actor.creator(onTime.creatorId()), null);
-            engine.transition(onTime.jobId(), JobAction.PREVIEW_READY, Actor.system(), null);
+            engine.transition(com.loofie.core.job.app.TransitionCommand.of(onTime.jobId(), JobAction.SUBMIT_DRAFT, Actor.creator(onTime.creatorId()), null).with(fixtures.checkedDraft(onTime.jobId())));
+            engine.transition(com.loofie.core.job.app.TransitionCommand.of(onTime.jobId(), JobAction.PREVIEW_READY, Actor.system(), null).with(fixtures.checkedDraft(onTime.jobId())));
             engine.transition(onTime.jobId(), JobAction.APPROVE, Actor.brandAdmin(UUID.randomUUID(), onTime.brandOrgId()), null);
             engine.transition(onTime.jobId(), JobAction.PAYOUT_QUEUED, Actor.system(), null);
             engine.transition(onTime.jobId(), JobAction.PAYOUT_COMPLETED, Actor.system(), null);

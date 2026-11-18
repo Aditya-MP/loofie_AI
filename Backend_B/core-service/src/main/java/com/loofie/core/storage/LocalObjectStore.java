@@ -27,7 +27,8 @@ import javax.crypto.spec.SecretKeySpec;
 final class LocalObjectStore implements ObjectStore {
 
     static final String PATH = "/api/core/dev/storage/";
-    static final long MAX_BYTES = 20L * 1024 * 1024;
+    /** Above the largest upload purpose (F7 video, 500 MB); the purpose's own limit is checked on attach. */
+    static final long MAX_BYTES = 600L * 1024 * 1024;
 
     private final Path dir;
     private final String baseUrl;
@@ -86,6 +87,27 @@ final class LocalObjectStore implements ObjectStore {
         }
     }
 
+    @Override
+    public void download(String key, Path target) {
+        try {
+            Files.copy(file(key), target, java.nio.file.StandardCopyOption.REPLACE_EXISTING);
+        } catch (IOException e) {
+            throw new StoreUnavailableException("Cannot read " + key + ": " + e, e);
+        }
+    }
+
+    @Override
+    public void upload(String key, Path source, String contentType) {
+        try {
+            Path f = file(key);
+            Files.createDirectories(f.getParent());
+            Files.copy(source, f, java.nio.file.StandardCopyOption.REPLACE_EXISTING);
+            Files.writeString(typeFile(key), contentType);
+        } catch (IOException e) {
+            throw new StoreUnavailableException("Cannot write " + key + ": " + e, e);
+        }
+    }
+
     /** Checks a signed URL's parameters; false when forged, altered or expired. */
     boolean valid(String method, String key, String contentType, long expiresEpoch, String sig) {
         if (sig == null || clock.instant().getEpochSecond() > expiresEpoch) {
@@ -93,6 +115,35 @@ final class LocalObjectStore implements ObjectStore {
         }
         return MessageDigest.isEqual(sign(method, key, contentType == null ? "" : contentType, expiresEpoch)
                 .getBytes(StandardCharsets.UTF_8), sig.getBytes(StandardCharsets.UTF_8));
+    }
+
+    /** Streams one upload to disk; false (and nothing kept) when it is larger than {@code max}. */
+    boolean write(String key, String contentType, java.io.InputStream in, long max) {
+        Path f = file(key);
+        Path tmp = Path.of(f + ".part");
+        try {
+            Files.createDirectories(f.getParent());
+            long n = 0;
+            try (var out = Files.newOutputStream(tmp)) {
+                byte[] buf = new byte[64 * 1024];
+                for (int r; (r = in.read(buf)) != -1; ) {
+                    n += r;
+                    if (n > max) {
+                        break;
+                    }
+                    out.write(buf, 0, r);
+                }
+            }
+            if (n > max) {
+                Files.deleteIfExists(tmp);
+                return false;
+            }
+            Files.move(tmp, f, java.nio.file.StandardCopyOption.REPLACE_EXISTING);
+            Files.writeString(typeFile(key), contentType);
+            return true;
+        } catch (IOException e) {
+            throw new UncheckedIOException(e);
+        }
     }
 
     void write(String key, String contentType, byte[] bytes) {

@@ -66,6 +66,10 @@ public class AuditLog {
     // Round C part 2: account deletion
     public static final String ACCOUNT_DELETED = "ACCOUNT_DELETED";
     public static final String ACCOUNT_DELETED_BY_OPS = "ACCOUNT_DELETED_BY_OPS";
+    // F7: delivered videos
+    public static final String DRAFT_MASTER_DOWNLOADED = "DRAFT_MASTER_DOWNLOADED";
+    public static final String DRAFT_OPENED_BY_OPS = "DRAFT_OPENED_BY_OPS";
+    public static final String BRIEF_SET_BY_OPS = "BRIEF_SET_BY_OPS";
 
     private final AuditRepository repo;
     private final JsonMapper json;

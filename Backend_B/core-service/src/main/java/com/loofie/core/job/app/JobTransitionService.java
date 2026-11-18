@@ -23,6 +23,7 @@ import com.loofie.core.job.domain.Assignment;
 import com.loofie.core.job.domain.CreatorEligibility;
 import com.loofie.core.job.domain.Courier;
 import com.loofie.core.job.domain.DeliverySource;
+import com.loofie.core.job.domain.DraftGate;
 import com.loofie.core.job.domain.Job;
 import com.loofie.core.job.domain.JobAction;
 import com.loofie.core.job.domain.JobDeadlines;
@@ -67,6 +68,7 @@ public class JobTransitionService {
     private final JobReadRepository reads;
     private final DeliveryNotices deliveryNotices;
     private final CreatorEligibility eligibility;
+    private final DraftGate drafts;
     private static final org.slf4j.Logger log = org.slf4j.LoggerFactory.getLogger(JobTransitionService.class);
     /** {@code loofie.deadlines.review-working-days}: empty = 120 calendar hours (today); 5 = DECISIONS.md, once signed off. */
     private Integer reviewWorkingDays;
@@ -83,8 +85,9 @@ public class JobTransitionService {
                                 JobEventRecorder recorder, WorkingCalendar calendar, Clock clock, MeterRegistry meters,
                                 CourierRepository couriers, TrackingNumberRepository trackingNumbers,
                                 JobReadRepository reads, DeliveryNotices deliveryNotices,
-                                CreatorEligibility eligibility) {
+                                CreatorEligibility eligibility, DraftGate drafts) {
         this.eligibility = eligibility;
+        this.drafts = drafts;
         this.reads = reads;
         this.deliveryNotices = deliveryNotices;
         this.couriers = couriers;
@@ -219,6 +222,7 @@ public class JobTransitionService {
         JobStatus from = job.getStatus();
 
         checkGuards(job, rule, details, now);
+        Instant draftUploadedAt = checkDraft(job, rule, details);
         if (rule.action() == JobAction.ACCEPT && actor.role() == ActorRole.CREATOR
                 && !eligibility.mayAcceptWork(actor.userId())) {
             throw new TransitionGuardException("Complete your profile (and make sure it is not paused) before "
@@ -252,9 +256,14 @@ public class JobTransitionService {
             job.markFreeRevisionUsed();
         }
         if (rule.action() == JobAction.SUBMIT_DRAFT) {
-            job.recordFirstDraft(now); // before the deadlines are cleared: on time against the deadline as it stood
+            // Before the deadlines are cleared: on time against the deadline as it stood, by the upload time (the
+            // checks and the preview take a little while; that is never the creator's delay).
+            job.recordFirstDraft(draftUploadedAt);
         }
         job.moveTo(rule.to(), now);
+        if (APPROVALS.contains(rule.action())) {
+            drafts.approved(job.getId(), now);
+        }
         if (correction) {
             // A correction changes the record, never the job: state and every clock stay exactly as they were.
         } else if (isExtension(rule.action())) {
@@ -272,6 +281,38 @@ public class JobTransitionService {
                 reasonCode, job.getDeliveryIssueType(), facts, now, correlationId, causationId);
         recordOutcome(job, rule.action(), from, assignment, reasonCode, now, correlationId, eventId);
         return eventId;
+    }
+
+    private static final java.util.Set<JobAction> APPROVALS = java.util.EnumSet.of(JobAction.APPROVE,
+            JobAction.AUTO_APPROVE, JobAction.RESOLVE_APPROVE);
+
+    /**
+     * F7: a video reaches the brand only through the media worker (checks passed, preview made), never by calling the
+     * action directly; and the production deadline waits for a video uploaded in time that is still being checked.
+     *
+     * @return the upload time of the delivered video (SUBMIT_DRAFT / RESUBMIT / PREVIEW_READY), else null
+     */
+    private Instant checkDraft(Job job, TransitionRule rule, TransitionDetails details) {
+        switch (rule.action()) {
+            case SUBMIT_DRAFT, RESUBMIT, PREVIEW_READY -> {
+                if (details.draftId() == null) {
+                    throw new TransitionGuardException("Upload the video in the app: it is checked, then sent to the "
+                            + "brand (POST /api/core/creator/jobs/" + job.getId() + "/drafts)");
+                }
+                return drafts.deliverable(job.getId(), details.draftId()).orElseThrow(() ->
+                        new TransitionGuardException("This video has not passed its checks for this job"));
+            }
+            case PRODUCTION_EXPIRED -> {
+                if (drafts.inFlightSince(job.getId(), job.getProductionDueAt())) {
+                    throw new com.loofie.core.job.domain.JobExceptions.TransitionDeferredException(
+                            "A video uploaded before the deadline is still being checked");
+                }
+                return null;
+            }
+            default -> {
+                return null;
+            }
+        }
     }
 
     /** Actions that end a creator's part early: the outcome says replaced, with the cause's reason code. */

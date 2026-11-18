@@ -145,6 +145,7 @@ class ApiExceptionHandler extends ResponseEntityExceptionHandler {
      * retry, do not pretend it is a bug.
      */
     @ExceptionHandler({CannotCreateTransactionException.class, TransientDataAccessException.class,
+            org.springframework.jdbc.CannotGetJdbcConnectionException.class,
             ServiceBusyException.class})
     ResponseEntity<ProblemDetail> unavailable(Exception e) {
         log.warn("Service temporarily unavailable: {}", e.toString());

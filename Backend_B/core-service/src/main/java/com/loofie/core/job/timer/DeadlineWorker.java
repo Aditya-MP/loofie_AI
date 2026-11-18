@@ -54,6 +54,7 @@ public class DeadlineWorker {
 
     static final String DEADLINE_NOTICE = JobNoticeService.DEADLINE_NOTICE;
     static final Duration FAILURE_BACKOFF = Duration.ofMinutes(5);
+    static final Duration DEFERRED_BACKOFF = Duration.ofMinutes(1);
 
     private static final Logger log = LoggerFactory.getLogger(DeadlineWorker.class);
 
@@ -153,6 +154,12 @@ public class DeadlineWorker {
             // Someone else moved the job first (a user click): nothing to do, it will not be due again.
             log.debug("Timer {} lost a race on job {}", rule.action(), jobId);
             count(rule, "race");
+            return false;
+        } catch (com.loofie.core.job.domain.JobExceptions.TransitionDeferredException e) {
+            // Expected and short (a video uploaded in time is being checked): look again in a minute, no alarm.
+            log.debug("Timer {} waits for job {}: {}", rule.action(), jobId, e.getMessage());
+            backoff.put(jobId, now.plus(DEFERRED_BACKOFF));
+            count(rule, "deferred");
             return false;
         } catch (IllegalTransitionException | TransitionGuardException e) {
             // The deadline says "due" but the rules say no: a data problem. Back off and tell someone.

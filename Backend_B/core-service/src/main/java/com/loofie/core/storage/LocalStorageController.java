@@ -8,7 +8,6 @@ import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PutMapping;
-import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
@@ -31,8 +30,8 @@ class LocalStorageController {
     ResponseEntity<Void> put(HttpServletRequest request, @RequestParam("m") String method,
                              @RequestParam("ct") String contentType, @RequestParam("exp") long exp,
                              @RequestParam("sig") String sig,
-                             @RequestHeader(value = "Content-Type", required = false) String sentType,
-                             @RequestBody(required = false) byte[] body) {
+                             @RequestHeader(value = "Content-Type", required = false) String sentType)
+            throws java.io.IOException {
         LocalObjectStore local = (LocalObjectStore) store;
         String key = key(request);
         if (!"PUT".equals(method) || !local.valid("PUT", key, contentType, exp, sig)) {
@@ -44,11 +43,10 @@ class LocalStorageController {
                 contentType))) {
             return ResponseEntity.status(HttpStatus.FORBIDDEN).build();
         }
-        byte[] bytes = body == null ? new byte[0] : body;
-        if (bytes.length > LocalObjectStore.MAX_BYTES) {
+        // Streamed to disk (an F7 video is up to 500 MB); the size cap stands in for the bucket's own limit.
+        if (!local.write(key, contentType, request.getInputStream(), LocalObjectStore.MAX_BYTES)) {
             return ResponseEntity.status(HttpStatus.CONTENT_TOO_LARGE).build();
         }
-        local.write(key, contentType, bytes);
         return ResponseEntity.ok().build();
     }
 

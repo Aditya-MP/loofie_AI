@@ -23,11 +23,13 @@ import com.loofie.core.job.domain.ReasonCode;
  * @param trackingLink     MARK_SHIPPED / RESHIP with "Other": an https tracking link
  * @param handoverPhotoRef MARK_SHIPPED / RESHIP with local delivery: {@code handovers/<uuid>.<jpg|jpeg|png|heic|webp>}
  * @param evidenceRef      REPORT_DELIVERY_ISSUE after receipt: {@code damage/<uuid>.<jpg|...|mp4|mov>}
+ * @param draftId          SUBMIT_DRAFT / RESUBMIT / PREVIEW_READY: the checked video (set by the F7 media worker only;
+ *                         never from a request, so a draft reaches the brand only after its checks)
  */
 public record TransitionDetails(String courier, String trackingNumber, String photoRef, DeliveryIssueType issueType,
                                 ReasonCode reasonCode, Instant deliveredAt, DeliverySource deliverySource,
                                 Integer shipmentAttempt, String courierCode, String trackingLink,
-                                String handoverPhotoRef, String evidenceRef) {
+                                String handoverPhotoRef, String evidenceRef, java.util.UUID draftId) {
 
     public static final TransitionDetails NONE = new TransitionDetails(null, null, null, null, null);
 
@@ -41,6 +43,21 @@ public record TransitionDetails(String courier, String trackingNumber, String ph
                              Integer shipmentAttempt) {
         this(courier, trackingNumber, photoRef, issueType, reasonCode, deliveredAt, deliverySource, shipmentAttempt,
                 null, null, null, null);
+    }
+
+    /** Everything a request may carry (the HTTP endpoint): never a draft id. */
+    public TransitionDetails(String courier, String trackingNumber, String photoRef, DeliveryIssueType issueType,
+                             ReasonCode reasonCode, Instant deliveredAt, DeliverySource deliverySource,
+                             Integer shipmentAttempt, String courierCode, String trackingLink,
+                             String handoverPhotoRef, String evidenceRef) {
+        this(courier, trackingNumber, photoRef, issueType, reasonCode, deliveredAt, deliverySource, shipmentAttempt,
+                courierCode, trackingLink, handoverPhotoRef, evidenceRef, null);
+    }
+
+    /** F7: the video that passed its checks (media worker only). */
+    public static TransitionDetails draft(java.util.UUID draftId) {
+        return new TransitionDetails(null, null, null, null, null, null, null, null, null, null, null, null,
+                java.util.Objects.requireNonNull(draftId));
     }
 
     /** Shipping with a courier name only (matched against the courier table by name). */

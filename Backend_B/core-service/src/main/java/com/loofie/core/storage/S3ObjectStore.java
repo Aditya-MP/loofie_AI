@@ -71,6 +71,43 @@ final class S3ObjectStore implements ObjectStore {
         }
     }
 
+    /** Long enough for a 500 MB video on a slow link; only the media worker downloads or uploads. */
+    private static final Duration TRANSFER_TIMEOUT = Duration.ofMinutes(10);
+
+    @Override
+    public void download(String key, java.nio.file.Path target) {
+        HttpRequest req = HttpRequest.newBuilder(sign("GET", key, clock.instant(), SERVER_CALL_TTL, null))
+                .GET().timeout(TRANSFER_TIMEOUT).build();
+        HttpResponse<java.nio.file.Path> r;
+        try {
+            r = http.send(req, HttpResponse.BodyHandlers.ofFile(target));
+        } catch (IOException e) {
+            throw new StoreUnavailableException("Storage download failed: " + e, e);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            throw new StoreUnavailableException("Interrupted", e);
+        }
+        if (r.statusCode() / 100 != 2) {
+            throw new StoreUnavailableException("Storage answered " + r.statusCode() + " to GET " + key, null);
+        }
+    }
+
+    @Override
+    public void upload(String key, java.nio.file.Path source, String contentType) {
+        HttpRequest req;
+        try {
+            req = HttpRequest.newBuilder(sign("PUT", key, clock.instant(), SERVER_CALL_TTL, contentType))
+                    .header("Content-Type", contentType).timeout(TRANSFER_TIMEOUT)
+                    .PUT(HttpRequest.BodyPublishers.ofFile(source)).build();
+        } catch (java.io.FileNotFoundException e) {
+            throw new IllegalStateException("No local file to upload: " + source, e);
+        }
+        HttpResponse<Void> r = send(req);
+        if (r.statusCode() / 100 != 2) {
+            throw new StoreUnavailableException("Storage answered " + r.statusCode() + " to PUT " + key, null);
+        }
+    }
+
     URI objectUrl(String key) {
         String path = "/" + key;
         if (props.pathStyle()) {

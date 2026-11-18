@@ -28,17 +28,27 @@ public class Uploads {
 
     /** What an upload is for decides where it goes, which types it may be and how big. */
     public enum Purpose {
-        CREATOR_EVIDENCE("creator-evidence", 5L * 1024 * 1024,
-                Map.of("image/jpeg", "jpg", "image/png", "png", "image/webp", "webp", "image/heic", "heic"));
+        CREATOR_EVIDENCE("creator-evidence", 5L * 1024 * 1024, PHOTOS, true),
+        /** F7: the creator's video (D4: MP4 or MOV, at most 500 MB). */
+        DRAFT_VIDEO("drafts", 500L * 1024 * 1024, Map.of("video/mp4", "mp4", "video/quicktime", "mov"), true),
+        /** F7: the watermarked 720p copy the brand watches; made by the media worker, never uploaded by a person. */
+        DRAFT_PREVIEW("previews", 200L * 1024 * 1024, Map.of("video/mp4", "mp4"), true),
+        // F6 photos (D8). Their keys keep the F6 shape (receipts/<uuid>.jpg): the shipments table checks it.
+        RECEIPT_PHOTO("receipts", 10L * 1024 * 1024, PHOTOS, false),
+        HANDOVER_PHOTO("handovers", 10L * 1024 * 1024, PHOTOS, false),
+        DAMAGE_EVIDENCE("damage", 50L * 1024 * 1024, Map.of("image/jpeg", "jpg", "image/png", "png",
+                "image/webp", "webp", "image/heic", "heic", "video/mp4", "mp4", "video/quicktime", "mov"), false);
 
         final String prefix;
         final long maxBytes;
         final Map<String, String> types;
+        final boolean ownerInKey;
 
-        Purpose(String prefix, long maxBytes, Map<String, String> types) {
+        Purpose(String prefix, long maxBytes, Map<String, String> types, boolean ownerInKey) {
             this.prefix = prefix;
             this.maxBytes = maxBytes;
             this.types = types;
+            this.ownerInKey = ownerInKey;
         }
 
         public long maxBytes() {
@@ -50,7 +60,12 @@ public class Uploads {
         }
     }
 
+    private static final Map<String, String> PHOTOS = Map.of("image/jpeg", "jpg", "image/png", "png",
+            "image/webp", "webp", "image/heic", "heic");
+
     public static final Duration TICKET_TTL = Duration.ofMinutes(5);
+    /** A 500 MB video on a phone connection needs longer than a photo. */
+    public static final Duration VIDEO_TICKET_TTL = Duration.ofMinutes(60);
     public static final Duration VIEW_TTL = Duration.ofMinutes(5);
 
     /** What the browser needs to upload one file. */
@@ -87,8 +102,12 @@ public class Uploads {
             throw new UploadRefusedException("This file type is not accepted. Use " + String.join(", ",
                     purpose.types()));
         }
-        String key = purpose.prefix + "/" + owner + "/" + Ids.newId() + "." + ext;
-        ObjectStore.Ticket t = store.presignPut(key, type, TICKET_TTL); // 503 before anything is recorded
+        if (purpose == Purpose.DRAFT_PREVIEW) {
+            throw new IllegalArgumentException("Previews are made by the media worker");
+        }
+        String key = purpose.prefix + "/" + (purpose.ownerInKey ? owner + "/" : "") + Ids.newId() + "." + ext;
+        Duration ttl = purpose == Purpose.DRAFT_VIDEO ? VIDEO_TICKET_TTL : TICKET_TTL;
+        ObjectStore.Ticket t = store.presignPut(key, type, ttl); // 503 before anything is recorded
         Instant now = clock.instant();
         jdbc.sql("""
                 INSERT INTO uploads (key, owner_id, purpose, content_type, max_bytes, issued_at, expires_at)
@@ -128,9 +147,44 @@ public class Uploads {
                 .param("now", ts(clock.instant())).param("size", size).param("key", key).update() == 1;
     }
 
+    /**
+     * Attaches a key without asking the store (inside a transaction, so no HTTP): issued to this owner for this
+     * purpose, not used and not deleted. The F6 photos (D8); the caller checked the file itself before the transaction
+     * with {@link #verify}.
+     */
+    @Transactional(propagation = Propagation.MANDATORY)
+    public boolean claim(String key, UUID owner, Purpose purpose) {
+        return jdbc.sql("UPDATE uploads SET used_at = :now WHERE key = :key AND owner_id = :owner AND purpose = :purpose "
+                        + "AND used_at IS NULL AND delete_requested_at IS NULL AND deleted_at IS NULL")
+                .param("now", ts(clock.instant())).param("key", key).param("owner", owner)
+                .param("purpose", purpose.name()).update() == 1;
+    }
+
+    /** Records a file the app made itself (a preview), already attached. */
+    @Transactional(propagation = Propagation.MANDATORY)
+    public void registerMade(String key, UUID owner, Purpose purpose, String contentType, long size) {
+        Instant now = clock.instant();
+        jdbc.sql("""
+                INSERT INTO uploads (key, owner_id, purpose, content_type, max_bytes, issued_at, expires_at, used_at,
+                                     size_bytes)
+                VALUES (:key, :owner, :purpose, :type, :max, :now, :now, :now, :size)""")
+                .param("key", key).param("owner", owner).param("purpose", purpose.name()).param("type", contentType)
+                .param("max", purpose.maxBytes).param("now", ts(now)).param("size", size).update();
+    }
+
+    /** A new key for a file the app makes itself. */
+    public static String newKey(Purpose purpose, UUID owner, String ext) {
+        return purpose.prefix + "/" + (purpose.ownerInKey ? owner + "/" : "") + Ids.newId() + "." + ext;
+    }
+
     /** A short-lived URL to look at one file (ops review). */
     public URI viewUrl(String key) {
         return store.presignGet(key, VIEW_TTL);
+    }
+
+    /** A URL to one file that lasts {@code ttl} (a video takes longer to watch than a photo). */
+    public URI viewUrl(String key, Duration ttl) {
+        return store.presignGet(key, ttl);
     }
 
     /** The file is no longer needed: it is removed from storage by the cleanup, never left behind. */
@@ -140,10 +194,15 @@ public class Uploads {
                 .param("now", ts(clock.instant())).param("key", key).update();
     }
 
-    /** Account deletion: every file this person uploaded is queued for removal from storage. */
+    /**
+     * Account deletion: every file this person uploaded is queued for removal from storage, except videos delivered
+     * on a job: those are the brand's licensed work and follow the job's retention (F7 D9), which removes them when
+     * the ad-rights period ends.
+     */
     @Transactional(propagation = Propagation.MANDATORY)
     public int requestDeleteAll(UUID owner) {
         return jdbc.sql("UPDATE uploads SET delete_requested_at = :now WHERE owner_id = :owner "
+                        + "AND NOT (purpose IN ('DRAFT_VIDEO', 'DRAFT_PREVIEW') AND used_at IS NOT NULL) "
                         + "AND delete_requested_at IS NULL AND deleted_at IS NULL")
                 .param("now", ts(clock.instant())).param("owner", owner).update();
     }

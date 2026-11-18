@@ -1,6 +1,6 @@
 # F7 Draft upload and review: plan
 
-Date: 2026-11-18. Status: **plan for approval (steps 1-11). Nothing built.** Scope note: F2 (briefs), F3 (shortlists)
+Date: 2026-11-18. Status: **approved 2026-11-18 (D1-D9) and built**: see [f7-draft-review.md](f7-draft-review.md). Scope note: F2 (briefs), F3 (shortlists)
 and F4 (checkout) are Backend A's (corrected 2026-11-18); F7 is Backend B's.
 
 ## 1. Business purpose

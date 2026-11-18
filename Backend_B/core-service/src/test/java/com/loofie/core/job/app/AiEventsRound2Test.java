@@ -53,11 +53,11 @@ class AiEventsRound2Test {
     void aJobDeliveredOnTimeWithOneRevisionClosesWithThatOutcome() {
         Seeded job = inProduction(Duration.ofHours(10));
         Actor creator = Actor.creator(job.creatorId());
-        engine.transition(job.jobId(), JobAction.SUBMIT_DRAFT, creator, null);
+        engine.transition(com.loofie.core.job.app.TransitionCommand.of(job.jobId(), JobAction.SUBMIT_DRAFT, creator, null).with(fixtures.checkedDraft(job.jobId())));
         review(job);
         engine.transition(job.jobId(), JobAction.REQUEST_REVISION, brand(job), null);
         clock.advance(Duration.ofDays(3)); // the resubmission is after the deadline: only the first draft counts
-        engine.transition(job.jobId(), JobAction.RESUBMIT, creator, null);
+        engine.transition(com.loofie.core.job.app.TransitionCommand.of(job.jobId(), JobAction.RESUBMIT, creator, null).with(fixtures.checkedDraft(job.jobId())));
         review(job);
         approveAndPay(job);
 
@@ -74,7 +74,7 @@ class AiEventsRound2Test {
     void aFirstDraftAfterTheDeadlineIsLateButTheExtensionMovesTheDeadline() {
         Seeded late = inProduction(Duration.ofHours(1));
         clock.advance(Duration.ofHours(2));
-        engine.transition(late.jobId(), JobAction.SUBMIT_DRAFT, Actor.creator(late.creatorId()), null);
+        engine.transition(com.loofie.core.job.app.TransitionCommand.of(late.jobId(), JobAction.SUBMIT_DRAFT, Actor.creator(late.creatorId()), null).with(fixtures.checkedDraft(late.jobId())));
         review(late);
         approveAndPay(late);
         assertThat(outcome(late).get("onTime").asBoolean()).isFalse();
@@ -82,7 +82,7 @@ class AiEventsRound2Test {
         Seeded extended = inProduction(Duration.ofHours(1));
         engine.transition(extended.jobId(), JobAction.REQUEST_EXTENSION, Actor.creator(extended.creatorId()), null);
         clock.advance(Duration.ofHours(2)); // past the original deadline, inside the extended one
-        engine.transition(extended.jobId(), JobAction.SUBMIT_DRAFT, Actor.creator(extended.creatorId()), null);
+        engine.transition(com.loofie.core.job.app.TransitionCommand.of(extended.jobId(), JobAction.SUBMIT_DRAFT, Actor.creator(extended.creatorId()), null).with(fixtures.checkedDraft(extended.jobId())));
         review(extended);
         approveAndPay(extended);
         assertThat(outcome(extended).get("onTime").asBoolean()).isTrue();
@@ -245,7 +245,7 @@ class AiEventsRound2Test {
     }
 
     private void review(Seeded job) {
-        engine.transition(job.jobId(), JobAction.PREVIEW_READY, Actor.system(), null);
+        engine.transition(com.loofie.core.job.app.TransitionCommand.of(job.jobId(), JobAction.PREVIEW_READY, Actor.system(), null).with(fixtures.checkedDraft(job.jobId())));
     }
 
     private void approveAndPay(Seeded job) {

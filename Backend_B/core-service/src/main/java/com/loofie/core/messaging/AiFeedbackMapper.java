@@ -26,6 +26,7 @@ public class AiFeedbackMapper {
     static final String STATE_CHANGED = "JobStateChanged";
     static final String DEADLINE_NOTICE = "JobDeadlineNotice";
     static final String OUTCOME = "JobOutcome";
+    static final String RATING = "JobRating";
 
     private final JsonMapper json;
 
@@ -45,6 +46,8 @@ public class AiFeedbackMapper {
                     stateChanged(p)));
             case DEADLINE_NOTICE -> Optional.of(request(envelope, "job_timer_fired", "system", timerFired(p)));
             case OUTCOME -> Optional.of(request(envelope, "job_outcome", "system", outcome(p)));
+            // F7 D7: Backend A's "rating" (their contract example 21). Stars only; the comment stays in core.
+            case RATING -> Optional.of(request(envelope, "rating", "brand", rating(p)));
             default -> Optional.empty();
         };
     }
@@ -75,6 +78,12 @@ public class AiFeedbackMapper {
         putIfPresent(out, "replaced", p.get("replaced"));
         putIfPresent(out, "reasonCode", p.get("reasonCode"));
         putIfPresent(out, "faultParty", p.get("faultParty"));
+        return out;
+    }
+
+    private static Map<String, Object> rating(JsonNode p) {
+        Map<String, Object> out = common(p);
+        putIfPresent(out, "stars", p.get("stars"));
         return out;
     }
 

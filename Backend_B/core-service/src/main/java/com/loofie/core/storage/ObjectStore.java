@@ -24,6 +24,16 @@ public interface ObjectStore {
     /** Size and type of a stored object, or empty if nothing was uploaded under this key. */
     Optional<ObjectInfo> stat(String key);
 
+    /**
+     * Server side only (the F7 media worker): copies one stored file to a local path. Never on a request thread.
+     *
+     * @throws StoreUnavailableException when the store cannot be reached or the file is missing
+     */
+    void download(String key, java.nio.file.Path target);
+
+    /** Server side only (the F7 media worker): stores a local file under {@code key}. */
+    void upload(String key, java.nio.file.Path source, String contentType);
+
     /** Removes the object; removing a missing object is not an error. */
     void delete(String key);
 
