@@ -380,3 +380,29 @@ so their cause is **not identified**; the two suspects tested (the new scheduled
 not reproduce them.
 If a stall shows up again, `creator-investigate.sh` (scratchpad runner: thread dumps, pg snapshots, CPU per phase)
 captures it. **End-to-end: 64 of 64** (a completed manual profile is pending and not offered to brands).
+
+## 17. Code review of round C (2026-11-18, `75debd0..0ea84ab`)
+
+A review pass over round C and the profile review found 10 issues; all checked against the code and real. Fixed with a
+test each (`CreatorPassportTest`, `AccountDeletionTest`), except 4.
+
+| # | Finding | Fix |
+|---|---|---|
+| 1 | A deleted creator's PENDING profile stayed in the ops review queue and the 24 / 48 h alerts | Deletion resets the review (`NONE`) and its alert marks |
+| 2 | An approval given by Instagram alone outlived the connection (disconnected / expired / revoked): bookable on no numbers | An approval records who gave it (`reviewedBy`; null = Instagram). When Instagram stops verifying: back to PENDING if she has her own numbers + an Insights screenshot, else CHANGES_REQUESTED ("reconnect or add numbers"); reconnecting approves again |
+| 3 | Connecting Instagram overrode ops' "ask for changes" | Instagram approves only profiles nobody at Loofie has reviewed; after an ops decision, ops decides |
+| 4 | Account deletion does not remove the manual profile sent to Backend A | **Open: needs Backend A's delete endpoint** (asked). Comment corrected: a 4xx answer is parked, not retried forever |
+| 5 | While syncing (no handle yet) every 2 s poll queued a profile push | A missing handle is not a change |
+| 6 | Backend A answering 404 left a stale ACTIVE status trusted forever | 404 clears the connection and re-checks the review |
+| 7 | Ops rejecting her only Insights screenshot left the profile approved and bookable | The profile goes back to her (CHANGES_REQUESTED, the reason in the note, not bookable) |
+| 8 | Disconnecting before ever opening the profile answered 500 | The profile row is created first |
+| 9 | The ops creator view held a database connection during the Backend A call (up to ~7 s) | The view is built with no transaction open; the audit row is written in its own short one |
+| 10 | Both ops queues ran one query per row (up to 201 per page) | One query each (join / sub-count) |
+
+Also: `ERROR` (Backend A's fetch failed and is retried) keeps counting as Instagram-verified, so a Meta hiccup does
+not flip approvals; the profile page waits at most **1.5 s** for Backend A's verified numbers, then shows "updating"
+(weak spot 9 from the status check). **A bug the new tests found:** a complete Instagram-verified creator could not
+save her form without retyping her (read-only) handle; the required-field check now runs on the merged profile.
+
+**Proof:** 331 tests, 0 failures, 2 skipped (+7); instrumented load run on fresh data clean (passport read p95 2 ms at
+300 rps; Instagram poll +5 ms at 100 rps; no CPU starvation); end-to-end 64 of 64.

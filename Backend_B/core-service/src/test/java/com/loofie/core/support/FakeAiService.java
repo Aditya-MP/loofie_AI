@@ -76,9 +76,14 @@ public class FakeAiService {
 
     /** What {@code GET /ai/instagram/accounts/{ref}} answers for this ref (Backend A's JSON); unset = 404. */
     public void connection(String ref, String status, String handle, boolean insightsAllowed) {
-        connections.put(ref, "{\"account_ref\":\"" + ref + "\",\"handle\":\"" + handle + "\",\"status\":\"" + status
+        connections.put(ref, "{\"account_ref\":\"" + ref + "\",\"handle\":" + (handle == null ? "null" : "\"" + handle + "\"") + ",\"status\":\"" + status
                 + "\",\"insights_allowed\":" + insightsAllowed + ",\"token_expires_at\":\"2027-01-13T10:00:00Z\","
                 + "\"last_synced_at\":\"2026-11-16T04:30:05Z\",\"last_error\":null}");
+    }
+
+    /** Backend A forgets the connection (deleted after a revoke): {@code GET /ai/instagram/accounts/{ref}} answers 404. */
+    public void forgetConnection(String ref) {
+        connections.remove(ref);
     }
 
     /** What {@code GET /ai/creators/{handle}} answers: verified followers and median views. */

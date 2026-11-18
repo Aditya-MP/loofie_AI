@@ -14,7 +14,7 @@ public record CreatorProfile(UUID creatorId, String displayName, String city, St
                              String instagramHandle, InstagramStatus instagramStatus, Boolean instagramInsightsAllowed,
                              Instant instagramCheckedAt, Level level, String levelReason,
                              MarketplaceStatus marketplaceStatus, String marketplaceReason, Instant completedAt,
-                             ReviewStatus reviewStatus, String reviewNote, Instant reviewRequestedAt,
+                             ReviewStatus reviewStatus, String reviewNote, UUID reviewedBy, Instant reviewRequestedAt,
                              Instant createdAt, Instant updatedAt, long version) {
 
     public enum Format { REEL, STATIC, STORY, CAROUSEL }
@@ -54,7 +54,7 @@ public record CreatorProfile(UUID creatorId, String displayName, String city, St
     public static CreatorProfile empty(UUID creatorId, Instant now) {
         return new CreatorProfile(creatorId, null, null, null, List.of(), List.of(), List.of(), null, null, null, null,
                 List.of(), null, InstagramStatus.NOT_CONNECTED, null, null, Level.NEW, null,
-                MarketplaceStatus.LISTED, null, null, ReviewStatus.NONE, null, null, now, now, 0);
+                MarketplaceStatus.LISTED, null, null, ReviewStatus.NONE, null, null, null, now, now, 0);
     }
 
     /** Ops (or Instagram verification) approved the profile: she may be offered to brands. */
@@ -68,7 +68,8 @@ public record CreatorProfile(UUID creatorId, String displayName, String city, St
 
     /** Instagram numbers are verified by Backend A right now (not just "was once connected"). */
     public boolean instagramVerified() {
-        return instagramStatus == InstagramStatus.ACTIVE;
+        // ERROR = Backend A's last fetch failed and is retried; the numbers it holds are still verified ones.
+        return instagramStatus == InstagramStatus.ACTIVE || instagramStatus == InstagramStatus.ERROR;
     }
 
     public CreatorProfile withForm(CreatorForm f, Instant now) {
@@ -76,6 +77,7 @@ public record CreatorProfile(UUID creatorId, String displayName, String city, St
                 f.formats(), f.ratePerReelRupees(), f.partnershipAds(), f.turnaroundDays(), f.bio(), f.sampleLinks(),
                 instagramVerified() ? instagramHandle : f.instagramHandle(), instagramStatus,
                 instagramInsightsAllowed, instagramCheckedAt, level, levelReason, marketplaceStatus,
-                marketplaceReason, completedAt, reviewStatus, reviewNote, reviewRequestedAt, createdAt, now, version);
+                marketplaceReason, completedAt, reviewStatus, reviewNote, reviewedBy, reviewRequestedAt, createdAt, now,
+                version);
     }
 }

@@ -31,7 +31,7 @@ public class CreatorProfileRepository {
             user_id, display_name, city, state, languages, categories, formats, rate_per_reel_rupees, partnership_ads,
             turnaround_days, bio, sample_links, instagram_handle, instagram_status, instagram_insights_allowed,
             instagram_checked_at, level, level_reason, marketplace_status, marketplace_reason, completed_at,
-            review_status, review_note, review_requested_at,
+            review_status, review_note, reviewed_by, review_requested_at,
             created_at, updated_at, version""";
 
     private final JdbcClient jdbc;
@@ -139,7 +139,8 @@ public class CreatorProfileRepository {
                 UPDATE creator_profiles SET display_name = NULL, city = NULL, state = NULL, bio = NULL,
                     sample_links = '{}', instagram_handle = NULL, instagram_status = 'NOT_CONNECTED',
                     instagram_insights_allowed = NULL, instagram_checked_at = NULL, marketplace_status = 'HIDDEN',
-                    marketplace_reason = NULL, updated_at = :now, version = version + 1
+                    marketplace_reason = NULL, review_status = 'NONE', review_note = NULL, review_alerted_at = NULL,
+                    review_escalated_at = NULL, updated_at = :now, version = version + 1
                 WHERE user_id = :id""").param("id", creatorId).param("now", ts(now)).update();
         jdbc.sql("DELETE FROM creator_metrics WHERE creator_id = :id").param("id", creatorId).update();
     }
@@ -161,6 +162,27 @@ public class CreatorProfileRepository {
                 WHERE user_id = :id""")
                 .param("id", creatorId).param("status", status.name()).param("note", note).param("by", by)
                 .param("pending", pending).param("now", ts(now)).update();
+    }
+
+    /** One row of the ops review queue, with the live Insights screenshot count in the same query. */
+    public record ReviewRow(UUID creatorId, String displayName, String instagramHandle, Instant requestedAt,
+                            long screenshots) {
+    }
+
+    /** Profiles waiting for ops, oldest first, in one query (no count per row). */
+    public List<ReviewRow> pendingReviewRows(Instant after, int limit) {
+        return jdbc.sql("""
+                SELECT p.user_id, p.display_name, p.instagram_handle, p.review_requested_at,
+                       (SELECT count(*) FROM creator_evidence e WHERE e.creator_id = p.user_id AND e.kind = 'INSIGHTS'
+                          AND e.status IN ('PENDING', 'ACCEPTED')) AS screenshots
+                FROM creator_profiles p
+                WHERE p.review_status = 'PENDING' AND p.review_requested_at > :after
+                ORDER BY p.review_requested_at LIMIT :limit""")
+                .param("after", ts(after)).param("limit", limit)
+                .query((rs, n) -> new ReviewRow(rs.getObject("user_id", UUID.class), rs.getString("display_name"),
+                        rs.getString("instagram_handle"), instant(rs.getTimestamp("review_requested_at")),
+                        rs.getLong("screenshots")))
+                .list();
     }
 
     /** Profiles waiting for ops, oldest first. */
@@ -204,6 +226,7 @@ public class CreatorProfileRepository {
                 MarketplaceStatus.valueOf(rs.getString("marketplace_status")), rs.getString("marketplace_reason"),
                 instant(rs.getTimestamp("completed_at")),
                 CreatorProfile.ReviewStatus.valueOf(rs.getString("review_status")), rs.getString("review_note"),
+                rs.getObject("reviewed_by", UUID.class),
                 instant(rs.getTimestamp("review_requested_at")), instant(rs.getTimestamp("created_at")),
                 instant(rs.getTimestamp("updated_at")), rs.getLong("version"));
     }

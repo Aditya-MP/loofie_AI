@@ -33,6 +33,8 @@ public class BackendAInstagramClient implements InstagramGateway {
     private static final String DOWN = "Instagram connect is not available right now. Try again in a minute, or "
             + "fill in your numbers by hand.";
 
+    static final Duration VERIFIED_TIMEOUT = Duration.ofMillis(1500);
+
     private final AiFeedbackProperties props;
     private final JsonMapper json;
     private final Clock clock;
@@ -77,7 +79,8 @@ public class BackendAInstagramClient implements InstagramGateway {
 
     @Override
     public Optional<Verified> verifiedNumbers(String handle) {
-        HttpResponse<String> r = get("/ai/creators/" + enc(handle));
+        // The profile page waits on this: a slow Backend A shows "updating" after 1.5 s instead of holding the page.
+        HttpResponse<String> r = send(base("/ai/creators/" + enc(handle)).timeout(VERIFIED_TIMEOUT).GET().build());
         if (r.statusCode() == 404) {
             return Optional.empty();
         }

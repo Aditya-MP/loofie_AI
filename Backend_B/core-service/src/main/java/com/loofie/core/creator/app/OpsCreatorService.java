@@ -53,10 +53,13 @@ public class OpsCreatorService {
     private final AuditLog audit;
     private final Clock clock;
     private final com.loofie.core.notification.app.NotificationService notifications;
+    private final org.springframework.transaction.support.TransactionTemplate tx;
 
     public OpsCreatorService(CreatorProfileRepository profiles, EvidenceRepository evidence,
                              CreatorProfileService profileService, Uploads uploads, AuditLog audit, Clock clock,
-                             com.loofie.core.notification.app.NotificationService notifications) {
+                             com.loofie.core.notification.app.NotificationService notifications,
+                             org.springframework.transaction.support.TransactionTemplate tx) {
+        this.tx = tx;
         this.notifications = notifications;
         this.profiles = profiles;
         this.evidence = evidence;
@@ -66,11 +69,14 @@ public class OpsCreatorService {
         this.clock = clock;
     }
 
-    @Transactional
+    /**
+     * The full passport for ops. The view may ask Backend A for verified numbers (HTTP), so it is built with no
+     * database transaction open; the audit row is written in its own short transaction.
+     */
     public CreatorProfileService.ProfileView view(Actor actor, UUID creatorId) {
         requireOps(actor);
         CreatorProfileService.ProfileView v = profileService.view(require(creatorId).creatorId(), true);
-        audit.record(actor, AuditLog.CREATOR_VIEWED, creatorId, null, Map.of());
+        tx.executeWithoutResult(s -> audit.record(actor, AuditLog.CREATOR_VIEWED, creatorId, null, Map.of()));
         return v;
     }
 
@@ -81,10 +87,9 @@ public class OpsCreatorService {
             throw new InvalidRequestException("limit must be 1 to 200");
         }
         Instant now = clock.instant();
-        return profiles.pendingReview(after == null ? Instant.EPOCH : after, limit).stream()
-                .map(p -> new ReviewItem(p.creatorId(), p.displayName(), p.instagramHandle(), p.reviewRequestedAt(),
-                        java.time.Duration.between(p.reviewRequestedAt(), now).toHours(),
-                        evidence.live(p.creatorId(), Evidence.Kind.INSIGHTS)))
+        return profiles.pendingReviewRows(after == null ? Instant.EPOCH : after, limit).stream()
+                .map(r -> new ReviewItem(r.creatorId(), r.displayName(), r.instagramHandle(), r.requestedAt(),
+                        java.time.Duration.between(r.requestedAt(), now).toHours(), r.screenshots()))
                 .toList();
     }
 
@@ -134,11 +139,10 @@ public class OpsCreatorService {
         if (limit < 1 || limit > 200) {
             throw new InvalidRequestException("limit must be 1 to 200");
         }
-        return evidence.pending(after == null ? Instant.EPOCH : after, limit).stream().map(e -> {
-            CreatorProfile p = profiles.find(e.creatorId()).orElseThrow();
-            return new QueueItem(e.id(), e.creatorId(), p.displayName(), p.instagramHandle(), e.kind(),
-                    e.createdAt());
-        }).toList();
+        return evidence.pendingQueue(after == null ? Instant.EPOCH : after, limit).stream()
+                .map(r -> new QueueItem(r.evidenceId(), r.creatorId(), r.displayName(), r.instagramHandle(), r.kind(),
+                        r.uploadedAt()))
+                .toList();
     }
 
     /** A 5-minute link to look at one screenshot; the look is audited. */
@@ -163,15 +167,34 @@ public class OpsCreatorService {
         if (n != null && n.length() > 300) {
             throw new InvalidRequestException("Note: at most 300 characters");
         }
+        UUID creatorId = evidence.find(evidenceId).map(Evidence::creatorId).orElseThrow(
+                () -> new EvidenceNotFoundException("No such screenshot"));
+        // Same lock order as the creator's own changes (profile, then screenshot): no deadlock between the two.
+        CreatorProfile p = lock(creatorId);
         Evidence e = evidence.findForUpdate(evidenceId).orElseThrow(() -> new EvidenceNotFoundException(
                 "No such screenshot"));
         if (e.status() != Evidence.Status.PENDING) {
             throw new InvalidRequestException("This screenshot was already " + e.status().name().toLowerCase());
         }
+        Instant now = clock.instant();
         evidence.review(evidenceId, accept ? Evidence.Status.ACCEPTED : Evidence.Status.REJECTED, n, actor.userId(),
-                clock.instant());
+                now);
         audit.record(actor, accept ? AuditLog.EVIDENCE_ACCEPTED : AuditLog.EVIDENCE_REJECTED, e.creatorId(), n,
                 Map.of("evidenceId", evidenceId.toString(), "kind", e.kind().name()));
+        // Rejecting the last Insights screenshot of a complete manual profile leaves her numbers on nothing: the
+        // profile goes back to her (not bookable) with the reason, as removing it herself is refused.
+        boolean noProofLeft = !accept && e.kind() == Evidence.Kind.INSIGHTS && p.completed()
+                && !p.instagramVerified() && evidence.live(creatorId, Evidence.Kind.INSIGHTS) == 0;
+        if (noProofLeft && (p.reviewStatus() == CreatorProfile.ReviewStatus.APPROVED
+                || p.reviewStatus() == CreatorProfile.ReviewStatus.PENDING)) {
+            String why = ("Your Insights screenshot was rejected: " + n);
+            why = why.length() > 300 ? why.substring(0, 300) : why;
+            profiles.setReview(creatorId, CreatorProfile.ReviewStatus.CHANGES_REQUESTED, why, actor.userId(), now);
+            audit.record(actor, AuditLog.PROFILE_CHANGES_REQUESTED, creatorId, why, Map.of("cause",
+                    "LAST_SCREENSHOT_REJECTED"));
+            notifications.toCreator(creatorId, CreatorProfileService.NOTICE_CHANGES_REQUESTED, null,
+                    Map.of("note", why), now);
+        }
     }
 
     /** Ops confirms a number from a screenshot (or corrects it): stored as OPS_CHECKED next to what she typed. */

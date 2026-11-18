@@ -65,6 +65,25 @@ public class EvidenceRepository {
                 .param("after", ts(after)).param("limit", limit).query(EvidenceRepository::map).list();
     }
 
+    /** One row of the ops screenshot queue, with the creator's name and handle in the same query. */
+    public record QueueRow(UUID evidenceId, UUID creatorId, String displayName, String instagramHandle,
+                           Evidence.Kind kind, Instant uploadedAt) {
+    }
+
+    /** The ops verification queue in one query (no lookup per row): oldest pending first. */
+    public List<QueueRow> pendingQueue(Instant after, int limit) {
+        return jdbc.sql("""
+                SELECT e.id, e.creator_id, p.display_name, p.instagram_handle, e.kind, e.created_at
+                FROM creator_evidence e JOIN creator_profiles p ON p.user_id = e.creator_id
+                WHERE e.status = 'PENDING' AND e.created_at > :after
+                ORDER BY e.created_at LIMIT :limit""")
+                .param("after", ts(after)).param("limit", limit)
+                .query((rs, n) -> new QueueRow(rs.getObject("id", UUID.class), rs.getObject("creator_id", UUID.class),
+                        rs.getString("display_name"), rs.getString("instagram_handle"),
+                        Evidence.Kind.valueOf(rs.getString("kind")), instant(rs.getTimestamp("created_at"))))
+                .list();
+    }
+
     public void review(UUID id, Evidence.Status status, String note, UUID by, Instant now) {
         jdbc.sql("UPDATE creator_evidence SET status = :status, review_note = :note, reviewed_by = :by, "
                         + "reviewed_at = :now WHERE id = :id")

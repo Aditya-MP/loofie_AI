@@ -138,11 +138,15 @@ public class CreatorProfileService {
         tx.executeWithoutResult(status -> {
             CreatorProfile current = profiles.findForUpdate(me).orElseThrow();
             Instant now = clock.instant();
-            if (current.completed() && !form.missingFields().isEmpty()) {
+            // Checked on the merged profile: an Instagram-verified handle is kept even when the form leaves it out
+            // (the app shows it read-only), so it is never "missing".
+            CreatorProfile merged = current.withForm(form, now);
+            List<String> gaps = formGaps(merged);
+            if (current.completed() && !gaps.isEmpty()) {
                 throw new InvalidRequestException("These are required once your profile is complete: "
-                        + String.join(", ", form.missingFields()));
+                        + String.join(", ", gaps));
             }
-            profiles.saveForm(current.withForm(form, now));
+            profiles.saveForm(merged);
             LocalDate today = LocalDate.ofInstant(now, INDIA);
             if (form.followers() != null) {
                 profiles.upsertMetric(me, new MetricValue(Metric.FOLLOWERS, form.followers(), Source.SELF_REPORTED,
@@ -184,10 +188,19 @@ public class CreatorProfileService {
     }
 
     /**
-     * As {@link #settle(UUID, Actor, boolean)}, plus the profile review (agreed 2026-11-18): a newly complete profile
-     * is APPROVED at once when Instagram verifies her numbers, otherwise PENDING for ops (24-48 h); Instagram verified
-     * later approves a waiting profile; and when ops asked for changes, {@code resubmit} (she saved the form or added a
-     * screenshot) puts it back in the queue.
+     * As {@link #settle(UUID, Actor, boolean)}, plus the profile review (agreed 2026-11-18). An approval is either
+     * Loofie's (ops, {@code reviewedBy} set) or Instagram's ({@code reviewedBy} null: it stands only while Instagram
+     * still verifies her). In order:
+     * <ol>
+     *   <li>Instagram verifies her and nobody at Loofie has reviewed her yet (new, or waiting untouched, or held only by
+     *       the system's own "reconnect" request): APPROVED by Instagram.</li>
+     *   <li>Newly complete without Instagram: PENDING for ops (24-48 h).</li>
+     *   <li>An Instagram-only approval whose Instagram is gone (disconnected, expired, revoked, unknown to Backend A):
+     *       back to PENDING if she has her own numbers and an Insights screenshot, else CHANGES_REQUESTED ("reconnect
+     *       or add numbers"). Never left bookable on nothing.</li>
+     *   <li>Ops asked for changes and she saved the form or added a screenshot ({@code resubmit}): PENDING again, and
+     *       ops decides (Instagram does not overrule an ops request).</li>
+     * </ol>
      */
     @Transactional(propagation = Propagation.MANDATORY)
     public void settle(UUID creatorId, Actor actor, boolean changed, boolean resubmit) {
@@ -203,7 +216,11 @@ public class CreatorProfileService {
             newlyCompleted = true;
         }
         if (p.completed()) {
-            if (p.instagramVerified() && !p.approved()) {
+            boolean untouchedByOps = p.reviewedBy() == null;
+            boolean instagramMayApprove = newlyCompleted
+                    || (untouchedByOps && (p.reviewStatus() == ReviewStatus.PENDING
+                    || p.reviewStatus() == ReviewStatus.CHANGES_REQUESTED));
+            if (p.instagramVerified() && !p.approved() && instagramMayApprove) {
                 profiles.setReview(creatorId, ReviewStatus.APPROVED, null, null, now);
                 audit.record(actor, AuditLog.PROFILE_APPROVED, creatorId, null, Map.of("by", "INSTAGRAM"));
                 if (!newlyCompleted) {
@@ -211,6 +228,18 @@ public class CreatorProfileService {
                 }
             } else if (newlyCompleted && !p.instagramVerified()) {
                 profiles.setReview(creatorId, ReviewStatus.PENDING, null, null, now);
+            } else if (p.approved() && untouchedByOps && !p.instagramVerified()) {
+                if (hasOwnProof(creatorId)) {
+                    profiles.setReview(creatorId, ReviewStatus.PENDING, null, null, now);
+                    audit.record(actor, AuditLog.PROFILE_REVIEW_REOPENED, creatorId, "Instagram no longer verifies",
+                            Map.of("now", "PENDING"));
+                } else {
+                    profiles.setReview(creatorId, ReviewStatus.CHANGES_REQUESTED, INSTAGRAM_GONE_NOTE, null, now);
+                    audit.record(actor, AuditLog.PROFILE_REVIEW_REOPENED, creatorId, "Instagram no longer verifies",
+                            Map.of("now", "CHANGES_REQUESTED"));
+                    notifications.toCreator(creatorId, NOTICE_CHANGES_REQUESTED, null,
+                            Map.of("note", INSTAGRAM_GONE_NOTE), now);
+                }
             } else if (resubmit && p.reviewStatus() == ReviewStatus.CHANGES_REQUESTED) {
                 profiles.setReview(creatorId, ReviewStatus.PENDING, null, null, now);
                 audit.record(actor, AuditLog.PROFILE_RESUBMITTED, creatorId, null, Map.of());
@@ -220,6 +249,17 @@ public class CreatorProfileService {
         if (p.completed() && (newlyCompleted || changed)) {
             pushToBackendA(p, now);
         }
+    }
+
+    static final String INSTAGRAM_GONE_NOTE = "Instagram is no longer connected. Reconnect Instagram, or add your "
+            + "followers, average views and an Insights screenshot";
+
+    /** Her own numbers (followers + average views) and at least one live Insights screenshot. */
+    boolean hasOwnProof(UUID creatorId) {
+        List<MetricValue> numbers = profiles.metrics(creatorId);
+        return numbers.stream().anyMatch(n -> n.metric() == Metric.FOLLOWERS)
+                && numbers.stream().anyMatch(n -> n.metric() == Metric.AVG_VIEWS_10)
+                && evidence.live(creatorId, Evidence.Kind.INSIGHTS) > 0;
     }
 
     /** In-app notices to the creator about her profile review. */
@@ -238,12 +278,16 @@ public class CreatorProfileService {
         };
     }
 
+    /** Required form fields still empty on this profile, in form order (numbers are checked in {@link #missing}). */
+    static List<String> formGaps(CreatorProfile p) {
+        return new CreatorForm(p.displayName(), p.city(), p.state(), p.languages(), p.categories(), p.formats(),
+                p.ratePerReelRupees(), p.partnershipAds(), p.turnaroundDays(), p.bio(), p.sampleLinks(),
+                p.instagramHandle(), null, null).missingFields();
+    }
+
     /** What is still needed, in form order. Empty = complete. */
     public List<String> missing(CreatorProfile p) {
-        CreatorForm asForm = new CreatorForm(p.displayName(), p.city(), p.state(), p.languages(), p.categories(),
-                p.formats(), p.ratePerReelRupees(), p.partnershipAds(), p.turnaroundDays(), p.bio(), p.sampleLinks(),
-                p.instagramHandle(), null, null);
-        List<String> m = new ArrayList<>(asForm.missingFields());
+        List<String> m = new ArrayList<>(formGaps(p));
         if (!p.instagramVerified()) {
             List<MetricValue> numbers = profiles.metrics(p.creatorId());
             if (numbers.stream().noneMatch(n -> n.metric() == Metric.FOLLOWERS)) {

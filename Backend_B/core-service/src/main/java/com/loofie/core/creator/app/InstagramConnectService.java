@@ -86,9 +86,15 @@ public class InstagramConnectService {
             CreatorProfile before = profiles.findForUpdate(me).orElseThrow();
             Instant now = clock.instant();
             if (c.isEmpty()) {
-                return new Status(before.instagramStatus(), before.instagramStatus() == InstagramStatus.NOT_CONNECTED
-                        ? null : before.instagramHandle(), before.instagramInsightsAllowed(), before.completed(),
-                        message(before.instagramStatus(), null));
+                // Backend A has no connection for her (never connected, or it forgot one): whatever we stored is no
+                // longer verified. Clear it, so nothing keeps trusting a connection that is gone.
+                if (before.instagramStatus() != InstagramStatus.NOT_CONNECTED) {
+                    profiles.setInstagram(me, InstagramStatus.NOT_CONNECTED, null, null, now);
+                    profileService.settle(me, actor, true);
+                }
+                CreatorProfile after = profiles.find(me).orElseThrow();
+                return new Status(InstagramStatus.NOT_CONNECTED, null, null, after.completed(),
+                        message(InstagramStatus.NOT_CONNECTED, null));
             }
             InstagramStatus st = Optional.ofNullable(InstagramStatus.fromBackendA(c.get().status()))
                     .orElse(InstagramStatus.SYNCING); // "connected" and anything new: still being fetched
@@ -97,8 +103,9 @@ public class InstagramConnectService {
                 audit.record(actor, AuditLog.INSTAGRAM_CONNECTED, me, null, Map.of("handle",
                         String.valueOf(c.get().handle())));
             }
+            // A handle Backend A has not sent yet (null while syncing) is not a change: the stored one is kept.
             boolean changed = st != before.instagramStatus()
-                    || !java.util.Objects.equals(c.get().handle(), before.instagramHandle())
+                    || (c.get().handle() != null && !c.get().handle().equals(before.instagramHandle()))
                     || !java.util.Objects.equals(c.get().insightsAllowed(), before.instagramInsightsAllowed());
             profileService.settle(me, actor, changed);
             CreatorProfile after = profiles.find(me).orElseThrow();
@@ -111,10 +118,12 @@ public class InstagramConnectService {
     public Status disconnect(Actor actor) {
         UUID me = CreatorProfileService.requireCreator(actor);
         gateway.disconnect(me.toString());
+        profiles.insertIfAbsent(me, clock.instant());
         return tx.execute(s -> {
             CreatorProfile p = profiles.findForUpdate(me).orElseThrow();
             profiles.setInstagram(me, InstagramStatus.NOT_CONNECTED, null, null, clock.instant());
             audit.record(actor, AuditLog.INSTAGRAM_DISCONNECTED, me, null, Map.of());
+            profileService.settle(me, actor, true); // an Instagram-only approval does not outlive the connection
             return new Status(InstagramStatus.NOT_CONNECTED, p.instagramHandle(), null, p.completed(),
                     "Instagram disconnected. Your numbers now show as self-reported until you reconnect.");
         });

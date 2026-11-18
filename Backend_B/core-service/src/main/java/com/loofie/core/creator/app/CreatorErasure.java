@@ -22,8 +22,10 @@ import com.loofie.core.messaging.Outbox;
  * Account deletion, creator side: the passport's personal fields and numbers go, screenshots are taken down (the
  * files themselves by the upload cleanup), and Backend A is asked to delete everything it fetched from Instagram
  * ({@code DELETE /ai/instagram/accounts/{ref}?delete_data=true}, through the outbox: retried until done, so a Backend
- * A outage never blocks a deletion). Sent for every creator, connected or not: Backend A answers 404 when it has
- * nothing, which counts as done.
+ * A outage never blocks a deletion; a 4xx answer is parked for ops like any rejected row). Sent for every creator,
+ * connected or not: Backend A answers 404 when it has
+ * nothing, which counts as done. Known gap: the manual profile sent with POST /ai/creators/profile is not deleted,
+ * because Backend A has no endpoint for it yet (asked).
  */
 @Component
 class CreatorErasure implements PersonalDataHolder {

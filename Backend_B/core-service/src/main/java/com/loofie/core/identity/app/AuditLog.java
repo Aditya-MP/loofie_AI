@@ -62,6 +62,7 @@ public class AuditLog {
     public static final String PROFILE_APPROVED = "CREATOR_PROFILE_APPROVED";
     public static final String PROFILE_CHANGES_REQUESTED = "CREATOR_PROFILE_CHANGES_REQUESTED";
     public static final String PROFILE_RESUBMITTED = "CREATOR_PROFILE_RESUBMITTED";
+    public static final String PROFILE_REVIEW_REOPENED = "CREATOR_PROFILE_REVIEW_REOPENED";
     // Round C part 2: account deletion
     public static final String ACCOUNT_DELETED = "ACCOUNT_DELETED";
     public static final String ACCOUNT_DELETED_BY_OPS = "ACCOUNT_DELETED_BY_OPS";

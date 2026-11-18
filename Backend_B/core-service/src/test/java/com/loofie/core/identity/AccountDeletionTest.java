@@ -119,6 +119,9 @@ class AccountDeletionTest {
         assertThat(p.get("instagram_handle")).isNull();
         assertThat(p.get("marketplace_status")).isEqualTo("HIDDEN");
         assertThat(p.get("links")).isEqualTo(0);
+        // review finding 1: she leaves the ops review queue and the 24 / 48 h alerts
+        assertThat(jdbc.sql("SELECT review_status FROM creator_profiles WHERE user_id = :id").param("id", s.userId())
+                .query(String.class).single()).isEqualTo("NONE");
         assertThat(jdbc.sql("SELECT count(*) FROM creator_metrics WHERE creator_id = :id").param("id", s.userId())
                 .query(Long.class).single()).isZero();
         assertThat(jdbc.sql("SELECT status FROM creator_evidence WHERE creator_id = :id").param("id", s.userId())

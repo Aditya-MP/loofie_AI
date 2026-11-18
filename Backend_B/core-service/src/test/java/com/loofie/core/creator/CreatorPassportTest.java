@@ -466,6 +466,133 @@ class CreatorPassportTest {
         }
     }
 
+    // ------------------------------------------------------------------------------------------------ review fixes
+
+    /** Review finding 2: an Instagram-only approval does not outlive the connection. */
+    @Test
+    void disconnectingTakesAnInstagramOnlyApprovalAwayAndReconnectingRestoresIt() throws Exception {
+        Session s = instagramOnlyCreator("gone." + rnd(99999));
+        JsonNode off = body(call(delete("/api/core/creator/instagram"), null, s), 200);
+        assertThat(off.get("status").asString()).isEqualTo("NOT_CONNECTED");
+        JsonNode p = body(call(get("/api/core/creator/profile"), null, s), 200);
+        assertThat(p.get("reviewStatus").asString()).isEqualTo("CHANGES_REQUESTED");
+        assertThat(p.get("reviewMessage").asString()).contains("Reconnect Instagram");
+        assertThat(p.get("bookable").asBoolean()).isFalse();
+        assertThat(auditCount(s.userId(), "CREATOR_PROFILE_REVIEW_REOPENED")).isEqualTo(1);
+
+        fakeAi.connection(s.userId().toString(), "active", "gone.ig", true);
+        body(call(get("/api/core/creator/instagram"), null, s), 200);
+        JsonNode back = body(call(get("/api/core/creator/profile"), null, s), 200);
+        assertThat(back.get("reviewStatus").asString()).isEqualTo("APPROVED");
+        assertThat(back.get("bookable").asBoolean()).isTrue();
+    }
+
+    /** Review finding 2, with her own proof: she goes back to the ops queue, not to "fix it". */
+    @Test
+    void anInstagramApprovalWithOwnProofGoesBackToOpsWhenInstagramIsGone() throws Exception {
+        Session s = creatorSignup();
+        call(put("/api/core/creator/profile"), fullForm("proof." + rnd(99999), 9000L, 2000L), s);
+        String key = uploadPng(s, 900);
+        fakeAi.connection(s.userId().toString(), "active", "proof.ig", true);
+        body(call(get("/api/core/creator/instagram"), null, s), 200); // complete and approved on Instagram alone
+        call(post("/api/core/creator/evidence"), Map.of("uploadKey", key, "kind", "INSIGHTS"), s);
+        assertThat(body(call(get("/api/core/creator/profile"), null, s), 200).get("reviewStatus").asString())
+                .isEqualTo("APPROVED");
+        call(delete("/api/core/creator/instagram"), null, s);
+        JsonNode p = body(call(get("/api/core/creator/profile"), null, s), 200);
+        assertThat(p.get("reviewStatus").asString()).isEqualTo("PENDING");
+        assertThat(p.get("bookable").asBoolean()).isFalse();
+    }
+
+    /** Review finding 6: Backend A forgetting the connection is not "still verified". */
+    @Test
+    void backendAForgettingTheConnectionClearsTheTrust() throws Exception {
+        Session s = instagramOnlyCreator("forgot." + rnd(99999));
+        fakeAi.forgetConnection(s.userId().toString());
+        JsonNode st = body(call(get("/api/core/creator/instagram"), null, s), 200);
+        assertThat(st.get("status").asString()).isEqualTo("NOT_CONNECTED");
+        JsonNode p = body(call(get("/api/core/creator/profile"), null, s), 200);
+        assertThat(p.get("instagram").get("status").asString()).isEqualTo("NOT_CONNECTED");
+        assertThat(p.get("bookable").asBoolean()).isFalse();
+    }
+
+    /** Review finding 3: Instagram never overrules an ops request for changes. */
+    @Test
+    void instagramDoesNotOverrideOpsAskingForChanges() throws Exception {
+        Session s = completedManualCreator("override." + rnd(99999));
+        String opsId = UUID.randomUUID().toString();
+        String path = "/api/core/ops/creators/" + s.userId() + "/review";
+        body(ops(put(path), Map.of("approve", false, "note", "Bio has a phone number; remove it"), "OPS", opsId), 200);
+
+        fakeAi.connection(s.userId().toString(), "active", "override.ig", true);
+        body(call(get("/api/core/creator/instagram"), null, s), 200);
+        JsonNode p = body(call(get("/api/core/creator/profile"), null, s), 200);
+        assertThat(p.get("reviewStatus").asString()).isEqualTo("CHANGES_REQUESTED");
+        assertThat(p.get("bookable").asBoolean()).isFalse();
+        // her fix goes back to ops, who decide; Instagram still does not approve it
+        Map<String, Object> fixed = fullForm(null, null, null);
+        fixed.put("bio", "Skincare reels");
+        assertThat(body(call(put("/api/core/creator/profile"), fixed, s), 200).get("reviewStatus").asString())
+                .isEqualTo("PENDING");
+        body(call(get("/api/core/creator/instagram"), null, s), 200);
+        assertThat(body(call(get("/api/core/creator/profile"), null, s), 200).get("reviewStatus").asString())
+                .isEqualTo("PENDING");
+        assertThat(body(ops(put(path), Map.of("approve", true), "OPS", opsId), 200).get("bookable").asBoolean())
+                .isTrue();
+    }
+
+    /** Review finding 5: polls while syncing (no handle yet) queue nothing. */
+    @Test
+    void pollsWhileSyncingWithoutAHandleQueueNothing() throws Exception {
+        Session s = completedManualCreator("sync." + rnd(99999));
+        String ref = s.userId().toString();
+        fakeAi.connection(ref, "syncing", null, true);
+        body(call(get("/api/core/creator/instagram"), null, s), 200);
+        long after = creatorOutboxRows(ref);
+        for (int i = 0; i < 4; i++) {
+            body(call(get("/api/core/creator/instagram"), null, s), 200);
+        }
+        assertThat(creatorOutboxRows(ref)).isEqualTo(after);
+    }
+
+    /** Review finding 7: rejecting her only Insights screenshot takes the profile off the marketplace. */
+    @Test
+    void rejectingTheOnlyScreenshotSendsTheProfileBackToHer() throws Exception {
+        Session s = completedManualCreator("reject." + rnd(99999));
+        String opsId = UUID.randomUUID().toString();
+        body(ops(put("/api/core/ops/creators/" + s.userId() + "/review"), Map.of("approve", true), "OPS", opsId), 200);
+        // ops approved, which accepted the screenshot; a second, pending one is then rejected after the first is gone
+        String evidenceId = body(call(get("/api/core/creator/profile"), null, s), 200).get("evidence").get(0)
+                .get("id").asString();
+        jdbc.sql("UPDATE creator_evidence SET status = 'PENDING' WHERE id = :id").param("id", UUID.fromString(evidenceId))
+                .update();
+        assertThat(ops(put("/api/core/ops/creators/evidence/" + evidenceId), Map.of("accept", false, "note",
+                "Edited screenshot"), "OPS", opsId).getStatus()).isEqualTo(204);
+        JsonNode p = body(call(get("/api/core/creator/profile"), null, s), 200);
+        assertThat(p.get("reviewStatus").asString()).isEqualTo("CHANGES_REQUESTED");
+        assertThat(p.get("reviewMessage").asString()).contains("Edited screenshot");
+        assertThat(p.get("bookable").asBoolean()).isFalse();
+    }
+
+    /** Review finding 8: disconnecting before ever opening the profile is not a 500. */
+    @Test
+    void disconnectingWithoutAProfileIsFine() throws Exception {
+        Session s = creatorSignup();
+        assertThat(body(call(delete("/api/core/creator/instagram"), null, s), 200).get("status").asString())
+                .isEqualTo("NOT_CONNECTED");
+    }
+
+    private Session instagramOnlyCreator(String handle) throws Exception {
+        Session s = creatorSignup();
+        call(put("/api/core/creator/profile"), fullForm(null, null, null), s);
+        fakeAi.connection(s.userId().toString(), "active", handle, true);
+        body(call(get("/api/core/creator/instagram"), null, s), 200);
+        JsonNode p = body(call(get("/api/core/creator/profile"), null, s), 200);
+        assertThat(p.get("reviewStatus").asString()).isEqualTo("APPROVED");
+        assertThat(p.get("bookable").asBoolean()).isTrue();
+        return s;
+    }
+
     private long notices(String type, UUID recipient, String kind) {
         return jdbc.sql("SELECT count(*) FROM notifications WHERE recipient_type = :t AND recipient_id = :r "
                         + "AND kind = :k").param("t", type).param("r", recipient).param("k", kind)
