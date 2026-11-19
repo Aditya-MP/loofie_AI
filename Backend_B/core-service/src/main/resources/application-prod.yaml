@@ -1,8 +1,14 @@
 # Production profile. Every environment-specific value comes from an environment variable: no
 # secrets or hostnames live in the repository. The app refuses to start if a required one is missing.
+server:
+  # Behind the load balancer: the client IP comes from X-Forwarded-For, trusted only from internal proxies (Spring
+  # Boot's default: private ranges). To narrow it to the VPC, set SERVER_TOMCAT_REMOTEIP_INTERNALPROXIES (a regex).
+  # Never empty: ProxyTrustGuard stops the app, since an empty list trusts everyone.
+  forward-headers-strategy: native
+
 spring:
   datasource:
-    url: ${CORE_DB_URL}                 # e.g. jdbc:postgresql://db-host:5432/core_db?sslmode=require
+    url: ${CORE_DB_URL}                # e.g. jdbc:postgresql://db-host:5432/core_db?sslmode=require
     username: ${CORE_DB_USER}
     password: ${CORE_DB_PASSWORD}
     hikari:

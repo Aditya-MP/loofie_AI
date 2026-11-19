@@ -35,6 +35,13 @@ import com.loofie.core.notification.app.NotificationService;
 public class AccountAdminService {
 
     public static final String SUSPENDED_NOTICE = "ACCOUNT_SUSPENDED";
+    /**
+     * The SMS is a fixed DLT template (Service Implicit): no free text (a typed DLT variable holds at most 40
+     * characters, a reason up to 500) and no "reply", since an SMS header cannot receive replies. The reason goes by
+     * email, which has no template rule.
+     */
+    static final String SUSPENDED_SMS = "Your Loofie account has been suspended. To appeal, write to Loofie support "
+            + "from the app or the website.";
     static final int MAX_AUDIT_PAGE = 200;
     private static final Logger log = LoggerFactory.getLogger(AccountAdminService.class);
 
@@ -66,7 +73,8 @@ public class AccountAdminService {
 
     /**
      * Blocks the account at once: every session ends in this transaction and the next request is refused. Ops gets
-     * the creator's open jobs to decide on (they stay as they are, Q11); the person gets a message they can reply to.
+     * the creator's open jobs to decide on (they stay as they are, Q11); the person is told: by email with the reason
+     * (they can reply), by SMS with the fixed DLT text.
      */
     @Transactional
     public AccountSummary suspend(Actor actor, UUID userId, String reason) {
@@ -97,7 +105,8 @@ public class AccountAdminService {
         payload.put("action", openJobs.isEmpty() ? "None needed" : "Decide each open job: reassign or cancel");
         notifications.toOps(SUSPENDED_NOTICE, null, payload, now);
         afterCommit(() -> tell(target, "ACCOUNT_SUSPENDED", "Your Loofie account is suspended",
-                "Your Loofie account has been suspended. Reason: " + why + ". To appeal, reply to this message."));
+                "Your Loofie account has been suspended. Reason: " + why + ". To appeal, reply to this message.",
+                SUSPENDED_SMS));
         return summary(users.find(userId).orElseThrow());
     }
 
@@ -166,11 +175,12 @@ public class AccountAdminService {
     }
 
     /** Email when the account has one (people can reply to appeal), otherwise SMS. Best effort, never blocks ops. */
-    private void tell(Account a, String kind, String subject, String text) {
+    private void tell(Account a, String kind, String subject, String emailText, String smsText) {
         Channel channel = a.email() != null ? Channel.EMAIL : Channel.PHONE;
         String to = channel == Channel.EMAIL ? a.email() : a.phone();
         try {
-            sender.send(new MessageSender.Message(channel, to, kind, subject, text));
+            sender.send(new MessageSender.Message(channel, to, kind, subject,
+                    channel == Channel.EMAIL ? emailText : smsText));
         } catch (RuntimeException e) {
             log.warn("{} message to {} not sent: {}", kind, Contacts.mask(to), e.toString());
         }

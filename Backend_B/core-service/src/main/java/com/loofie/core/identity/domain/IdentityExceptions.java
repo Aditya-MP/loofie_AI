@@ -66,7 +66,7 @@ public final class IdentityExceptions {
     /** 403, only after the person proved who they are. */
     public static class AccountSuspendedException extends RuntimeException {
         public AccountSuspendedException() {
-            super("This account is suspended. Reply to the message we sent you, or write to support, to appeal.");
+            super("This account is suspended. To appeal, write to support.");
         }
     }
 

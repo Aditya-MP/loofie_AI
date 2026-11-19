@@ -279,4 +279,4 @@ transaction.
 | Account deletion and anonymisation | Not built | Round C (agreed) |
 | Founder's own lost authenticator with no other founder | Needs the sealed break-glass procedure | Founder: write it and store it outside the app |
 | Notice version is `2026-11-draft` | Consents name a draft | Lawyer-reviewed terms and privacy notice; then change `loofie.identity.notice-version` |
-| The suspension SMS is a second text template | Needs its own DLT template | Register it together with the OTP template |
+| The suspension SMS is a second text template | Needs its own DLT template | Register it together with the OTP template. Both texts in `docs/ops/sms-dlt-templates.md`; since 2026-11-19 the SMS is fixed text (the reason goes by email only: a DLT variable holds at most 40 characters) |

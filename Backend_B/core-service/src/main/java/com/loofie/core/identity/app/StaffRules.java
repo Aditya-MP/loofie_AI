@@ -53,7 +53,9 @@ final class StaffRules {
             throw new ActorNotAllowedException("Only staff accounts have an authenticator");
         }
         if (target.id().equals(actor.userId())) {
-            throw new ActorNotAllowedException("Another founder or ops lead must reset your authenticator");
+            throw new ActorNotAllowedException(target.staffRole() == ActorRole.OPS
+                    ? "Another founder or ops lead must reset your authenticator"
+                    : "Another founder must reset your authenticator");
         }
         boolean ok = actor.role() == ActorRole.FOUNDER
                 || (actor.role() == ActorRole.OPS_LEAD && target.staffRole() == ActorRole.OPS);

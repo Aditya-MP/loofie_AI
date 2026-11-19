@@ -153,7 +153,7 @@ partial-index counts, run only when ops edits a holiday (a few times a year).
 | "List ran out" detection | Metrics and log done; **alert rule needs hosting** |
 | Ops sees what an edit reaches | Done, tested |
 | Real 2026–2027 holiday list | **Not done: needs D2 and the list from ops** |
-| State holidays in effect | **Not done: needs brand pickup state (F1)** |
+| State holidays in effect | **Done since F1 round B**: each job carries the brand's pickup state (`BrandFlowTest.newJobsCarryThePickupStateAndItsHolidaysMoveTheShipDeadline`) |
 
 ### Known limits
 
@@ -194,7 +194,7 @@ runs a few times a year.
 | Item | Who unblocks |
 |---|---|
 | The real 2026-2027 courier-closure list (D2), and who owns it yearly (D4) | Ops |
-| State holidays taking effect (brand pickup state) | F1 brand profile |
+| ~~State holidays taking effect (brand pickup state)~~ | Done in F1 round B |
 | Alert rule on the metrics (paging) | Hosting |
 
 ### Built and tested (2026-11-17)
@@ -218,8 +218,8 @@ runs a few times a year.
 | Rules, edge cases, bad input, audit trail, scope | Done, tested (first pass) |
 | Ops can load the yearly list safely (preview, all or nothing) | **Done**, tested |
 | A missing or half-entered year reaches a person | **Done**: ops inbox notice, once a day; metric for paging when hosting exists |
-| Real 2026-2027 courier-closure list | **Blocked: ops (D2, D4).** Load it with K1, then set `expected-national-per-year` |
-| State holidays in effect | **Blocked: F1** (brand pickup state) |
+| Real 2026-2027 courier-closure list | **Ops (D2, D4)**: ready-to-load files from the DoPT lists in `docs/ops/holidays/` (preview-checked 2026-11-19); ops removes the days couriers work, loads with K1, then sets `expected-national-per-year` |
+| State holidays in effect | **Done** (F1 round B: pickup state on every new job). State rows still need loading by ops (`docs/ops/holidays/`) |
 | Paging on the metrics | **Blocked: hosting** |
 
 **The working-day calendar is done for everything Backend B can deliver today.**

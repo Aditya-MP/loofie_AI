@@ -1,0 +1,18 @@
+[
+  {"date": "2027-01-26", "stateCode": "", "name": "Republic Day"},
+  {"date": "2027-03-10", "stateCode": "", "name": "Id-ul-Fitr"},
+  {"date": "2027-03-26", "stateCode": "", "name": "Good Friday"},
+  {"date": "2027-04-19", "stateCode": "", "name": "Mahavir Jayanti"},
+  {"date": "2027-05-17", "stateCode": "", "name": "Id-ul-Zuha (Bakrid)"},
+  {"date": "2027-05-20", "stateCode": "", "name": "Buddha Purnima"},
+  {"date": "2027-06-16", "stateCode": "", "name": "Muharram"},
+  {"date": "2027-08-15", "stateCode": "", "name": "Independence Day / Milad-un-Nabi"},
+  {"date": "2027-10-02", "stateCode": "", "name": "Gandhi Jayanti"},
+  {"date": "2027-10-09", "stateCode": "", "name": "Dussehra"},
+  {"date": "2027-10-29", "stateCode": "", "name": "Diwali"},
+  {"date": "2027-11-14", "stateCode": "", "name": "Guru Nanak Jayanti"},
+  {"date": "2027-12-25", "stateCode": "", "name": "Christmas"},
+  {"date": "2027-03-23", "stateCode": "DL", "name": "Holi"},
+  {"date": "2027-04-15", "stateCode": "DL", "name": "Ram Navami"},
+  {"date": "2027-08-25", "stateCode": "DL", "name": "Janmashtami"}
+]

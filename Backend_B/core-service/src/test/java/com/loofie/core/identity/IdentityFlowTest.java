@@ -343,9 +343,11 @@ class IdentityFlowTest {
         assertThat(suspended.get("status").asString()).isEqualTo("SUSPENDED");
         assertThat(suspended.get("phoneMasked").asString()).isEqualTo("+91******" + phone.substring(9));
         assertThat(call(get("/api/core/notifications"), null, s).getStatus()).isEqualTo(401);
-        assertThat(messages.last(phone).orElseThrow().kind()).as("told by SMS, with the reason")
-                .isEqualTo("ACCOUNT_SUSPENDED");
-        assertThat(messages.last(phone).orElseThrow().text()).contains("Fake follower screenshots");
+        assertThat(messages.last(phone).orElseThrow().kind()).as("told by SMS").isEqualTo("ACCOUNT_SUSPENDED");
+        assertThat(messages.last(phone).orElseThrow().text()).as("the fixed DLT template: no free text, no 'reply'")
+                .isEqualTo("Your Loofie account has been suspended. To appeal, write to Loofie support from the app "
+                        + "or the website.")
+                .doesNotContain("Fake follower screenshots");
 
         JsonNode sent = send("PHONE", phone);
         assertThat(problem(call(post("/api/core/auth/otp/verify"), Map.of("challengeId",

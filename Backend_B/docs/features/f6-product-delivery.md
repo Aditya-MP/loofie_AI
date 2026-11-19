@@ -268,9 +268,9 @@ only); handover photos and damage evidence are keys only until F7 upload exists.
 | Item | Who unblocks |
 |---|---|
 | Tracking number required, auto-start only on courier proof, 3-working-day ship deadline (Foundation v2 differs) | Founder |
-| Courier tracking-link patterns | Ops (enter them in the courier table) |
-| Brand pickup-state holidays | F1 brand profile |
-| Real photo and evidence upload (keys only today) | F7 |
+| Courier tracking-link patterns | Ops (enter them in the courier table; tried patterns in `docs/ops/courier-tracking-links.md`) |
+| ~~Brand pickup-state holidays~~ | Done in F1 round B (jobs carry the pickup state) |
+| ~~Real photo and evidence upload~~ | Done in F7 (`POST /api/core/jobs/{id}/uploads`) |
 | Automatic courier tracking | Later (a tracking service) |
 | Push, SMS, email for notices (in-app inbox only) | Notification channels feature |
 
@@ -305,6 +305,6 @@ only); handover photos and damage evidence are keys only until F7 upload exists.
 | Failure: a refused change tells nobody (same transaction) | Tested |
 
 **F6 is done for everything Backend B can deliver today.** Still open, each with its owner in "Stays blocked" above:
-the founder's three Foundation v2 rules, courier link patterns (ops), pickup-state holidays (F1), real upload (F7),
+the founder's three Foundation v2 rules, courier link patterns (ops), ~~pickup-state holidays~~ (done in F1 round B), ~~real upload~~ (done in F7),
 automatic tracking (later), push / SMS / email (notification channels). Laptop numbers only; production hosting not
 measured.
