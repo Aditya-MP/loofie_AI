@@ -1,7 +1,6 @@
 package com.loofie.core.creator.app;
 
 import java.time.Clock;
-import java.time.Duration;
 import java.util.UUID;
 
 import org.springframework.stereotype.Service;
@@ -13,7 +12,6 @@ import com.loofie.core.creator.domain.CreatorProfile;
 import com.loofie.core.creator.domain.Evidence;
 import com.loofie.core.creator.infra.CreatorProfileRepository;
 import com.loofie.core.creator.infra.EvidenceRepository;
-import com.loofie.core.identity.app.RateLimits;
 import com.loofie.core.identity.domain.IdentityExceptions.InvalidRequestException;
 import com.loofie.core.job.domain.Actor;
 import com.loofie.core.storage.Uploads;
@@ -25,35 +23,33 @@ import com.loofie.core.storage.Uploads;
 @Service
 public class CreatorEvidenceService {
 
-    static final int TICKETS_PER_HOUR = 20;
     static final int MAX_LIVE = 10;
 
     private final Uploads uploads;
     private final EvidenceRepository evidence;
     private final CreatorProfileRepository profiles;
     private final CreatorProfileService profileService;
-    private final RateLimits limits;
     private final TransactionTemplate tx;
     private final Clock clock;
 
     public CreatorEvidenceService(Uploads uploads, EvidenceRepository evidence, CreatorProfileRepository profiles,
-                                  CreatorProfileService profileService, RateLimits limits, TransactionTemplate tx,
+                                  CreatorProfileService profileService, TransactionTemplate tx,
                                   Clock clock) {
         this.uploads = uploads;
         this.evidence = evidence;
         this.profiles = profiles;
         this.profileService = profileService;
-        this.limits = limits;
         this.tx = tx;
         this.clock = clock;
     }
 
-    /** A 5-minute signed URL for one image (jpeg, png, webp or heic, at most 5 MB). */
-    public Uploads.UploadTicket uploadTicket(Actor actor, String contentType) {
+    /**
+     * A 5-minute signed URL for one image (jpeg, png, webp or heic, at most 5 MB) of exactly {@code sizeBytes}.
+     * {@link Uploads#issue} applies the 20-per-hour limit shared by every upload.
+     */
+    public Uploads.UploadTicket uploadTicket(Actor actor, String contentType, Long sizeBytes) {
         UUID me = CreatorProfileService.requireCreator(actor);
-        limits.perUser("upload", me, TICKETS_PER_HOUR, Duration.ofHours(1), clock.instant(),
-                "Too many uploads. Try again in an hour.");
-        return uploads.issue(me, Uploads.Purpose.CREATOR_EVIDENCE, contentType);
+        return uploads.issue(me, Uploads.Purpose.CREATOR_EVIDENCE, contentType, sizeBytes);
     }
 
     /** Attaches an uploaded screenshot; may complete the passport (it is the last piece of the manual path). */

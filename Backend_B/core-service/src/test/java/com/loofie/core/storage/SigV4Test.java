@@ -37,6 +37,23 @@ class SigV4Test {
     }
 
     @Test
+    void uploadsSignTheExactSizeSoAnotherSizeGetsAnotherSignature() {
+        URI url = URI.create("https://bucket.s3.ap-south-1.amazonaws.com/drafts/a/b.mp4");
+        Instant now = Instant.parse("2026-11-19T00:00:00Z");
+        URI size100 = SigV4.presign("PUT", url, "ap-south-1", "AK", "SK", now, Duration.ofMinutes(60), "video/mp4", 100L);
+        URI size101 = SigV4.presign("PUT", url, "ap-south-1", "AK", "SK", now, Duration.ofMinutes(60), "video/mp4", 101L);
+        // Canonical header order is alphabetical: content-length, content-type, host.
+        assertThat(size100.getRawQuery()).contains("X-Amz-SignedHeaders=content-length%3Bcontent-type%3Bhost");
+        assertThat(signature(size100)).isNotEqualTo(signature(size101));
+        URI unsized = SigV4.presign("PUT", url, "ap-south-1", "AK", "SK", now, Duration.ofMinutes(60), "video/mp4");
+        assertThat(unsized.getRawQuery()).contains("X-Amz-SignedHeaders=content-type%3Bhost");
+    }
+
+    private static String signature(URI u) {
+        return u.getRawQuery().replaceAll(".*X-Amz-Signature=", "");
+    }
+
+    @Test
     void encodesLikeAws() {
         assertThat(SigV4.encode("a b+c/d~e", true)).isEqualTo("a%20b%2Bc%2Fd~e");
         assertThat(SigV4.encode("/x/y z", false)).isEqualTo("/x/y%20z");

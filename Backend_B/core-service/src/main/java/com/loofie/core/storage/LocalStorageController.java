@@ -28,13 +28,17 @@ class LocalStorageController {
 
     @PutMapping(LocalObjectStore.PATH + "**")
     ResponseEntity<Void> put(HttpServletRequest request, @RequestParam("m") String method,
-                             @RequestParam("ct") String contentType, @RequestParam("exp") long exp,
-                             @RequestParam("sig") String sig,
+                             @RequestParam("ct") String contentType, @RequestParam("len") long length,
+                             @RequestParam("exp") long exp, @RequestParam("sig") String sig,
                              @RequestHeader(value = "Content-Type", required = false) String sentType)
             throws java.io.IOException {
         LocalObjectStore local = (LocalObjectStore) store;
         String key = key(request);
-        if (!"PUT".equals(method) || !local.valid("PUT", key, contentType, exp, sig)) {
+        if (!"PUT".equals(method) || !local.valid("PUT", key, contentType, length, exp, sig)) {
+            return ResponseEntity.status(HttpStatus.FORBIDDEN).build();
+        }
+        // As S3 with a signed Content-Length: a body of any other size is refused (403), nothing is kept.
+        if (request.getContentLengthLong() != length) {
             return ResponseEntity.status(HttpStatus.FORBIDDEN).build();
         }
         // S3 refuses a type that was not signed. Here the media type must match; parameters (";charset=...", which
@@ -43,9 +47,9 @@ class LocalStorageController {
                 contentType))) {
             return ResponseEntity.status(HttpStatus.FORBIDDEN).build();
         }
-        // Streamed to disk (an F7 video is up to 500 MB); the size cap stands in for the bucket's own limit.
-        if (!local.write(key, contentType, request.getInputStream(), LocalObjectStore.MAX_BYTES)) {
-            return ResponseEntity.status(HttpStatus.CONTENT_TOO_LARGE).build();
+        // Streamed to disk (an F7 video is up to 500 MB); exactly the signed size or nothing.
+        if (!local.writeExactly(key, contentType, request.getInputStream(), length)) {
+            return ResponseEntity.status(HttpStatus.FORBIDDEN).build();
         }
         return ResponseEntity.ok().build();
     }
@@ -56,7 +60,7 @@ class LocalStorageController {
                                @RequestParam("exp") long exp, @RequestParam("sig") String sig) {
         LocalObjectStore local = (LocalObjectStore) store;
         String key = key(request);
-        if (!"GET".equals(method) || !local.valid("GET", key, contentType, exp, sig)) {
+        if (!"GET".equals(method) || !local.valid("GET", key, contentType, -1, exp, sig)) {
             return ResponseEntity.status(HttpStatus.FORBIDDEN).build();
         }
         return local.stat(key).map(info -> ResponseEntity.ok().contentType(MediaType.parseMediaType(

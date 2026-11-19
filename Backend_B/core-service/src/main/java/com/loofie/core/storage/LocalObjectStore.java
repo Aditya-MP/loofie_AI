@@ -27,8 +27,6 @@ import javax.crypto.spec.SecretKeySpec;
 final class LocalObjectStore implements ObjectStore {
 
     static final String PATH = "/api/core/dev/storage/";
-    /** Above the largest upload purpose (F7 video, 500 MB); the purpose's own limit is checked on attach. */
-    static final long MAX_BYTES = 600L * 1024 * 1024;
 
     private final Path dir;
     private final String baseUrl;
@@ -54,14 +52,15 @@ final class LocalObjectStore implements ObjectStore {
     }
 
     @Override
-    public Ticket presignPut(String key, String contentType, Duration ttl) {
+    public Ticket presignPut(String key, String contentType, long sizeBytes, Duration ttl) {
         Instant expires = clock.instant().plus(ttl);
-        return new Ticket("PUT", url("PUT", key, contentType, expires), Map.of("Content-Type", contentType), expires);
+        return new Ticket("PUT", url("PUT", key, contentType, sizeBytes, expires),
+                Map.of("Content-Type", contentType, "Content-Length", String.valueOf(sizeBytes)), expires);
     }
 
     @Override
     public URI presignGet(String key, Duration ttl) {
-        return url("GET", key, "", clock.instant().plus(ttl));
+        return url("GET", key, "", -1, clock.instant().plus(ttl));
     }
 
     @Override
@@ -108,17 +107,20 @@ final class LocalObjectStore implements ObjectStore {
         }
     }
 
-    /** Checks a signed URL's parameters; false when forged, altered or expired. */
-    boolean valid(String method, String key, String contentType, long expiresEpoch, String sig) {
+    /** Checks a signed URL's parameters; false when forged, altered or expired. {@code length} is -1 for a GET. */
+    boolean valid(String method, String key, String contentType, long length, long expiresEpoch, String sig) {
         if (sig == null || clock.instant().getEpochSecond() > expiresEpoch) {
             return false;
         }
-        return MessageDigest.isEqual(sign(method, key, contentType == null ? "" : contentType, expiresEpoch)
+        return MessageDigest.isEqual(sign(method, key, contentType == null ? "" : contentType, length, expiresEpoch)
                 .getBytes(StandardCharsets.UTF_8), sig.getBytes(StandardCharsets.UTF_8));
     }
 
-    /** Streams one upload to disk; false (and nothing kept) when it is larger than {@code max}. */
-    boolean write(String key, String contentType, java.io.InputStream in, long max) {
+    /**
+     * Streams one upload to disk; false (and nothing kept) unless it is exactly {@code size} bytes, as S3 refuses a body
+     * that does not match the signed Content-Length.
+     */
+    boolean writeExactly(String key, String contentType, java.io.InputStream in, long size) {
         Path f = file(key);
         Path tmp = Path.of(f + ".part");
         try {
@@ -128,13 +130,13 @@ final class LocalObjectStore implements ObjectStore {
                 byte[] buf = new byte[64 * 1024];
                 for (int r; (r = in.read(buf)) != -1; ) {
                     n += r;
-                    if (n > max) {
+                    if (n > size) {
                         break;
                     }
                     out.write(buf, 0, r);
                 }
             }
-            if (n > max) {
+            if (n != size) {
                 Files.deleteIfExists(tmp);
                 return false;
             }
@@ -165,18 +167,19 @@ final class LocalObjectStore implements ObjectStore {
         }
     }
 
-    private URI url(String method, String key, String contentType, Instant expires) {
+    private URI url(String method, String key, String contentType, long length, Instant expires) {
         long exp = expires.getEpochSecond();
         return URI.create(baseUrl + PATH + key + "?m=" + method + "&ct=" + URLEncoder.encode(contentType,
-                StandardCharsets.UTF_8) + "&exp=" + exp + "&sig=" + sign(method, key, contentType, exp));
+                StandardCharsets.UTF_8) + (length < 0 ? "" : "&len=" + length) + "&exp=" + exp
+                + "&sig=" + sign(method, key, contentType, length, exp));
     }
 
-    private String sign(String method, String key, String contentType, long exp) {
+    private String sign(String method, String key, String contentType, long length, long exp) {
         try {
             Mac mac = Mac.getInstance("HmacSHA256");
             mac.init(new SecretKeySpec(secret, "HmacSHA256"));
-            return HexFormat.of().formatHex(mac.doFinal((method + "|" + key + "|" + contentType + "|" + exp)
-                    .getBytes(StandardCharsets.UTF_8)));
+            return HexFormat.of().formatHex(mac.doFinal((method + "|" + key + "|" + contentType + "|" + length + "|"
+                    + exp).getBytes(StandardCharsets.UTF_8)));
         } catch (Exception e) {
             throw new IllegalStateException(e);
         }

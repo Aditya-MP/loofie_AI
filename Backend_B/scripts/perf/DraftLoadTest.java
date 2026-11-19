@@ -170,7 +170,7 @@ public class DraftLoadTest {
                     try {
                         String t = http.send(creator(j, HttpRequest.newBuilder(URI.create(BASE + "/api/core/creator/jobs/"
                                         + j.id() + "/drafts/upload"))).header("Content-Type", "application/json")
-                                .POST(HttpRequest.BodyPublishers.ofString("{\"contentType\":\"video/mp4\"}")).build(),
+                                .POST(HttpRequest.BodyPublishers.ofString("{\"contentType\":\"video/mp4\",\"sizeBytes\":" + video.length + "}")).build(),
                                 HttpResponse.BodyHandlers.ofString()).body();
                         int put = http.send(HttpRequest.newBuilder(URI.create(field(t, "url"))).header("Content-Type",
                                 "video/mp4").PUT(HttpRequest.BodyPublishers.ofByteArray(video)).build(),

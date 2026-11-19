@@ -176,12 +176,21 @@ class CreatorPassportTest {
     void uploadRules() throws Exception {
         Session s = creatorSignup();
         Session other = creatorSignup();
-        assertThat(problem(call(post("/api/core/creator/uploads"), Map.of("contentType", "application/pdf"), s), 422))
-                .isEqualTo("upload-refused");
+        assertThat(problem(call(post("/api/core/creator/uploads"), Map.of("contentType", "application/pdf",
+                "sizeBytes", 100), s), 422)).isEqualTo("upload-refused");
+        // the size is required, positive, and within the purpose's limit before any URL is made
+        assertThat(problem(call(post("/api/core/creator/uploads"), Map.of("contentType", "image/jpeg"), s), 422))
+                .as("no size").isEqualTo("upload-refused");
+        assertThat(problem(call(post("/api/core/creator/uploads"), Map.of("contentType", "image/jpeg",
+                "sizeBytes", 0), s), 422)).as("empty").isEqualTo("upload-refused");
+        assertThat(problem(call(post("/api/core/creator/uploads"), Map.of("contentType", "image/jpeg",
+                "sizeBytes", 5L * 1024 * 1024 + 1), s), 422)).as("over 5 MB").isEqualTo("upload-refused");
 
-        JsonNode ticket = body(call(post("/api/core/creator/uploads"), Map.of("contentType", "image/jpeg"), s), 201);
+        JsonNode ticket = body(call(post("/api/core/creator/uploads"), Map.of("contentType", "image/jpeg",
+                "sizeBytes", 100), s), 201);
         assertThat(ticket.get("method").asString()).isEqualTo("PUT");
         assertThat(ticket.get("headers").get("Content-Type").asString()).isEqualTo("image/jpeg");
+        assertThat(ticket.get("headers").get("Content-Length").asString()).isEqualTo("100");
         assertThat(ticket.get("maxBytes").asLong()).isEqualTo(5L * 1024 * 1024);
         String key = ticket.get("key").asString();
         assertThat(key).startsWith("creator-evidence/" + s.userId() + "/").endsWith(".jpg");
@@ -191,12 +200,22 @@ class CreatorPassportTest {
                 422)).isEqualTo("upload-refused");
         // the signed URL holds the type: another type is refused by the store
         URI url = URI.create(ticket.get("url").asString());
-        assertThat(mvc.perform(put(url).header("Content-Type", "image/png").content(new byte[10])).andReturn().getResponse()
+        assertThat(mvc.perform(put(url).header("Content-Type", "image/png").content(new byte[100])).andReturn().getResponse()
                 .getStatus()).isEqualTo(403);
-        // a tampered URL is refused
+        // a tampered URL is refused, and so is a URL whose size was changed
         URI forged = URI.create(url.toString().replace("sig=", "sig=0"));
-        assertThat(mvc.perform(put(forged).header("Content-Type", "image/jpeg").content(new byte[10])).andReturn().getResponse()
+        assertThat(mvc.perform(put(forged).header("Content-Type", "image/jpeg").content(new byte[100])).andReturn().getResponse()
                 .getStatus()).isEqualTo(403);
+        URI resized = URI.create(url.toString().replace("len=100", "len=5000000"));
+        assertThat(mvc.perform(put(resized).header("Content-Type", "image/jpeg").content(new byte[5_000_000])).andReturn()
+                .getResponse().getStatus()).as("size altered in the URL").isEqualTo(403);
+        // the signed size is exact: a bigger or a smaller body is refused by the store, nothing is kept
+        assertThat(mvc.perform(put(url).header("Content-Type", "image/jpeg").content(new byte[101])).andReturn().getResponse()
+                .getStatus()).as("one byte more").isEqualTo(403);
+        assertThat(mvc.perform(put(url).header("Content-Type", "image/jpeg").content(new byte[99])).andReturn().getResponse()
+                .getStatus()).as("one byte less").isEqualTo(403);
+        assertThat(problem(call(post("/api/core/creator/evidence"), Map.of("uploadKey", key, "kind", "INSIGHTS"), s),
+                422)).as("nothing stored after a refused body").isEqualTo("upload-refused");
         assertThat(mvc.perform(put(url).header("Content-Type", "image/jpeg").content(new byte[100])).andReturn().getResponse()
                 .getStatus()).isEqualTo(200);
 
@@ -212,10 +231,27 @@ class CreatorPassportTest {
         assertThat(problem(call(post("/api/core/creator/evidence"), Map.of("uploadKey", key, "kind", "INSIGHTS"), s),
                 422)).isEqualTo("upload-refused");
 
-        // over 5 MB is refused at attach time (a presigned PUT cannot cap the size itself)
-        String big = uploadPng(s, 5 * 1024 * 1024 + 1);
-        assertThat(problem(call(post("/api/core/creator/evidence"), Map.of("uploadKey", big, "kind", "INSIGHTS"), s),
-                422)).isEqualTo("upload-refused");
+        // exactly 5 MB is fine
+        String max = uploadPng(s, 5 * 1024 * 1024);
+        assertThat(call(post("/api/core/creator/evidence"), Map.of("uploadKey", max, "kind", "INSIGHTS"), s)
+                .getStatus()).isEqualTo(201);
+    }
+
+    @Test
+    void uploadLinksAreLimitedTo20AnHourPerPersonAcrossPurposes() throws Exception {
+        Session s = creatorSignup();
+        for (int i = 0; i < 20; i++) {
+            assertThat(call(post("/api/core/creator/uploads"), Map.of("contentType", "image/png", "sizeBytes", 10), s)
+                    .getStatus()).isEqualTo(201);
+        }
+        MockHttpServletResponse limited = call(post("/api/core/creator/uploads"),
+                Map.of("contentType", "image/png", "sizeBytes", 10), s);
+        assertThat(limited.getStatus()).isEqualTo(429);
+        assertThat(limited.getHeader("Retry-After")).isNotNull();
+        // the limit is per person
+        Session other = creatorSignup();
+        assertThat(call(post("/api/core/creator/uploads"), Map.of("contentType", "image/png", "sizeBytes", 10), other)
+                .getStatus()).isEqualTo(201);
     }
 
     @Test
@@ -644,7 +680,8 @@ class CreatorPassportTest {
 
     /** Ticket → real PUT to the signed URL (local store) → the key. */
     private String uploadPng(Session s, int bytes) throws Exception {
-        JsonNode t = body(call(post("/api/core/creator/uploads"), Map.of("contentType", "image/png"), s), 201);
+        JsonNode t = body(call(post("/api/core/creator/uploads"), Map.of("contentType", "image/png",
+                "sizeBytes", bytes), s), 201);
         byte[] content = new byte[bytes];
         ThreadLocalRandom.current().nextBytes(content);
         assertThat(mvc.perform(put(URI.create(t.get("url").asString())).header("Content-Type", "image/png").content(content))

@@ -236,7 +236,7 @@ class AccountDeletionTest {
     }
 
     private String upload(Session s) throws Exception {
-        JsonNode t = body(call(post("/api/core/creator/uploads"), Map.of("contentType", "image/png"), s), 201);
+        JsonNode t = body(call(post("/api/core/creator/uploads"), Map.of("contentType", "image/png", "sizeBytes", 1200), s), 201);
         assertThat(mvc.perform(put(URI.create(t.get("url").asString())).header("Content-Type", "image/png")
                 .content(new byte[1200])).andReturn().getResponse().getStatus()).isEqualTo(200);
         return t.get("key").asString();

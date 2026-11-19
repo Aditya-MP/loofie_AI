@@ -105,7 +105,7 @@ class JobPhotoUploadTest {
     private MockHttpServletResponse ticket(UUID jobId, String role, UUID user, UUID org, String purpose) throws Exception {
         return mvc.perform(as(post("/api/core/jobs/{id}/uploads", jobId), role, user, org)
                 .contentType(MediaType.APPLICATION_JSON)
-                .content(json.writeValueAsString(Map.of("purpose", purpose, "contentType", "image/jpeg"))))
+                .content(json.writeValueAsString(Map.of("purpose", purpose, "contentType", "image/jpeg", "sizeBytes", 2048))))
                 .andReturn().getResponse();
     }
 

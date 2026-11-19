@@ -37,11 +37,22 @@ final class SigV4 {
      */
     static URI presign(String method, URI url, String region, String accessKey, String secretKey, Instant now,
                        Duration expires, String contentType) {
+        return presign(method, url, region, accessKey, secretKey, now, expires, contentType, null);
+    }
+
+    /**
+     * @param contentLength sign this exact body size too (uploads), or null. The store then refuses a body of any other
+     *                      size: a signed URL alone does not limit size (S3 accepts up to 5 GB in one PUT).
+     */
+    static URI presign(String method, URI url, String region, String accessKey, String secretKey, Instant now,
+                       Duration expires, String contentType, Long contentLength) {
         String amzDate = AMZ_DATE.format(now);
         String date = DATE.format(now);
         String scope = date + "/" + region + "/s3/aws4_request";
         String host = url.getPort() == -1 ? url.getHost() : url.getHost() + ":" + url.getPort();
-        String signedHeaders = contentType == null ? "host" : "content-type;host";
+        // Canonical headers are sorted by name: content-length, content-type, host.
+        String signedHeaders = (contentLength == null ? "" : "content-length;")
+                + (contentType == null ? "" : "content-type;") + "host";
 
         Map<String, String> query = new TreeMap<>();
         query.put("X-Amz-Algorithm", "AWS4-HMAC-SHA256");
@@ -53,7 +64,8 @@ final class SigV4 {
                 .map(e -> encode(e.getKey(), true) + "=" + encode(e.getValue(), true))
                 .collect(Collectors.joining("&"));
 
-        String canonicalHeaders = (contentType == null ? "" : "content-type:" + contentType.trim() + "\n")
+        String canonicalHeaders = (contentLength == null ? "" : "content-length:" + contentLength + "\n")
+                + (contentType == null ? "" : "content-type:" + contentType.trim() + "\n")
                 + "host:" + host + "\n";
         String canonicalRequest = method + "\n" + encode(url.getRawPath().isEmpty() ? "/" : decodedPath(url), false)
                 + "\n" + canonicalQuery + "\n" + canonicalHeaders + "\n" + signedHeaders + "\nUNSIGNED-PAYLOAD";

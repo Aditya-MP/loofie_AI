@@ -15,8 +15,11 @@ public interface ObjectStore {
     /** False when no store is configured here: upload requests answer 503 and nothing else breaks. */
     boolean ready();
 
-    /** A URL the browser can PUT one file to, with exactly these headers, until {@code expiresAt}. */
-    Ticket presignPut(String key, String contentType, Duration ttl);
+    /**
+     * A URL the browser can PUT one file of exactly {@code sizeBytes} to, with exactly these headers, until
+     * {@code expiresAt}. The store refuses a body of any other size, so a link can never hold more than was allowed.
+     */
+    Ticket presignPut(String key, String contentType, long sizeBytes, Duration ttl);
 
     /** A URL to view one file until it expires (ops review). */
     URI presignGet(String key, Duration ttl);

@@ -17,6 +17,7 @@ import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 
 import com.loofie.core.common.Ids;
+import com.loofie.core.identity.app.RateLimits;
 
 /**
  * Every storage key the app hands out, who it belongs to, and whether it was used. A profile (or later a job) accepts
@@ -83,19 +84,27 @@ public class Uploads {
     private final JdbcClient jdbc;
     private final ObjectStore store;
     private final Clock clock;
+    private final RateLimits limits;
 
-    public Uploads(JdbcClient jdbc, ObjectStore store, Clock clock) {
+    public Uploads(JdbcClient jdbc, ObjectStore store, Clock clock, RateLimits limits) {
         this.jdbc = jdbc;
         this.store = store;
         this.clock = clock;
+        this.limits = limits;
     }
+
+    /** Upload links per person per hour, every purpose together (evidence, videos, photos). */
+    public static final int TICKETS_PER_HOUR = 20;
 
     public boolean ready() {
         return store.ready();
     }
 
-    /** Issues a key and a 5-minute signed upload URL for one file. */
-    public UploadTicket issue(UUID owner, Purpose purpose, String contentType) {
+    /**
+     * Issues a key and a short-lived signed upload URL for one file of exactly {@code sizeBytes}: the size is signed
+     * into the URL, so the store refuses any other size, and a size above the purpose's limit gets no URL at all.
+     */
+    public UploadTicket issue(UUID owner, Purpose purpose, String contentType, Long sizeBytes) {
         String type = contentType == null ? "" : contentType.trim().toLowerCase();
         String ext = purpose.types.get(type);
         if (ext == null) {
@@ -105,15 +114,25 @@ public class Uploads {
         if (purpose == Purpose.DRAFT_PREVIEW) {
             throw new IllegalArgumentException("Previews are made by the media worker");
         }
+        if (sizeBytes == null || sizeBytes <= 0) {
+            throw new UploadRefusedException("Send the file's size in bytes (sizeBytes).");
+        }
+        if (sizeBytes > purpose.maxBytes) {
+            throw new UploadRefusedException("The file must be at most " + (purpose.maxBytes / (1024 * 1024)) + " MB.");
+        }
+        limits.perUser("upload", owner, TICKETS_PER_HOUR, Duration.ofHours(1), clock.instant(),
+                "Too many uploads. Try again in an hour.");
         String key = purpose.prefix + "/" + (purpose.ownerInKey ? owner + "/" : "") + Ids.newId() + "." + ext;
         Duration ttl = purpose == Purpose.DRAFT_VIDEO ? VIDEO_TICKET_TTL : TICKET_TTL;
-        ObjectStore.Ticket t = store.presignPut(key, type, ttl); // 503 before anything is recorded
+        ObjectStore.Ticket t = store.presignPut(key, type, sizeBytes, ttl); // 503 before anything is recorded
         Instant now = clock.instant();
         jdbc.sql("""
-                INSERT INTO uploads (key, owner_id, purpose, content_type, max_bytes, issued_at, expires_at)
-                VALUES (:key, :owner, :purpose, :type, :max, :now, :exp)""")
+                INSERT INTO uploads (key, owner_id, purpose, content_type, max_bytes, declared_bytes, issued_at,
+                                     expires_at)
+                VALUES (:key, :owner, :purpose, :type, :max, :declared, :now, :exp)""")
                 .param("key", key).param("owner", owner).param("purpose", purpose.name()).param("type", type)
-                .param("max", purpose.maxBytes).param("now", ts(now)).param("exp", ts(t.expiresAt())).update();
+                .param("max", purpose.maxBytes).param("declared", sizeBytes).param("now", ts(now))
+                .param("exp", ts(t.expiresAt())).update();
         return new UploadTicket(key, t.method(), t.url(), t.headers(), t.expiresAt(), purpose.maxBytes);
     }
 
@@ -135,6 +154,10 @@ public class Uploads {
                 "The file was not uploaded (or the upload did not finish). Try again."));
         if (info.size() <= 0 || info.size() > row.maxBytes()) {
             throw new UploadRefusedException("The file must be at most " + (row.maxBytes() / (1024 * 1024)) + " MB.");
+        }
+        if (row.declaredBytes() != null && info.size() != row.declaredBytes()) {
+            // The store already refuses another size; this guards a store that would not.
+            throw new UploadRefusedException("The uploaded file is not the size that was announced. Upload it again.");
         }
         return info.size();
     }
@@ -227,15 +250,17 @@ public class Uploads {
     }
 
     Optional<Row> find(String key) {
-        return jdbc.sql("SELECT owner_id, purpose, max_bytes, used_at IS NOT NULL AS used, "
+        return jdbc.sql("SELECT owner_id, purpose, max_bytes, declared_bytes, used_at IS NOT NULL AS used, "
                         + "deleted_at IS NOT NULL OR delete_requested_at IS NOT NULL AS deleted FROM uploads WHERE key = :key")
                 .param("key", key)
                 .query((rs, n) -> new Row(rs.getObject("owner_id", UUID.class), rs.getString("purpose"),
-                        rs.getLong("max_bytes"), rs.getBoolean("used"), rs.getBoolean("deleted")))
+                        rs.getLong("max_bytes"), rs.getObject("declared_bytes", Long.class), rs.getBoolean("used"),
+                        rs.getBoolean("deleted")))
                 .optional();
     }
 
-    record Row(UUID owner, String purpose, long maxBytes, boolean used, boolean deleted) {
+    /** @param declaredBytes the size signed into the upload URL; null for keys issued before it was required */
+    record Row(UUID owner, String purpose, long maxBytes, Long declaredBytes, boolean used, boolean deleted) {
     }
 
     private static OffsetDateTime ts(Instant i) {

@@ -54,11 +54,11 @@ public class CreatorDraftService {
         this.clock = clock;
     }
 
-    public UploadTicket uploadTicket(Actor actor, UUID jobId, String contentType) {
+    public UploadTicket uploadTicket(Actor actor, UUID jobId, String contentType, Long sizeBytes) {
         actor.requireRole(ActorRole.CREATOR, "Only the creator on the job uploads its video");
         JobFacts.Facts f = jobs.forActor(actor, jobId);
         requireUploadable(f);
-        return new UploadTicket(uploads.issue(actor.userId(), Uploads.Purpose.DRAFT_VIDEO, contentType),
+        return new UploadTicket(uploads.issue(actor.userId(), Uploads.Purpose.DRAFT_VIDEO, contentType, sizeBytes),
                 limits(brief(jobId)));
     }
 

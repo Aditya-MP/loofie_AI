@@ -209,17 +209,20 @@ class DraftFlowTest {
         Job j = inProduction(Duration.ofHours(10));
         Job other = inProduction(Duration.ofHours(10));
         assertThat(status(as(post("/api/core/creator/jobs/{id}/drafts/upload", j.jobId()), creator(j)),
-                Map.of("contentType", "video/x-msvideo"))).as("AVI").isEqualTo(422);
+                Map.of("contentType", "video/x-msvideo", "sizeBytes", 1000))).as("AVI").isEqualTo(422);
         assertThat(status(as(post("/api/core/creator/jobs/{id}/drafts/upload", j.jobId()), admin(j)),
-                Map.of("contentType", "video/mp4"))).as("brand").isEqualTo(403);
+                Map.of("contentType", "video/mp4", "sizeBytes", 1000))).as("brand").isEqualTo(403);
         assertThat(status(as(post("/api/core/creator/jobs/{id}/drafts/upload", j.jobId()), creator(other)),
-                Map.of("contentType", "video/mp4"))).as("not her job").isEqualTo(404);
+                Map.of("contentType", "video/mp4", "sizeBytes", 1000))).as("not her job").isEqualTo(404);
+        assertThat(status(as(post("/api/core/creator/jobs/{id}/drafts/upload", j.jobId()), creator(j)),
+                Map.of("contentType", "video/mp4", "sizeBytes", 500L * 1024 * 1024 + 1))).as("over 500 MB: no link")
+                .isEqualTo(422);
 
         String othersKey = upload(other, SampleVideos.good(), "video/mp4");
         assertThat(problem(as(post("/api/core/creator/jobs/{id}/drafts", j.jobId()), creator(j)),
                 Map.of("key", othersKey), 422)).as("someone else's upload").isEqualTo("upload-refused");
         JsonNode ticket = body(as(post("/api/core/creator/jobs/{id}/drafts/upload", j.jobId()), creator(j)),
-                Map.of("contentType", "video/mp4"), 200);
+                Map.of("contentType", "video/mp4", "sizeBytes", 1000), 200);
         assertThat(ticket.get("ticket").get("maxBytes").asLong()).isEqualTo(500L * 1024 * 1024);
         assertThat(problem(as(post("/api/core/creator/jobs/{id}/drafts", j.jobId()), creator(j)),
                 Map.of("key", ticket.get("ticket").get("key").asString()), 422)).as("not uploaded").isEqualTo("upload-refused");
@@ -472,7 +475,7 @@ class DraftFlowTest {
 
     private String upload(Job j, byte[] video, String type) throws Exception {
         JsonNode t = body(as(post("/api/core/creator/jobs/{id}/drafts/upload", j.jobId()), creator(j)),
-                Map.of("contentType", type), 200).get("ticket");
+                Map.of("contentType", type, "sizeBytes", video.length), 200).get("ticket");
         int put = mvc.perform(put(URI.create(t.get("url").asString())).header("Content-Type", type).content(video))
                 .andReturn().getResponse().getStatus();
         assertThat(put).isEqualTo(200);

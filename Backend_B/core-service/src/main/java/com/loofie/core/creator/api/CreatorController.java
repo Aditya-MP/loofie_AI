@@ -29,7 +29,8 @@ class CreatorController {
     record ListingRequest(Boolean listed) {
     }
 
-    record UploadRequest(String contentType) {
+    /** @param sizeBytes the file's exact size: the signed URL accepts only that size */
+    record UploadRequest(String contentType, Long sizeBytes) {
     }
 
     record AttachRequest(String uploadKey, Evidence.Kind kind) {
@@ -84,7 +85,7 @@ class CreatorController {
     @PostMapping("/uploads")
     ResponseEntity<Uploads.UploadTicket> upload(Actor actor, @RequestBody UploadRequest body) {
         return ResponseEntity.status(HttpStatus.CREATED).body(evidence.uploadTicket(actor,
-                body == null ? null : body.contentType()));
+                body == null ? null : body.contentType(), body == null ? null : body.sizeBytes()));
     }
 
     /** Step 2: attach the uploaded file as Insights proof or a collaboration proof. */

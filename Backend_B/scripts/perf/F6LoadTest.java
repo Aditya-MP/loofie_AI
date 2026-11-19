@@ -103,7 +103,7 @@ public class F6LoadTest {
             HttpResponse<String> t = http.send(creator(j).apply(HttpRequest.newBuilder(URI.create(BASE
                             + "/api/core/jobs/" + j.id() + "/uploads"))).header("Content-Type", "application/json")
                     .POST(HttpRequest.BodyPublishers.ofString("{\"purpose\":\"" + purpose
-                            + "\",\"contentType\":\"image/jpeg\"}")).build(), HttpResponse.BodyHandlers.ofString());
+                            + "\",\"contentType\":\"image/jpeg\",\"sizeBytes\":4096}")).build(), HttpResponse.BodyHandlers.ofString());
             String key = field(t.body(), "key");
             http.send(HttpRequest.newBuilder(URI.create(field(t.body(), "url"))).header("Content-Type", "image/jpeg")
                     .PUT(HttpRequest.BodyPublishers.ofByteArray(new byte[4096])).build(),

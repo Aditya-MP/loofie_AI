@@ -37,10 +37,12 @@ final class S3ObjectStore implements ObjectStore {
     }
 
     @Override
-    public Ticket presignPut(String key, String contentType, Duration ttl) {
+    public Ticket presignPut(String key, String contentType, long sizeBytes, Duration ttl) {
         Instant now = clock.instant();
-        URI url = sign("PUT", key, now, ttl, contentType);
-        return new Ticket("PUT", url, Map.of("Content-Type", contentType), now.plus(ttl));
+        URI url = SigV4.presign("PUT", objectUrl(key), props.region(), props.accessKey(), props.secretKey(), now, ttl,
+                contentType, sizeBytes);
+        return new Ticket("PUT", url, Map.of("Content-Type", contentType, "Content-Length", String.valueOf(sizeBytes)),
+                now.plus(ttl));
     }
 
     @Override

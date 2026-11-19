@@ -78,6 +78,8 @@ creator app ──/api/core/creator/...──▶ Backend B ──X-API-Key──
 5. **Screenshots upload**: `POST /api/core/uploads` returns a 5-minute signed PUT URL for one image (jpeg / png / webp /
    heic, ≤ 5 MB) under `creator-evidence/<creator id>/<uuid>`; the profile then refers to that key. Ops views it
    through a 5-minute signed GET URL; every view is audited (DECISIONS section 10: viewing creator data is logged).
+   **Since 2026-11-19 every upload link request also sends `sizeBytes`** (the file's exact size); the link accepts
+   only that size. See `upload-size-limit-plan.md`.
 6. **Ops verification queue**: list creators with unchecked screenshots; mark numbers `OPS_CHECKED` (with corrected
    values if needed) or reject with a reason the creator sees. Audited.
 7. **Level and marketplace status**: `level` NEW (default; ₹5,000 per-job cap) / VERIFIED (ops sets it with a reason;

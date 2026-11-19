@@ -43,7 +43,8 @@ final class DraftControllers {
     @RequestMapping("/api/core/creator/jobs/{jobId}/drafts")
     static class CreatorDrafts {
 
-        record TicketRequest(@NotNull @Size(max = 40) String contentType) {
+        /** @param sizeBytes the video's exact size: the signed URL accepts only that size */
+        record TicketRequest(@NotNull @Size(max = 40) String contentType, Long sizeBytes) {
         }
 
         record SubmitRequest(@NotNull @Size(max = 200) String key) {
@@ -58,7 +59,7 @@ final class DraftControllers {
         @PostMapping("/upload")
         CreatorDraftService.UploadTicket ticket(Actor actor, @PathVariable UUID jobId,
                                                 @Valid @RequestBody TicketRequest body) {
-            return drafts.uploadTicket(actor, jobId, body.contentType());
+            return drafts.uploadTicket(actor, jobId, body.contentType(), body.sizeBytes());
         }
 
         @PostMapping

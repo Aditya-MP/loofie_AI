@@ -139,7 +139,7 @@ public class FullFlowCheck {
         Res filled = creator2.call("PUT", "/api/core/creator/profile", passport, true);
         check("form saved; only the Insights screenshot is missing", filled.status() == 200
                 && filled.body().contains("\"missing\":[\"insightsScreenshot\"]"));
-        Res ticket = creator2.post("/api/core/creator/uploads", "{\"contentType\":\"image/png\"}");
+        Res ticket = creator2.post("/api/core/creator/uploads", "{\"contentType\":\"image/png\",\"sizeBytes\":2048}");
         String uploadUrl = ticket.str("url");
         check("upload ticket: signed PUT URL for one image", ticket.status() == 201 && uploadUrl != null
                 && uploadUrl.contains("sig="));

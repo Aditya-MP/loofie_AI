@@ -43,12 +43,13 @@ public class JobActions {
     }
 
     /** An upload link for a job photo (receipt, handover, damage); only the roles that use each kind get one. */
-    public Uploads.UploadTicket ticket(Actor actor, UUID jobId, Uploads.Purpose purpose, String contentType) {
+    public Uploads.UploadTicket ticket(Actor actor, UUID jobId, Uploads.Purpose purpose, String contentType,
+                                       Long sizeBytes) {
         if (purpose == null || !MAY_UPLOAD.getOrDefault(actor.role().acting(), Set.of()).contains(purpose)) {
             throw new ActorNotAllowedException(actor.role() + " may not upload " + purpose);
         }
         jobs.forActor(actor, jobId); // someone outside the job learns nothing about it
-        return uploads.issue(actor.userId(), purpose, contentType);
+        return uploads.issue(actor.userId(), purpose, contentType, sizeBytes);
     }
 
     public TransitionResult run(TransitionCommand cmd) {

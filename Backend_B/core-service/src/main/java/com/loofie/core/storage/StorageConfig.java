@@ -43,7 +43,7 @@ class StorageConfig {
         }
 
         @Override
-        public Ticket presignPut(String key, String contentType, Duration ttl) {
+        public Ticket presignPut(String key, String contentType, long sizeBytes, Duration ttl) {
             throw new StoreUnavailableException(MESSAGE, null);
         }
 

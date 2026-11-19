@@ -15,7 +15,7 @@ rating (1-5 stars) that goes to Backend A.
 ## 2. Flow
 
 ```
-creator  POST /creator/jobs/{id}/drafts/upload  -> signed PUT (MP4/MOV, 500 MB, 60 min)
+creator  POST /creator/jobs/{id}/drafts/upload {contentType, sizeBytes} -> signed PUT for exactly that size (MP4/MOV, ≤ 500 MB, 60 min)
          PUT the file to storage
          POST /creator/jobs/{id}/drafts {key}   -> 202 CHECKING (key must be hers, unused, really uploaded)
 worker   download -> ffprobe -> checks
