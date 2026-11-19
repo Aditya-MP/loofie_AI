@@ -1,6 +1,7 @@
 # Events to Backend A: round 2 ("completely done" = brand motive + backend)
 
-Status: **steps 1–11 done (research and plan), 2026-11-16. Waiting for approval before building.**
+Status: **built (commit `c239943`, 2026-11-17); results in section 6. `rating` added with F7 (2026-11-18).**
+Still open: `rebooked`, `brief_ref`, Backend A's live connection (section 4).
 Round 1 (transport: outbox → HTTP `/ai/feedback`, Kafka removed) is `docs/features/kafka-removal.md`.
 
 ## 1. Business purpose
@@ -14,7 +15,7 @@ section 9; `app/matcher/track_record.py` at `e682442`) is built **only** from wh
 | Extra revisions | `job_outcome.revisions` | **nothing** |
 | Replaced, not her fault | `job_outcome.replaced` | **nothing** |
 | Creator's own fault (withdrew, unresponsive, false claim) | `reasonCode` on `job_state_changed` | partly (see M2) |
-| Rating | `rating` | nothing (no rating feature yet) |
+| Rating | `rating` | nothing (no rating feature yet). **Since F7: sent** (stars only) |
 | Rebooked | `rebooked` | nothing (no rebook yet) |
 
 If these are missing or wrong, **brands are shown unreliable creators**, and **good creators are unfairly
@@ -49,9 +50,9 @@ ranked down**. Both break Loofie's promise.
 
 | Item | Waiting on |
 |---|---|
-| `rating` (stars, `job_id`) | A rating feature (F7/F8 review screens) |
+| ~~`rating` (stars, `job_id`)~~ | **Done in F7**: the brand rates after approval; `JobRating` → `rating` in `AiFeedbackMapper`; the comment stays in core |
 | `rebooked` | F11 rebook |
-| `brief_ref` on every job event, brief and shortlist events | F2 briefs, F3 shortlists |
+| `brief_ref` on every job event, brief and shortlist events | F2 briefs, F3 shortlists (Backend A's features) |
 | Backend A's real URL, key, capacity | Aditya |
 
 ## 5. Decisions (approved 2026-11-16)
@@ -100,5 +101,5 @@ ranked down**. Both break Loofie's promise.
 
 **Done** for what Backend B can deliver now: it serves the matcher (a fair track record: ghosting counts, courier
 and brand faults do not, wrong calls can be corrected) and meets the backend standard (tests, contract, plans, load).
-Still open, each with an owner in section 4: `rating`, `rebooked`, brief events, Backend A's live connection, and
+Still open, each with an owner in section 4: ~~`rating`~~ (done in F7), `rebooked`, brief events, Backend A's live connection, and
 Aditya's written OK on the correction format.

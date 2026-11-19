@@ -54,7 +54,7 @@ From Foundation v2 (authoritative):
 
 | # | Finding | Severity | Proposal |
 |---|---|---|---|
-| S1 | No real authentication: production refuses every request (`DenyAllActorResolver`). | **Blocker for launch** | F1. Until then the engine's permission logic is tested, but authentication is not. |
+| S1 | No real authentication: production refuses every request (`DenyAllActorResolver`). | **Blocker for launch** | F1. Until then the engine's permission logic is tested, but authentication is not. **Closed (F1 round A): `SessionActorResolver`.** |
 | S2 | Authorization is correct and tested: role per action, brand must own the job, creator must be the active assignee, only OPS sets reason codes, only RESOLVE_FALSE_CLAIM sets FALSE_CLAIM. | OK | Keep. Add tests for the combinations not yet covered (below). |
 | S3 | Ops are all-powerful: one ops user can refund, cancel or release a creator alone. | Medium (money) | **Decision needed:** require a second ops approval for refunds above an amount? Or a senior-ops role? Not built until decided. |
 | S4 | `Idempotency-Key` is optional. Without it, a retried `OPS_EXTEND` applies twice. | Medium | Make the key **required** for all transition calls under the `prod` profile (configurable), once the apps send it. Until then, required for `OPS_EXTEND` only (the one non-idempotent self-loop). |
@@ -177,7 +177,7 @@ Ranked by damage. Each item names the problem it solves.
 3. Item 8: may the `prod` profile require `Idempotency-Key` once the apps send it?
 
 **Will stay "not verified" after this plan:** behaviour on production hosting (load at scale, failover, PgBouncer,
-alerts) and real authentication (F1).
+alerts) and real authentication (F1; since closed by F1 round A).
 
 ---
 
@@ -234,7 +234,7 @@ users, plus managed PostgreSQL with enough memory to hold the hot indexes.
 | Architecture and service boundaries | Done, enforced by ArchUnit |
 | Database design (constraints, indexes justified by measurement, migration policy) | Done |
 | Security: authorization, scope (404), reason codes, idempotency, no internals in errors | Done, tested |
-| Security: **authentication** | **Not verified: F1 does not exist** |
+| Security: **authentication** | Done since F1 round A (`SessionActorResolver`, cookie sessions; `DenyAllActorResolver` removed). The e2e check (`scripts/e2e/FullFlowCheck.java`) runs the job flow behind real OTP login. Still open in F1: real SMS/email provider |
 | Validation and error handling (400/404/409/422/428/503/500 with requestId) | Done, tested |
 | Concurrency (races, 20 parallel retries, optimistic lock, leases) | Done, tested |
 | Failure and recovery (DB contention, Backend A down, restart) | Done in tests. **A real database failover and a real process kill are not verified** (needs hosting). |
@@ -245,7 +245,7 @@ users, plus managed PostgreSQL with enough memory to hold the hot indexes.
 
 ## 15. Known limits and remaining risks
 
-1. **No authentication** (F1). Production refuses every request until it exists.
+1. ~~No authentication (F1).~~ Closed by F1 round A: real sessions replace the deny-all resolver. Login codes still need an SMS/email provider before launch (tracked in F1).
 2. **Not verified on real infrastructure**: load at scale, PgBouncer, database failover, cold-start warm-up, alerts.
 3. **Ops are all-powerful** (S3): one ops user can refund or cancel. Waiting for a decision.
 4. `Idempotency-Key` is optional except for `OPS_EXTEND` until the apps send it; then switch it on.
@@ -282,7 +282,7 @@ ops?* and *is it proven?* Sources: DECISIONS.md sections 5–6 (backend-a `e6824
 | R4 | **Cancellation table** (M3) | `CANCEL` as a request from every pre-approval state, with the case taken from the state: before acceptance full; after acceptance before shipping minus fee; after receipt / shoot started no refund + 50% kill fee to the creator. Shipped-not-received waits for Open 4. | M |
 | R5 | **Notification inbox** (M4) | `notifications` table written **in the same transaction** as each notice (brand org, creator or ops, per the notice's audience) and each refund decision; `GET /api/core/notifications` (only your own), mark read; kept 90 days. Brands and creators then see reminders in the app; WhatsApp/email delivery later plugs in on the same rows. | M |
 | R6 | **Review clock switch** (M5) | `loofie.deadlines.review-working-days` (empty = 120 calendar hours, today's rule; 5 = DECISIONS.md). Off until the founder signs off. | S |
-| R7 | **Roles** `OPS_LEAD`, `FOUNDER` | New `ActorRole` values; dev login accepts them; real login is F1. | S |
+| R7 | **Roles** `OPS_LEAD`, `FOUNDER` | New `ActorRole` values; dev login accepts them; real login is F1 (since built: staff accounts in `StaffService`). | S |
 | R8 | **Proof** | Rule tests per approval case and amount example; self-approval refused; race (two approvers at once, request vs other action); approved row immutable; load test of request + approve at 50 rps (rare action) and the engine at 500 rps unchanged; contract test for the new events. | M |
 
 ### Decisions needed before R2/R4 are final
@@ -325,4 +325,4 @@ failed and 801 test jobs stayed in the 1M set (0.08%, numbers unaffected). Fixed
 
 **Still open (written down, not built):** shipped-not-received cancellation row, the CA's word on GST for refunds
 and credits, real delivery of inbox items (WhatsApp / email), recording the fee credit against the next order (F4
-order intake), founder sign-off before switching the review clock to working days, real login for the new roles (F1).
+order intake), founder sign-off before switching the review clock to working days, ~~real login for the new roles (F1)~~ (done in F1 round A).
