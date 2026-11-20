@@ -58,6 +58,11 @@ public class EvidenceRepository {
                 .param("id", creatorId).param("kind", kind.name()).query(Long.class).single();
     }
 
+    /** For the ops overview: screenshots waiting to be checked. */
+    public long pendingCount() {
+        return jdbc.sql("SELECT count(*) FROM creator_evidence WHERE status = 'PENDING'").query(Long.class).single();
+    }
+
     /** The ops verification queue: oldest pending first. */
     public List<Evidence> pending(Instant after, int limit) {
         return jdbc.sql("SELECT " + COLUMNS + " FROM creator_evidence WHERE status = 'PENDING' AND created_at > :after "

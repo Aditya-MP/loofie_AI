@@ -109,6 +109,11 @@ public class RefundRequestRepository {
         }
     }
 
+    /** For the ops overview: requests waiting for a decision. */
+    public long openCount() {
+        return jdbc.sql("SELECT count(*) FROM refund_requests WHERE status = 'REQUESTED'").query(Long.class).single();
+    }
+
     public int approvedForBrandSince(UUID brandOrgId, Instant since) {
         return jdbc.sql("""
                 SELECT count(*) FROM refund_requests

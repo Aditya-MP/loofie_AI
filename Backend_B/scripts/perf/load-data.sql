@@ -7,6 +7,11 @@ SET statement_timeout = 0;
 TRUNCATE refund_requests, notifications, deadline_notices, shipments, assignments, idempotency_keys,
     scheduler_leases CASCADE;
 DELETE FROM outbox;
+-- F7, F9, F10 tables that reference jobs (ops_time_entries is append-only: its TRUNCATE guard is lifted for the reset).
+TRUNCATE job_briefs, job_drafts, draft_reviews, job_ratings, job_swap_offers, job_dispute_statements, payout_holds CASCADE;
+ALTER TABLE ops_time_entries DISABLE TRIGGER ops_time_entries_no_truncate;
+TRUNCATE ops_time_entries;
+ALTER TABLE ops_time_entries ENABLE TRIGGER ops_time_entries_no_truncate;
 ALTER TABLE job_events DISABLE TRIGGER job_events_no_truncate;
 TRUNCATE job_events;
 ALTER TABLE job_events ENABLE TRIGGER job_events_no_truncate;

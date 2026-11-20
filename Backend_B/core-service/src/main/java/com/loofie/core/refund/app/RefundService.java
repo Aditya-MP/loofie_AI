@@ -218,6 +218,11 @@ public class RefundService implements TimerRefunds {
     }
 
     @Transactional(readOnly = true)
+    /** For the ops overview: refund requests waiting for a decision. */
+    public long openCount() {
+        return repo.openCount();
+    }
+
     public List<RefundView> open(Actor actor, int limit) {
         actor.requireRole(ActorRole.OPS, "Refunds are for ops");
         return repo.open(Math.min(Math.max(limit, 1), 200)).stream().map(RefundService::view).toList();

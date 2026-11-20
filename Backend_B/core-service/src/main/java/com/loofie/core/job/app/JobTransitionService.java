@@ -46,6 +46,7 @@ import com.loofie.core.job.infra.JobReadRepository;
 import com.loofie.core.job.infra.JobRepository;
 import com.loofie.core.job.infra.ShipmentRepository;
 import com.loofie.core.job.infra.SwapOfferRepository;
+import com.loofie.core.job.infra.PayoutHoldRepository;
 
 /**
  * The single entry point for changing a job's state. Nothing else writes job status.
@@ -74,6 +75,7 @@ public class JobTransitionService {
     private final SwapOfferRepository swapOffers;
     private final CreatorRoster roster;
     private final DisputeNotices disputeNotices;
+    private final PayoutHoldRepository payoutHolds;
     private static final org.slf4j.Logger log = org.slf4j.LoggerFactory.getLogger(JobTransitionService.class);
     /** {@code loofie.deadlines.review-working-days}: empty = 120 calendar hours (today); 5 = DECISIONS.md, once signed off. */
     private Integer reviewWorkingDays;
@@ -91,7 +93,8 @@ public class JobTransitionService {
                                 CourierRepository couriers, TrackingNumberRepository trackingNumbers,
                                 JobReadRepository reads, DeliveryNotices deliveryNotices,
                                 CreatorEligibility eligibility, DraftGate drafts, SwapOfferRepository swapOffers,
-                                CreatorRoster roster, DisputeNotices disputeNotices) {
+                                CreatorRoster roster, DisputeNotices disputeNotices, PayoutHoldRepository payoutHolds) {
+        this.payoutHolds = payoutHolds;
         this.swapOffers = swapOffers;
         this.roster = roster;
         this.disputeNotices = disputeNotices;
@@ -255,6 +258,10 @@ public class JobTransitionService {
                     .map(Assignment::getCreatorId).orElse(null);
             correctionFacts.put("corrects", last.eventId().toString());
             correctionFacts.put("previousReasonCode", last.reasonCode());
+        }
+        if (rule.action() == JobAction.PAYOUT_QUEUED && payoutHolds.isHeld(job.getId())) {
+            // F10: ops holds this payout; an ops lead or founder releases it first.
+            throw new TransitionGuardException("The payout is on hold; release the hold first");
         }
         if (rule.action() == JobAction.APPROVE_SWAP
                 && (creatorId == null || !swapOffers.approve(job.getId(), creatorId, actor.userId(), now))) {

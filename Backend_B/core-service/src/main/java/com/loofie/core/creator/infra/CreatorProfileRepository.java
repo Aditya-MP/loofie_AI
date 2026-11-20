@@ -204,6 +204,88 @@ public class CreatorProfileRepository {
     }
 
     /** Passport complete, approved by ops (or Instagram) and LISTED; the account side is asked of identity. */
+    /** F10 ops creator search: filters only (ranking is Backend A's). Null filters are ignored. */
+    public record SearchFilter(String category, String city, String state, String language, Integer maxRate,
+                               Level level, String q, boolean bookableOnly) {
+    }
+
+    /** One search result: what ops needs to pick and offer a creator; no phone or email. */
+    public record SearchRow(UUID creatorId, String displayName, String instagramHandle, String city, String state,
+                            List<String> categories, List<String> languages, Integer ratePerReelRupees, Level level,
+                            String reviewStatus, MarketplaceStatus marketplaceStatus, boolean bookable) {
+    }
+
+    /**
+     * Keyset on (rate, user_id): cheapest first, stable while new creators join. Must run inside a transaction: it
+     * asks for a plan made for these values (measured on 100k creators: the driver's reused generic plan read the
+     * whole city and sorted it, 26 ms; the plan for the actual city reads the city index in order and stops at the
+     * page size, 1 ms).
+     */
+    @org.springframework.transaction.annotation.Transactional(
+            propagation = org.springframework.transaction.annotation.Propagation.MANDATORY)
+    public List<SearchRow> search(SearchFilter f, Integer afterRate, UUID afterId, int limit) {
+        jdbc.sql("SET LOCAL plan_cache_mode = force_custom_plan").update();
+        StringBuilder where = new StringBuilder(" WHERE p.completed_at IS NOT NULL");
+        java.util.Map<String, Object> params = new java.util.LinkedHashMap<>();
+        if (f.bookableOnly()) {
+            where.append(" AND p.marketplace_status = 'LISTED' AND p.review_status = 'APPROVED' AND u.status = 'ACTIVE'");
+        }
+        if (f.category() != null) {
+            where.append(" AND :category = ANY (p.categories)");
+            params.put("category", f.category());
+        }
+        if (f.language() != null) {
+            where.append(" AND :language = ANY (p.languages)");
+            params.put("language", f.language());
+        }
+        if (f.city() != null) {
+            where.append(" AND lower(p.city) = lower(:city)");
+            params.put("city", f.city());
+        }
+        if (f.state() != null) {
+            where.append(" AND p.state = :state");
+            params.put("state", f.state());
+        }
+        if (f.maxRate() != null) {
+            where.append(" AND p.rate_per_reel_rupees <= :maxRate");
+            params.put("maxRate", f.maxRate());
+        }
+        if (f.level() != null) {
+            where.append(" AND p.level = :level");
+            params.put("level", f.level().name());
+        }
+        if (f.q() != null) {
+            where.append(" AND (lower(p.instagram_handle) LIKE :q OR lower(p.display_name) LIKE :q)");
+            params.put("q", f.q().toLowerCase().replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_") + "%");
+        }
+        if (afterId != null) {
+            where.append(" AND (p.rate_per_reel_rupees, p.user_id) > (:afterRate, :afterId)");
+            params.put("afterRate", afterRate);
+            params.put("afterId", afterId);
+        }
+        var spec = jdbc.sql("""
+                SELECT p.user_id, p.display_name, p.instagram_handle, p.city, p.state, p.categories, p.languages,
+                       p.rate_per_reel_rupees, p.level, p.review_status, p.marketplace_status,
+                       (p.marketplace_status = 'LISTED' AND p.review_status = 'APPROVED' AND u.status = 'ACTIVE') AS bookable
+                FROM creator_profiles p JOIN users u ON u.id = p.user_id""" + where
+                + " ORDER BY p.rate_per_reel_rupees, p.user_id LIMIT :limit").param("limit", limit);
+        for (var e : params.entrySet()) {
+            spec = spec.param(e.getKey(), e.getValue());
+        }
+        return spec.query((rs, n) -> new SearchRow(rs.getObject("user_id", UUID.class), rs.getString("display_name"),
+                rs.getString("instagram_handle"), rs.getString("city"), rs.getString("state"),
+                strings(rs.getArray("categories")), strings(rs.getArray("languages")),
+                (Integer) rs.getObject("rate_per_reel_rupees"), Level.valueOf(rs.getString("level")),
+                rs.getString("review_status"), MarketplaceStatus.valueOf(rs.getString("marketplace_status")),
+                rs.getBoolean("bookable"))).list();
+    }
+
+    /** Counts for the ops overview: profiles waiting for review. */
+    public long pendingReviews() {
+        return jdbc.sql("SELECT count(*) FROM creator_profiles WHERE review_status = 'PENDING'").query(Long.class)
+                .single();
+    }
+
     public boolean listed(UUID creatorId) {
         return jdbc.sql("""
                 SELECT EXISTS (SELECT 1 FROM creator_profiles

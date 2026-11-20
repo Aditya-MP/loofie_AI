@@ -70,6 +70,9 @@ public class AuditLog {
     public static final String DRAFT_MASTER_DOWNLOADED = "DRAFT_MASTER_DOWNLOADED";
     public static final String DRAFT_OPENED_BY_OPS = "DRAFT_OPENED_BY_OPS";
     public static final String BRIEF_SET_BY_OPS = "BRIEF_SET_BY_OPS";
+    // F10
+    public static final String PAYOUT_HOLD_PLACED = "PAYOUT_HOLD_PLACED";
+    public static final String PAYOUT_HOLD_RELEASED = "PAYOUT_HOLD_RELEASED";
 
     private final AuditRepository repo;
     private final JsonMapper json;

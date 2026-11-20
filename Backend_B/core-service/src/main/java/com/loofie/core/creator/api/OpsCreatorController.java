@@ -37,9 +37,22 @@ class OpsCreatorController {
     }
 
     private final OpsCreatorService ops;
+    private final com.loofie.core.creator.app.OpsCreatorSearch search;
 
-    OpsCreatorController(OpsCreatorService ops) {
+    OpsCreatorController(OpsCreatorService ops, com.loofie.core.creator.app.OpsCreatorSearch search) {
         this.ops = ops;
+        this.search = search;
+    }
+
+    /** F10: find creators to offer or check; filters only, cheapest first, bookable unless {@code bookable=false}. */
+    @GetMapping
+    com.loofie.core.creator.app.OpsCreatorSearch.Page search(Actor actor,
+            @RequestParam(required = false) String category, @RequestParam(required = false) String city,
+            @RequestParam(required = false) String state, @RequestParam(required = false) String language,
+            @RequestParam(required = false) Integer maxRate, @RequestParam(required = false) String level,
+            @RequestParam(required = false) String q, @RequestParam(required = false) Boolean bookable,
+            @RequestParam(required = false) String after, @RequestParam(defaultValue = "25") int size) {
+        return search.search(actor, category, city, state, language, maxRate, level, q, bookable, after, size);
     }
 
     record ProfileReviewRequest(Boolean approve, String note) {

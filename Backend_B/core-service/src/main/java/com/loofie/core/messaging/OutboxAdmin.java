@@ -36,6 +36,11 @@ public class OutboxAdmin {
     }
 
     @Transactional(readOnly = true)
+    /** For the ops overview: events Backend A refused for good, waiting for ops. */
+    public long parkedCount() {
+        return jdbc.sql("SELECT count(*) FROM outbox WHERE parked_at IS NOT NULL").query(Long.class).single();
+    }
+
     public List<Parked> parked(Actor actor, int limit) {
         actor.requireRole(ActorRole.OPS, "Outbox tools are for ops");
         return jdbc.sql("""
