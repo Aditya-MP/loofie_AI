@@ -196,9 +196,10 @@ class DeliveryFinalPassTest {
         String number = JobFixtures.trackingNumber();
         ship(accepted(UUID.randomUUID(), UUID.randomUUID()), TransitionDetails.shipVia("DELHIVERY", number));
         UUID blocked = accepted(UUID.randomUUID(), UUID.randomUUID());
+        int invited = inbox(creatorOf(blocked), blocked).size(); // the invitation notice (F9) is already there
         assertThatThrownBy(() -> ship(blocked, TransitionDetails.shipVia("DELHIVERY", number)))
                 .isInstanceOf(TransitionGuardException.class);
-        assertThat(inbox(creatorOf(blocked), blocked)).isEmpty();
+        assertThat(inbox(creatorOf(blocked), blocked)).hasSize(invited);
 
         couriers.upsert(ops, new Courier("SWITCHEDOFF", "Switched Off", Courier.Kind.TRACKED, null, false, 501));
         Job job = shipped();

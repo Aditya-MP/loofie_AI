@@ -39,9 +39,9 @@ public class CreatorDraftService {
     private final DraftMapper mapper;
     private final TransactionTemplate tx;
     private final Clock clock;
-    private final DraftReadFence fence;
+    private final com.loofie.core.common.ScreenReadFence fence;
 
-    CreatorDraftService(DraftReadFence fence, JobFacts jobs, Uploads uploads, DraftRepository drafts, BriefRepository briefs,
+    CreatorDraftService(com.loofie.core.common.ScreenReadFence fence, JobFacts jobs, Uploads uploads, DraftRepository drafts, BriefRepository briefs,
                         ReviewRepository reviews, DraftMapper mapper, TransactionTemplate tx, Clock clock) {
         this.fence = fence;
         this.jobs = jobs;
@@ -97,7 +97,7 @@ public class CreatorDraftService {
 
     public DraftViews.CreatorDrafts view(Actor actor, UUID jobId) {
         actor.requireRole(ActorRole.CREATOR, "Only the creator on the job sees its uploads");
-        return fence.read(() -> viewInTx(actor, jobId));
+        return fence.read("draft", () -> viewInTx(actor, jobId));
     }
 
     private DraftViews.CreatorDrafts viewInTx(Actor actor, UUID jobId) {

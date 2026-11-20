@@ -178,6 +178,7 @@ class JobTransitionServiceTest {
         engine.transition(jobId, JobAction.PRODUCTION_EXPIRED, Actor.system(), null);
 
         UUID second = UUID.randomUUID();
+        fixtures.swapOffered(jobId, second);
         engine.transition(TransitionCommand.of(jobId, JobAction.APPROVE_SWAP, brand, null).withCreator(second));
         assertThat(job(jobId).isCreatorExtensionUsed()).isFalse();
 
@@ -237,6 +238,8 @@ class JobTransitionServiceTest {
         engine.transition(jobId, JobAction.DECLINE, Actor.creator(first), null);
 
         assertThat(assignments.findByJobIdAndStatus(jobId, Assignment.Status.ACTIVE)).isEmpty();
+
+        fixtures.swapOffered(jobId, second);
 
         engine.transition(TransitionCommand.of(jobId, JobAction.APPROVE_SWAP, brand, null).withCreator(second));
         List<Assignment> history = assignments.findByJobIdOrderByOpenedAt(jobId);

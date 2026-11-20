@@ -21,6 +21,7 @@ import com.loofie.core.job.domain.Actor;
 import com.loofie.core.job.domain.ActorRole;
 import com.loofie.core.job.domain.Assignment;
 import com.loofie.core.job.domain.CreatorEligibility;
+import com.loofie.core.job.domain.CreatorRoster;
 import com.loofie.core.job.domain.Courier;
 import com.loofie.core.job.domain.DeliverySource;
 import com.loofie.core.job.domain.DraftGate;
@@ -44,6 +45,7 @@ import com.loofie.core.job.infra.TrackingNumberRepository;
 import com.loofie.core.job.infra.JobReadRepository;
 import com.loofie.core.job.infra.JobRepository;
 import com.loofie.core.job.infra.ShipmentRepository;
+import com.loofie.core.job.infra.SwapOfferRepository;
 
 /**
  * The single entry point for changing a job's state. Nothing else writes job status.
@@ -69,6 +71,9 @@ public class JobTransitionService {
     private final DeliveryNotices deliveryNotices;
     private final CreatorEligibility eligibility;
     private final DraftGate drafts;
+    private final SwapOfferRepository swapOffers;
+    private final CreatorRoster roster;
+    private final DisputeNotices disputeNotices;
     private static final org.slf4j.Logger log = org.slf4j.LoggerFactory.getLogger(JobTransitionService.class);
     /** {@code loofie.deadlines.review-working-days}: empty = 120 calendar hours (today); 5 = DECISIONS.md, once signed off. */
     private Integer reviewWorkingDays;
@@ -85,7 +90,11 @@ public class JobTransitionService {
                                 JobEventRecorder recorder, WorkingCalendar calendar, Clock clock, MeterRegistry meters,
                                 CourierRepository couriers, TrackingNumberRepository trackingNumbers,
                                 JobReadRepository reads, DeliveryNotices deliveryNotices,
-                                CreatorEligibility eligibility, DraftGate drafts) {
+                                CreatorEligibility eligibility, DraftGate drafts, SwapOfferRepository swapOffers,
+                                CreatorRoster roster, DisputeNotices disputeNotices) {
+        this.swapOffers = swapOffers;
+        this.roster = roster;
+        this.disputeNotices = disputeNotices;
         this.eligibility = eligibility;
         this.drafts = drafts;
         this.reads = reads;
@@ -138,6 +147,7 @@ public class JobTransitionService {
         }
         // F6: whoever must act next is told, after the follow-ups so the new clocks are in the notice.
         deliveryNotices.after(job, cmd.action(), start, facts, clock.instant());
+        disputeNotices.after(job, cmd.action(), start, facts, clock.instant()); // F9
         return new TransitionResult(job.getId(), start, job.getStatus(), job.getVersion(), eventIds);
     }
 
@@ -246,12 +256,23 @@ public class JobTransitionService {
             correctionFacts.put("corrects", last.eventId().toString());
             correctionFacts.put("previousReasonCode", last.reasonCode());
         }
+        if (rule.action() == JobAction.APPROVE_SWAP
+                && (creatorId == null || !swapOffers.approve(job.getId(), creatorId, actor.userId(), now))) {
+            // F9: the brand approves the creator ops offered, never an id of its own choosing.
+            throw new TransitionGuardException("No open offer for this creator: ops offers the replacement first");
+        }
         Assignment assignment = correction ? null : changeAssignment(job, rule, creatorId, now);
         UUID assignmentId = correction ? correctedAssignment : assignment == null ? null : assignment.getId();
         UUID eventCreator = correction ? correctedCreator : assignment == null ? null : assignment.getCreatorId();
+        if (rule.action() == JobAction.PRODUCTION_EXPIRED && assignment != null) {
+            roster.missedProductionDeadline(assignment.getCreatorId(), job.getId(), now); // F9: back to NEW level
+        }
         Map<String, Object> facts = applyDeliveryFacts(job, rule, actor, details, assignmentId, now);
         facts.putAll(correctionFacts);
         factsOut.putAll(facts);
+        if (assignment != null && assignment.getStatus() != Assignment.Status.ACTIVE) {
+            factsOut.put(DisputeNotices.LEFT_CREATOR, assignment.getCreatorId()); // for the notices only, not the event
+        }
         if (rule.action() == JobAction.REQUEST_REVISION) {
             job.markFreeRevisionUsed();
         }
@@ -261,6 +282,10 @@ public class JobTransitionService {
             job.recordFirstDraft(draftUploadedAt);
         }
         job.moveTo(rule.to(), now);
+        if (WAITING_FOR_CREATOR.contains(from) && !WAITING_FOR_CREATOR.contains(rule.to())
+                && rule.action() != JobAction.APPROVE_SWAP) {
+            swapOffers.withdrawOpen(job.getId(), actor.userId(), rule.to().name(), now); // the job ended without a swap
+        }
         if (APPROVALS.contains(rule.action())) {
             drafts.approved(job.getId(), now);
         }
@@ -282,6 +307,10 @@ public class JobTransitionService {
         recordOutcome(job, rule.action(), from, assignment, reasonCode, now, correlationId, eventId);
         return eventId;
     }
+
+    /** F9: a paid job with no creator, where ops offers a replacement and the 10-day refund window runs. */
+    static final java.util.Set<JobStatus> WAITING_FOR_CREATOR = java.util.EnumSet.of(JobStatus.DECLINED,
+            JobStatus.REPLACEMENT_NEEDED);
 
     private static final java.util.Set<JobAction> APPROVALS = java.util.EnumSet.of(JobAction.APPROVE,
             JobAction.AUTO_APPROVE, JobAction.RESOLVE_APPROVE);

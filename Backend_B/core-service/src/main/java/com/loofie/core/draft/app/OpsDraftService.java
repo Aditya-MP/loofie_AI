@@ -46,9 +46,9 @@ public class OpsDraftService {
     private final DraftMapper mapper;
     private final TransactionTemplate tx;
     private final Clock clock;
-    private final DraftReadFence fence;
+    private final com.loofie.core.common.ScreenReadFence fence;
 
-    OpsDraftService(DraftReadFence fence, JobFacts jobs, DraftRepository drafts, BriefRepository briefs, ReviewRepository reviews,
+    OpsDraftService(com.loofie.core.common.ScreenReadFence fence, JobFacts jobs, DraftRepository drafts, BriefRepository briefs, ReviewRepository reviews,
                     Uploads uploads, AuditLog audit, DraftMapper mapper, TransactionTemplate tx, Clock clock) {
         this.fence = fence;
         this.jobs = jobs;
@@ -89,7 +89,7 @@ public class OpsDraftService {
 
     public OpsDrafts view(Actor actor, UUID jobId) {
         actor.requireRole(ActorRole.OPS, "Ops only");
-        return fence.read(() -> viewInTx(actor, jobId));
+        return fence.read("draft", () -> viewInTx(actor, jobId));
     }
 
     private OpsDrafts viewInTx(Actor actor, UUID jobId) {

@@ -62,9 +62,9 @@ public class BrandDraftService {
     private final DraftMapper mapper;
     private final TransactionTemplate tx;
     private final Clock clock;
-    private final DraftReadFence fence;
+    private final com.loofie.core.common.ScreenReadFence fence;
 
-    BrandDraftService(DraftReadFence fence, JobFacts jobs, JobTransitionService engine, DraftRepository drafts, ReviewRepository reviews,
+    BrandDraftService(com.loofie.core.common.ScreenReadFence fence, JobFacts jobs, JobTransitionService engine, DraftRepository drafts, ReviewRepository reviews,
                       CreatorDraftService creatorSide, Uploads uploads, NotificationService notifications,
                       AuditLog audit, Outbox outbox, DraftMapper mapper, TransactionTemplate tx, Clock clock) {
         this.fence = fence;
@@ -84,7 +84,7 @@ public class BrandDraftService {
 
     public DraftViews.BrandDraft view(Actor actor, UUID jobId) {
         requireBrand(actor);
-        return fence.read(() -> viewInTx(actor, jobId));
+        return fence.read("draft", () -> viewInTx(actor, jobId));
     }
 
     private DraftViews.BrandDraft viewInTx(Actor actor, UUID jobId) {

@@ -251,7 +251,7 @@ users, plus managed PostgreSQL with enough memory to hold the hot indexes.
 4. `Idempotency-Key` is optional except for `OPS_EXTEND` until the apps send it; then switch it on.
 5. An at-deadline alert more than 7 days late (worker down for a week) is not sent.
 6. Ops list throughput is about 80 list calls per second per instance (see 14).
-7. "Creator moved back to NEW level" (F9) waits for creator profiles.
+7. ~~"Creator moved back to NEW level" (F9) waits for creator profiles.~~ Done in F9 (2026-11-20): a missed production deadline drops her to NEW, audited.
 8. The F6 rules that differ from Foundation v2 are provisional until the founder signs off.
 
 ---

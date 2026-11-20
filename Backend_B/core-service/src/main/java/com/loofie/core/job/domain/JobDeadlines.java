@@ -92,7 +92,8 @@ public final class JobDeadlines {
             }
             case IN_REVIEW -> review = reviewWorkingDays == null ? enteredAt.plus(REVIEW_WINDOW)
                     : calendar.endOfWorkingDays(enteredAt, reviewWorkingDays, job.getBrandPickupState()); // brand-side clock
-            case REPLACEMENT_NEEDED -> replacement = enteredAt.plus(REPLACEMENT_WINDOW);
+            // F9: a declined invitation also gets the 10-day window (then a full refund), like a replacement.
+            case REPLACEMENT_NEEDED, DECLINED -> replacement = enteredAt.plus(REPLACEMENT_WINDOW);
             // Ops-side clock: working days, national holidays (ops is not tied to a brand state).
             case DISPUTED -> disputeReview = calendar.endOfWorkingDays(enteredAt, DISPUTE_REVIEW_WORKING_DAYS, null);
             default -> {

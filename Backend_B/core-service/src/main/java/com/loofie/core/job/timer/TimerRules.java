@@ -40,7 +40,8 @@ final class TimerRules {
             new Action(JobStatus.PRODUCT_SHIPPED, JobDeadline.AUTO_START, JobAction.AUTO_START_PRODUCTION),
             new Action(JobStatus.IN_PRODUCTION, JobDeadline.PRODUCTION, JobAction.PRODUCTION_EXPIRED),
             new Action(JobStatus.IN_REVIEW, JobDeadline.REVIEW, JobAction.AUTO_APPROVE),
-            new Action(JobStatus.REPLACEMENT_NEEDED, JobDeadline.REPLACEMENT, JobAction.REPLACEMENT_EXPIRED));
+            new Action(JobStatus.REPLACEMENT_NEEDED, JobDeadline.REPLACEMENT, JobAction.REPLACEMENT_EXPIRED),
+            new Action(JobStatus.DECLINED, JobDeadline.REPLACEMENT, JobAction.REPLACEMENT_EXPIRED)); // F9
 
     private static final Duration AT_DEADLINE = Duration.ZERO;
 

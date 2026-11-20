@@ -43,6 +43,7 @@ class ProductDeliveryTest {
     static final Instant MONDAY_10_IST = Instant.parse("2026-11-16T04:30:00Z");
 
     @Autowired JobTransitionService engine;
+    @Autowired com.loofie.core.support.JobFixtures fixtures;
     @Autowired OrderSubmissionService orders;
     @Autowired JobRepository jobs;
     @Autowired AssignmentRepository assignments;
@@ -245,6 +246,7 @@ class ProductDeliveryTest {
 
         // The replacement creator starts with a clean shipment record.
         UUID next = UUID.randomUUID();
+        fixtures.swapOffered(jobId, next);
         engine.transition(TransitionCommand.of(jobId, JobAction.APPROVE_SWAP, brand, null).withCreator(next));
         assertThat(job(jobId).getFirstShippedAt()).isNull();
         assertThat(job(jobId).getDeliveryIssueType()).isNull();

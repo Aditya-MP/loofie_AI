@@ -92,6 +92,19 @@ public class JobFixtures {
         return new Seeded(orderId, jobId, brandOrgId, creatorId);
     }
 
+    /**
+     * F9: an open swap offer for {@code creatorId}, as ops would make it, so engine tests can approve a swap with a
+     * made-up creator (the offer endpoint itself needs a real, bookable profile: see DisputeFlowTest).
+     */
+    public void swapOffered(UUID jobId, UUID creatorId) {
+        jdbc.sql("""
+                INSERT INTO job_swap_offers (id, job_id, creator_id, rate_per_reel_rupees, status, note, offered_by,
+                                             offered_at)
+                VALUES (:id, :job, :creator, 1000, 'OFFERED', 'test offer', :ops, now())""")
+                .param("id", UUID.randomUUID()).param("job", jobId).param("creator", creatorId)
+                .param("ops", UUID.randomUUID()).update();
+    }
+
     /** Sets one deadline column directly, e.g. to make a timer due. Column names come from tests only. */
     public void setDeadline(UUID jobId, String column, Instant at) {
         jdbc.sql("UPDATE jobs SET " + column + " = ? WHERE id = ?")

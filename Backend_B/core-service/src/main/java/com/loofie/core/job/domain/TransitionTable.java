@@ -88,6 +88,9 @@ public final class TransitionTable {
         add(REPLACEMENT_NEEDED, APPROVE_SWAP, CREATOR_INVITED, BRAND_ADMIN);
         add(REPLACEMENT_NEEDED, REPLACEMENT_EXPIRED, REFUNDED, SYSTEM);
         add(REPLACEMENT_NEEDED, RESOLVE_REFUND, REFUNDED, OPS); // the brand wants its money back instead of waiting
+        // A declined invitation is the same "no creator" case: the 10-day window and the full refund apply (F9 D2).
+        add(DECLINED, REPLACEMENT_EXPIRED, REFUNDED, SYSTEM);
+        add(DECLINED, RESOLVE_REFUND, REFUNDED, OPS);
 
         // Payout (facts from finance). The job closes as soon as the creator is paid; the brand's
         // rating stays open for 7 days and never blocks closing.
